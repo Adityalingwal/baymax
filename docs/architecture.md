@@ -41,7 +41,7 @@ hold key -> mic (renderer) -> STT -> LLM -> TTS -> speaker
 | LLM, first test candidate | Claude Haiku 5.5 (thinking off, effort low) |
 | LLM, second test candidate | GPT-6 Luna (reasoning none) |
 | LLM, fallback candidate | Sonnet 5.5 (`between_tools`, effort low) |
-| Keys | The user's own, encrypted with Electron `safeStorage` |
+| Keys | The user's own, from `.env`, read only by the main process (a Settings screen with `safeStorage` comes later) |
 | Agents | The user's own Claude Code / Codex login, run as a CLI process (`claude -p`, `codex app-server`) |
 
 - Provider changes are manual, after the adapter is validated. No automatic routing or failover.
