@@ -1,0 +1,25 @@
+# Build output
+node_modules/
+.webpack/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+*.log
+npm-debug.log*
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local agent + editor files
+.DS_Store
+briefs/
+.claude/
+.codex/
+.commandcode/
+.agent/
+.vscode/
+.idea/
