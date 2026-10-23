@@ -33,13 +33,6 @@ The hold-key is Option on macOS and Ctrl+Win on Windows.
 
 ## How we work
 
-- Branch from `main` as `name/task`, never commit to `main` directly.
-- Keep PRs small; merge with a merge commit, not squash.
-- `main` always runs: `npm install && npm start` must work.
-- Never commit `.env` or any key. Copy `.env.example` for local dev.
-- Folders: `src/main/` = core (Node), `src/main/adapters/` = STT/TTS, `src/renderer/` = UI. Owners: TBD.
-- `package.json` and `src/index.ts` change only in coordination with Aditya.
-
-Design decisions live in [docs/architecture.md](docs/architecture.md).
+Team rules for people and agents: [AGENTS.md](AGENTS.md). Design decisions: [docs/architecture.md](docs/architecture.md).
 
 Team: Aditya, Somesh, Kashish, Nitesh.
