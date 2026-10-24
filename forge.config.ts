@@ -14,7 +14,10 @@ const config: ForgeConfig = {
     asar: true,
     appBundleId: "com.adityalingwal.baymax",
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    // uiohook-napi ships N-API prebuilds for macOS and Windows; rebuilding it needs a C++ compiler on every machine.
+    ignoreModules: ["uiohook-napi"],
+  },
   makers: [new MakerSquirrel({}), new MakerZIP({}, ["darwin"])],
   plugins: [
     new AutoUnpackNativesPlugin({}),
