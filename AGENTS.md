@@ -83,7 +83,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 1. `npm run lint` has 0 errors.
 2. `npm run package` passes. This is the type-check; standalone `tsc --noEmit` is broken with `@types/node`.
-3. Tests pass (once the test runner is set up).
+3. `npm test` passes.
 4. The report shows the real output and lists what was not verified (e.g. Windows, live audio).
 
 Prettier formats the code, the pre-commit hook runs ESLint and Prettier on staged files, and CI runs the checks on every PR.
