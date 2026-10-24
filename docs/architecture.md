@@ -62,8 +62,10 @@ hold key -> mic (renderer) -> STT -> LLM -> TTS -> speaker
 | --- | --- |
 | `src/index.ts` | Main process entry: window, hotkey wiring, IPC |
 | `src/preload.ts` | Bridge between main and renderer |
+| `src/shared/ipc.ts` | IPC channel names and payload types |
 | `src/renderer.ts`, `src/renderer/` | UI (React) |
 | `src/main/hotkey.ts` | Hold-key detection |
+| `src/main/hold.ts` | Hold state from key events; pure |
 | `src/main/platform.ts` | Platform flags and labels |
 | `src/main/adapters/` (planned) | STT / TTS / LLM providers |
 | `src/main/agent/` (planned) | Agent CLI processes |
