@@ -19,7 +19,7 @@
       "eslint --fix",
       "prettier --write"
     ],
-    "*.{js,json,css,html}": "prettier --write"
+    "*.{js,json,css,html,yml,yaml}": "prettier --write"
   },
   "author": "Adityalingwal",
   "license": "UNLICENSED",
