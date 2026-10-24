@@ -55,7 +55,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 ## Git and PRs
 
 - Branch from `main` as `name/task` (e.g. `somesh/listening-panel`). All changes reach `main` through a PR.
-- One PR is one working step: its types, code and tests together, around 400 changed lines or fewer as a soft limit (generated files excluded). `main` runs after every PR. One ticket is one PR.
+- One PR is one working step: its types, code and tests together, around 400 changed lines or fewer as a soft limit (generated files excluded). `main` runs after every PR. A ticket may take several PRs; each links its ticket.
 - PR title: `type(scope): summary`, scope `ui`, `core` or `shared` when one applies (e.g. `feat(ui): listening panel`). PR body: what changed, evidence (screenshot for UI, output for core), shared files touched, what was not verified.
 - One commit has one purpose and a one-line message. Merge with a merge commit, not squash.
 - Each person reviews and merges their own PR. Before opening it, review the diff against the task and these rules, and get a review from a second model that did not write the code (e.g. Codex for Claude-written code).
