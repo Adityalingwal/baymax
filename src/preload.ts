@@ -1,38 +1,30 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { ipcChannels } from "./shared/ipc";
+import type { BaymaxApi, HoldState } from "./shared/ipc";
 
-type HoldState = "idle" | "listening";
-
-type Permissions = {
-  accessibility: boolean | null;
-  platform: NodeJS.Platform;
-};
-
-// Only these three methods cross the bridge: no raw IPC, no shell or URL access.
-contextBridge.exposeInMainWorld("baymax", {
-  onHoldState: (callback: (state: HoldState) => void): (() => void) => {
+// Only these three functions cross the bridge: no raw IPC, no shell or URL access.
+const api: BaymaxApi = {
+  onHoldState: (callback) => {
     // Drop Electron's event object so the renderer never sees it.
-    const handler = (_event: Electron.IpcRendererEvent, state: HoldState) =>
+    const listener = (_event: Electron.IpcRendererEvent, state: HoldState) =>
       callback(state);
-    ipcRenderer.on("hold-state", handler);
+    ipcRenderer.on(ipcChannels.holdState, listener);
     // Ask main to replay the current state, in case the key is already held.
-    ipcRenderer.send("get-hold-state");
+    ipcRenderer.send(ipcChannels.getHoldState);
     return () => {
-      ipcRenderer.removeListener("hold-state", handler);
+      ipcRenderer.removeListener(ipcChannels.holdState, listener);
     };
   },
-  getPermissions: (): Promise<Permissions> =>
-    ipcRenderer.invoke("get-permissions"),
-  openAccessibilitySettings: (): void => {
-    ipcRenderer.send("open-accessibility-settings");
+  getStartupInfo: () => ipcRenderer.invoke(ipcChannels.getStartupInfo),
+  openAccessibilitySettings: () => {
+    ipcRenderer.send(ipcChannels.openAccessibilitySettings);
   },
-});
+};
+
+contextBridge.exposeInMainWorld("baymax", api);
 
 declare global {
   interface Window {
-    baymax: {
-      onHoldState: (callback: (state: HoldState) => void) => () => void;
-      getPermissions: () => Promise<Permissions>;
-      openAccessibilitySettings: () => void;
-    };
+    baymax: BaymaxApi;
   }
 }
