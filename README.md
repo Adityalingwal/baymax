@@ -6,7 +6,7 @@ Status: skeleton: hold-key only (23 Oct 2026). Today the app opens one small win
 
 ## Requirements
 
-- Node 22 and npm
+- Node 22.22.1 or newer, Git 2.32 or newer, and npm
 - macOS or Windows
 
 ## Setup
@@ -30,6 +30,8 @@ The hold-key is Option on macOS and Ctrl+Win on Windows.
 | `npm run package` | Build the app into `out/` (this is also the type-check) |
 | `npm run make` | Build installers (Squirrel on Windows, ZIP on macOS) |
 | `npm run lint` | Run ESLint |
+| `npm run format` | Format all files with Prettier |
+| `npm run format:check` | Check that all files are formatted with Prettier |
 
 ## How we work
 
