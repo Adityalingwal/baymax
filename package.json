@@ -9,7 +9,17 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,json,css,html,yml,yaml}": "prettier --write"
   },
   "author": "Adityalingwal",
   "license": "UNLICENSED",
@@ -34,9 +44,12 @@
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
     "fork-ts-checker-webpack-plugin": "^7.3.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "node-loader": "^2.1.0",
     "postcss": "^8.5.6",
     "postcss-loader": "^8.2.0",
+    "prettier": "^3.9.10",
     "style-loader": "^3.3.4",
     "tailwindcss": "^4.1.18",
     "ts-loader": "^9.5.4",

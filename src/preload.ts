@@ -11,7 +11,8 @@ type Permissions = {
 contextBridge.exposeInMainWorld("baymax", {
   onHoldState: (callback: (state: HoldState) => void): (() => void) => {
     // Drop Electron's event object so the renderer never sees it.
-    const handler = (_event: Electron.IpcRendererEvent, state: HoldState) => callback(state);
+    const handler = (_event: Electron.IpcRendererEvent, state: HoldState) =>
+      callback(state);
     ipcRenderer.on("hold-state", handler);
     // Ask main to replay the current state, in case the key is already held.
     ipcRenderer.send("get-hold-state");
@@ -19,7 +20,8 @@ contextBridge.exposeInMainWorld("baymax", {
       ipcRenderer.removeListener("hold-state", handler);
     };
   },
-  getPermissions: (): Promise<Permissions> => ipcRenderer.invoke("get-permissions"),
+  getPermissions: (): Promise<Permissions> =>
+    ipcRenderer.invoke("get-permissions"),
   openAccessibilitySettings: (): void => {
     ipcRenderer.send("open-accessibility-settings");
   },
