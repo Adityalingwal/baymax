@@ -13,5 +13,268 @@
     "plugin:import/electron",
     "plugin:import/typescript"
   ],
-  "parser": "@typescript-eslint/parser"
+  "parser": "@typescript-eslint/parser",
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "ClassDeclaration",
+        "message": "Use plain functions, not classes (AGENTS.md)."
+      },
+      {
+        "selector": "ClassExpression",
+        "message": "Use plain functions, not classes (AGENTS.md)."
+      },
+      {
+        "selector": "TSEnumDeclaration",
+        "message": "Use `as const` objects and union types, not enum (AGENTS.md)."
+      },
+      {
+        "selector": "ExportAllDeclaration",
+        "message": "Use named exports and explicit re-exports, not export * (AGENTS.md)."
+      },
+      {
+        "selector": "CallExpression[callee.name=/Sync$/]",
+        "message": "Use async file and process APIs, not *Sync calls (AGENTS.md)."
+      },
+      {
+        "selector": "CallExpression[callee.property.name=/Sync$/]",
+        "message": "Use async file and process APIs, not *Sync calls (AGENTS.md)."
+      },
+      {
+        "selector": "CallExpression[callee.property.value=/Sync$/]",
+        "message": "Use async file and process APIs, not *Sync calls (AGENTS.md)."
+      },
+      {
+        "selector": "ImportSpecifier[imported.name=/Sync$/]",
+        "message": "Use async file and process APIs, not *Sync calls (AGENTS.md)."
+      }
+    ],
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/ban-ts-comment": "error",
+    "@typescript-eslint/no-non-null-assertion": "error",
+    "@typescript-eslint/no-unused-vars": "error",
+    "import/no-cycle": "error",
+    "no-warning-comments": "error",
+    "id-denylist": ["error", "data", "handler", "manager", "utils", "helpers"],
+    "import/no-unused-modules": [
+      "error",
+      {
+        "unusedExports": true,
+        "ignoreExports": [
+          "src/index.ts",
+          "src/preload.ts",
+          "src/renderer.ts",
+          "forge.config.ts"
+        ]
+      }
+    ],
+    "import/no-restricted-paths": [
+      "error",
+      {
+        "zones": [
+          {
+            "target": ["./src/renderer", "./src/renderer.ts"],
+            "from": ["./src/index.ts", "./src/main", "./src/preload.ts"],
+            "message": "The renderer talks to main only through window.baymax (AGENTS.md)."
+          },
+          {
+            "target": ["./src/index.ts", "./src/main"],
+            "from": ["./src/renderer", "./src/renderer.ts"],
+            "message": "Core imports nothing from the renderer (AGENTS.md)."
+          }
+        ]
+      }
+    ],
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "process",
+        "property": "platform",
+        "message": "Mac/Windows differences live in src/main/platform.ts (AGENTS.md)."
+      }
+    ],
+    "max-lines": [
+      "warn",
+      {
+        "max": 300,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "max-lines-per-function": [
+      "warn",
+      {
+        "max": 50
+      }
+    ],
+    "id-match": [
+      "error",
+      "^(?!.*Manager$).+$",
+      {
+        "onlyDeclarations": true,
+        "properties": false
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/**/*.{ts,tsx}"],
+      "parserOptions": {
+        "project": "./tsconfig.json"
+      },
+      "rules": {
+        "@typescript-eslint/no-floating-promises": [
+          "error",
+          {
+            "ignoreVoid": false
+          }
+        ],
+        "import/no-default-export": "error"
+      }
+    },
+    {
+      "files": ["src/main/platform.ts"],
+      "rules": {
+        "no-restricted-properties": "off"
+      }
+    },
+    {
+      "files": ["src/renderer/**/*", "src/renderer.ts"],
+      "env": {
+        "browser": true,
+        "node": false
+      },
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "electron",
+                "message": "The renderer talks to main only through window.baymax (AGENTS.md)."
+              },
+              {
+                "name": "uiohook-napi",
+                "message": "The renderer talks to main only through window.baymax (AGENTS.md)."
+              }
+            ]
+          }
+        ],
+        "import/no-nodejs-modules": "error",
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "fetch",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "name": "WebSocket",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "name": "XMLHttpRequest",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "name": "EventSource",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "name": "process",
+            "message": "The renderer uses no Node globals (AGENTS.md)."
+          },
+          {
+            "name": "require",
+            "message": "The renderer uses no Node globals (AGENTS.md)."
+          },
+          {
+            "name": "Buffer",
+            "message": "The renderer uses no Node globals (AGENTS.md)."
+          },
+          {
+            "name": "__dirname",
+            "message": "The renderer uses no Node globals (AGENTS.md)."
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "window",
+            "property": "fetch",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "window",
+            "property": "WebSocket",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "window",
+            "property": "XMLHttpRequest",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "window",
+            "property": "EventSource",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "fetch",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "WebSocket",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "XMLHttpRequest",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "EventSource",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "navigator",
+            "property": "sendBeacon",
+            "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "process",
+            "property": "platform",
+            "message": "Mac/Windows differences live in src/main/platform.ts (AGENTS.md)."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/**/*.test.ts", "*.config.ts", "webpack.*.ts"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "ClassDeclaration",
+            "message": "Use plain functions, not classes (AGENTS.md)."
+          },
+          {
+            "selector": "ClassExpression",
+            "message": "Use plain functions, not classes (AGENTS.md)."
+          },
+          {
+            "selector": "TSEnumDeclaration",
+            "message": "Use `as const` objects and union types, not enum (AGENTS.md)."
+          },
+          {
+            "selector": "ExportAllDeclaration",
+            "message": "Use named exports and explicit re-exports, not export * (AGENTS.md)."
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -87,3 +87,5 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 4. The report shows the real output and lists what was not verified (e.g. Windows, live audio).
 
 Prettier formats the code, the pre-commit hook runs ESLint and Prettier on staged files, and CI runs the checks on every PR.
+
+ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
