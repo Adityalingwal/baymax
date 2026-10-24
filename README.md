@@ -32,6 +32,7 @@ The hold-key is Option on macOS and Ctrl+Win on Windows.
 | `npm run lint` | Run ESLint |
 | `npm run format` | Format all files with Prettier |
 | `npm run format:check` | Check that all files are formatted with Prettier |
+| `npm test` | Run the unit tests with Vitest |
 
 ## How we work
 

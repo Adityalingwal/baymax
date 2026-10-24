@@ -1,11 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES6",
-    "allowJs": true,
+    "allowJs": false,
     "module": "commonjs",
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "noImplicitAny": true,
+    "strict": true,
     "sourceMap": true,
     "baseUrl": ".",
     "outDir": "dist",
