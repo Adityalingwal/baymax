@@ -21,15 +21,26 @@ export function App() {
 
   return (
     <main className="flex h-screen flex-col items-center justify-center gap-1 p-2 text-center">
-      <h1 className={listening ? "text-2xl font-semibold text-emerald-600" : "text-2xl font-semibold text-slate-500"}>
+      <h1
+        className={
+          listening
+            ? "text-2xl font-semibold text-emerald-600"
+            : "text-2xl font-semibold text-slate-500"
+        }
+      >
         {listening ? "Listening…" : "Idle"}
       </h1>
-      {platform && <p className="text-sm text-slate-500">Hold {holdKeyLabel} to talk, release to stop.</p>}
+      {platform && (
+        <p className="text-sm text-slate-500">
+          Hold {holdKeyLabel} to talk, release to stop.
+        </p>
+      )}
       {accessibility === false && (
         <div className="flex flex-col items-center gap-2">
           <p className="text-xs text-amber-700">
-            Grant Accessibility access to the running app, then restart. During <code>npm start</code> macOS may list it
-            as Electron; packaged builds show Baymax.
+            Grant Accessibility access to the running app, then restart. During{" "}
+            <code>npm start</code> macOS may list it as Electron; packaged
+            builds show Baymax.
           </p>
           <button
             className="rounded bg-slate-800 px-3 py-1 text-xs text-white"

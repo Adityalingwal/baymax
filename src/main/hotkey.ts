@@ -27,7 +27,9 @@ export class HotkeyManager extends EventEmitter {
 
     // Mac: Option (Alt) key — reliable keyup events
     // Windows: Ctrl+Win combo — avoids single-key OS conflicts (Alt=menu bar, Win alone=Start menu)
-    const defaultKeys = isMac ? [UiohookKey.Alt] : [UiohookKey.Ctrl, UiohookKey.Meta];
+    const defaultKeys = isMac
+      ? [UiohookKey.Alt]
+      : [UiohookKey.Ctrl, UiohookKey.Meta];
     this.config = {
       keys: defaultKeys,
       ...config,

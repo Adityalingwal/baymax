@@ -1,4 +1,10 @@
-import { app, BrowserWindow, ipcMain, shell, systemPreferences } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  systemPreferences,
+} from "electron";
 import { getHotkeyManager } from "./main/hotkey";
 import { isMac } from "./main/platform";
 
@@ -94,7 +100,9 @@ if (gotSingleInstanceLock) {
     if (!isMac || accessibilityAtStartup) {
       hotkeyManager.start();
     } else {
-      console.log("[Hotkey] Waiting for Accessibility permission; listener not started");
+      console.log(
+        "[Hotkey] Waiting for Accessibility permission; listener not started",
+      );
     }
   });
 
