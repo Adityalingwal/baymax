@@ -41,7 +41,7 @@ hold key -> mic (renderer) -> STT -> LLM -> TTS -> speaker
 | LLM, first test candidate | Claude Haiku 5.5 (thinking off, effort low) |
 | LLM, second test candidate | GPT-6 Luna (reasoning none) |
 | LLM, fallback candidate | Sonnet 5.5 (`between_tools`, effort low) |
-| Keys | The user's own, from `.env`, read only by the main process (a Settings screen with `safeStorage` comes later) |
+| Keys | Our own keys for the demo, from `.env`, read only by the main process (the user's own keys and a Settings screen with `safeStorage` come later) |
 | Agents | Our own agent loop on the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), run in the main process on an Anthropic API key |
 
 - Provider changes are manual, after the adapter is validated. No automatic routing or failover.
@@ -52,7 +52,7 @@ hold key -> mic (renderer) -> STT -> LLM -> TTS -> speaker
 ## Platform
 
 - Electron, one codebase for macOS and Windows, all TypeScript.
-- Main process = Node: adapters, LLM, agent processes, keys.
+- Main process = Node: adapters, LLM, agent engine, keys.
 - Renderer = UI and mic.
 - Hold-key via `uiohook-napi`: Option on macOS, Ctrl+Win on Windows.
 
