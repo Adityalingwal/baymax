@@ -1,4 +1,4 @@
-# Architecture — 23 Oct 2026
+# Architecture — 25 Oct 2026
 
 Decisions only. This is the target architecture; today the repo implements only the hold-key skeleton.
 
@@ -29,7 +29,7 @@ Out:
 ```
 hold key -> mic (renderer) -> STT -> LLM -> TTS -> speaker
                                        |
-                                       +-> agent CLI (claude -p / codex app-server), spawned from main
+                                       +-> agent engine (own loop on the Anthropic SDK), in main
 ```
 
 ## Stack
@@ -42,11 +42,11 @@ hold key -> mic (renderer) -> STT -> LLM -> TTS -> speaker
 | LLM, second test candidate | GPT-6 Luna (reasoning none) |
 | LLM, fallback candidate | Sonnet 5.5 (`between_tools`, effort low) |
 | Keys | The user's own, from `.env`, read only by the main process (a Settings screen with `safeStorage` comes later) |
-| Agents | The user's own Claude Code / Codex login, run as a CLI process (`claude -p`, `codex app-server`) |
+| Agents | Our own agent loop on the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), run in the main process on an Anthropic API key |
 
 - Provider changes are manual, after the adapter is validated. No automatic routing or failover.
-- Agent approval and stop integration is pending runtime validation.
-- On Windows, stop goes through the control protocol, not SIGINT.
+- Baymax owns agent control: approval, stop, steer, and recovery from a local SQLite database that holds every step and the chat history. A runtime spike on macOS (25 Oct 2026) validated this on our own loop.
+- Not in the first cut: the Claude Agent SDK (a later option for a coding worker) and the user's own Claude Code / Codex login (a later option).
 - No framework: our own pipeline inside the app.
 
 ## Platform
@@ -68,5 +68,5 @@ hold key -> mic (renderer) -> STT -> LLM -> TTS -> speaker
 | `src/main/hold.ts` | Hold state from key events; pure |
 | `src/main/platform.ts` | Platform flags and labels |
 | `src/main/adapters/` (planned) | STT / TTS / LLM providers |
-| `src/main/agent/` (planned) | Agent CLI processes |
+| `src/main/agent/` (planned) | Agent engine: loop, approval, stop, steer, SQLite recovery |
 | `src/renderer/` (planned additions) | Mic capture and playback UI |

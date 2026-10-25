@@ -6,7 +6,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 | Area | What it covers | Paths today | Works here |
 | --- | --- | --- | --- |
-| Core | Electron main process: hold-key, providers, agent CLIs | `src/index.ts`, `src/main/` | Aditya |
+| Core | Electron main process: hold-key, providers, agent engine | `src/index.ts`, `src/main/` | Aditya |
 | UI | Renderer: windows, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Somesh, Kashish |
 | Shared contract | IPC between core and UI | `src/preload.ts`, `src/shared/` | both sides |
 | Build and config | Tooling and packaging | `package.json`, `forge.config.ts`, `webpack.*.ts`, `tsconfig.json`, `.eslintrc.json` | anyone, in its own small PR |
@@ -27,7 +27,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 - Delete exports, options and code that nothing calls.
 - Await every promise or give it a `.catch`.
 - Keep the main process responsive: use async file and process APIs (no `*Sync` calls) and run CPU-heavy work outside main.
-- When a provider (STT, LLM, TTS, agent CLI) fails, show or speak an error that names the cause and the fix. The app keeps running.
+- When a provider (STT, LLM, TTS, agent model) fails, show or speak an error that names the cause and the fix. The app keeps running.
 - Give a provider its key, client or `fetch` as a parameter so it can be tested offline. Add an interface only when a second real provider exists.
 - Keep imports acyclic. Use named exports and explicit re-exports.
 
@@ -49,7 +49,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 ## Tests
 
 - Test logic and providers through their public interface. One behavior gets one test; variants go in one table-driven test.
-- Fake only external things: network, providers, agent CLIs. A person checks UI, hold-key and permission changes with `npm start`.
+- Fake only external things: network and providers, including the agent's model API. A person checks UI, hold-key and permission changes with `npm start`.
 - Fix the code, not the test: keep tests and checks intact. After two failed repair attempts, stop and report the failure and what was tried.
 
 ## Git and PRs
