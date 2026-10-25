@@ -1,14 +1,14 @@
 # AGENTS.md
 
-Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailwind) for macOS and Windows. Setup is in `README.md`. Product and stack decisions are in `docs/architecture.md`.
+Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailwind) for macOS in cut 1, Windows later. Setup is in `README.md`. Product and stack decisions are in `docs/architecture.md`.
 
 ## Areas
 
 | Area | What it covers | Paths today | Works here |
 | --- | --- | --- | --- |
-| Core | Electron main process: hold-key, providers, agent engine | `src/index.ts`, `src/main/` | Aditya |
-| UI | Renderer: windows, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Somesh, Kashish |
-| Shared contract | IPC between core and UI | `src/preload.ts`, `src/shared/` | both sides |
+| Main and engine | Electron main process (hold-key, windows, voice providers, speech queue, talker) and the engine process (agent engine, SQLite) | `src/index.ts`, `src/main/`, `src/engine/` (planned) | Aditya |
+| UI | Renderer: window contents, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Somesh, Kashish |
+| Shared contract | Contracts between processes: renderer <-> main (`src/shared/ipc.ts`), main <-> engine (`src/shared/engine.ts`), the types both carry, and provider code shared by main and the engine only | `src/preload.ts`, `src/shared/`, `src/providers/` (planned) | both sides |
 | Build and config | Tooling and packaging | `package.json`, `forge.config.ts`, `webpack.*.ts`, `tsconfig.json`, `.eslintrc.json` | anyone, in its own small PR |
 
 - Paths move as the code grows; the area is what counts. The current folder map is in `docs/architecture.md`.
@@ -22,7 +22,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 - Write application code in TypeScript (`.ts`, `.tsx`). Keep it strict: no `any`, `@ts-ignore` or non-null `!`.
 - Keep a file at 300 lines or fewer and a function at 50 or fewer. One file does one job.
 - Name folders and functions by what they do (`adapters/`, `startListening`). Replace generic names such as `utils/`, `helpers/`, `Manager`, `handler`, `data` with specific ones.
-- Use one word per concept: `hold`, `listening`, `idle`, `agent`, `adapter`.
+- Use one word per concept: `hold`, `listening`, `idle`, `talker`, `coordinator`, `worker`, `plug`, `engine`, `task`, `card`, `done check`, `adapter`.
 - When the same concept is written twice, move it to one place. Code that only looks similar stays separate.
 - Delete exports, options and code that nothing calls.
 - Await every promise or give it a `.catch`.
@@ -31,14 +31,16 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 - Give a provider its key, client or `fetch` as a parameter so it can be tested offline. Add an interface only when a second real provider exists.
 - Keep imports acyclic. Use named exports and explicit re-exports.
 
-## UI and core boundary
+## Process boundaries
 
-- The renderer talks to main only through `window.baymax` from `src/preload.ts`. It imports no `electron`, no Node modules and no core files, and makes no network calls. Core imports nothing from `src/renderer/`.
-- Main owns app state (hold, listening, agent status). The renderer shows what main sends.
-- Define IPC channel names and payload types once in `src/shared/ipc.ts`; both sides import them.
+- The renderer talks to main only through `window.baymax` from `src/preload.ts`. It imports no `electron`, no Node modules, no main or engine files, no `src/shared/engine.ts` and no `src/providers/` code, and makes no network calls. It never talks to the engine.
+- The engine imports nothing from `src/main/` or `src/renderer/`. Main imports nothing from `src/engine/` except the built bundle path, and nothing from `src/renderer/`. `src/providers/` (provider calls shared by main and the engine) imports nothing from either process folder.
+- Main owns the shown app state (hold, listening, agent status, pending items). The engine owns the saved run state and is the only process that opens SQLite. The renderer shows what main sends.
+- Define channel names and payload types once per link: renderer <-> main in `src/shared/ipc.ts`, main <-> engine in `src/shared/engine.ts`; both sides of a link import them. Types both links carry live in a third shared file; link files never import each other.
 - Mac/Windows differences live in `src/main/platform.ts`; main sends platform-specific labels to the renderer.
 - Keep `contextIsolation: true` and `nodeIntegration: false`. `preload.ts` exposes narrow, typed functions; subscriptions return a cleanup function.
-- API keys come from `.env`, are read only in main, and never reach the renderer.
+- The no-`*Sync` rule in Code applies to main and the renderer; the engine runs outside main and may use synchronous SQLite, kept inside its database module by review.
+- API keys come from `.env` and are read only in main. Main passes the engine the keys it needs when it starts it (the `env` option of `utilityProcess.fork`, set explicitly). No key reaches the renderer.
 
 ## Comments and docs
 
@@ -56,7 +58,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 - Branch from `main` as `name/task` (e.g. `somesh/listening-panel`). All changes reach `main` through a PR.
 - One PR is one working step: its types, code and tests together, around 400 changed lines or fewer as a soft limit (generated files excluded). `main` runs after every PR. A ticket may take several PRs; each links its ticket.
-- PR title: `type(scope): summary`, scope `ui`, `core` or `shared` when one applies (e.g. `feat(ui): listening panel`). PR body: what changed, evidence (screenshot for UI, output for core), shared files touched, what was not verified.
+- PR title: `type(scope): summary`, scope `ui`, `main`, `engine` or `shared` when one applies (e.g. `feat(ui): listening panel`). PR body: what changed, evidence (screenshot for UI, output for main or engine), shared files touched, what was not verified.
 - One commit has one purpose and a one-line message. Merge with a merge commit, not squash, and only when CI is green.
 - Each person reviews and merges their own PR. Before opening it, review the diff against the task and these rules, and get a review from a second model that did not write the code (e.g. Codex for Claude-written code).
 - Agents may commit and push on their own task branch. Opening or merging a PR needs the instruction of the person you work for.
@@ -88,4 +90,4 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 Prettier formats the code, the pre-commit hook runs ESLint and Prettier on staged files, and CI runs the checks on every PR.
 
-ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
+ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer and main zones and a `*Sync` rule over all of `src/` (dropped for tests and configs); the engine zones and the override that limits the `*Sync` rule to main and the renderer come with the first build PR. Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
