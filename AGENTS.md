@@ -7,8 +7,8 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 | Area | What it covers | Paths today | Works here |
 | --- | --- | --- | --- |
 | Main and engine | Electron main process (hold-key, windows, voice providers, speech queue, talker) and the engine process (agent engine, SQLite) | `src/index.ts`, `src/main/`, `src/engine/` (planned) | Aditya |
-| UI | Renderer: windows, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Somesh, Kashish |
-| Shared contract | Contracts between processes: renderer <-> main (`src/shared/ipc.ts`), main <-> engine (`src/shared/engine.ts`), the types both carry, and process-neutral provider code | `src/preload.ts`, `src/shared/`, `src/providers/` (planned) | both sides |
+| UI | Renderer: window contents, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Somesh, Kashish |
+| Shared contract | Contracts between processes: renderer <-> main (`src/shared/ipc.ts`), main <-> engine (`src/shared/engine.ts`), the types both carry, and provider code shared by main and the engine only | `src/preload.ts`, `src/shared/`, `src/providers/` (planned) | both sides |
 | Build and config | Tooling and packaging | `package.json`, `forge.config.ts`, `webpack.*.ts`, `tsconfig.json`, `.eslintrc.json` | anyone, in its own small PR |
 
 - Paths move as the code grows; the area is what counts. The current folder map is in `docs/architecture.md`.
@@ -33,13 +33,13 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 ## Process boundaries
 
-- The renderer talks to main only through `window.baymax` from `src/preload.ts`. It imports no `electron`, no Node modules and no main or engine files, and makes no network calls. It never talks to the engine.
+- The renderer talks to main only through `window.baymax` from `src/preload.ts`. It imports no `electron`, no Node modules, no main or engine files, no `src/shared/engine.ts` and no `src/providers/` code, and makes no network calls. It never talks to the engine.
 - The engine imports nothing from `src/main/` or `src/renderer/`. Main imports nothing from `src/engine/` except the built bundle path, and nothing from `src/renderer/`. `src/providers/` (provider calls shared by main and the engine) imports nothing from either process folder.
 - Main owns the shown app state (hold, listening, agent status, pending items). The engine owns the saved run state and is the only process that opens SQLite. The renderer shows what main sends.
 - Define channel names and payload types once per link: renderer <-> main in `src/shared/ipc.ts`, main <-> engine in `src/shared/engine.ts`; both sides of a link import them. Types both links carry live in a third shared file; link files never import each other.
 - Mac/Windows differences live in `src/main/platform.ts`; main sends platform-specific labels to the renderer.
 - Keep `contextIsolation: true` and `nodeIntegration: false`. `preload.ts` exposes narrow, typed functions; subscriptions return a cleanup function.
-- The no-`*Sync` rule in Code applies to main and the renderer; only the engine's database module may use synchronous SQLite, because the engine runs outside main.
+- The no-`*Sync` rule in Code applies to main and the renderer; the engine runs outside main and may use synchronous SQLite, kept inside its database module by review.
 - API keys come from `.env` and are read only in main. Main passes the engine the keys it needs when it starts it (the `env` option of `utilityProcess.fork`, set explicitly). No key reaches the renderer.
 
 ## Comments and docs
@@ -90,4 +90,4 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 Prettier formats the code, the pre-commit hook runs ESLint and Prettier on staged files, and CI runs the checks on every PR.
 
-ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer and main zones and a `*Sync` rule over all of `src/`; the engine zones and the override that allows `*Sync` only in the engine's database module come with the first build PR. Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
+ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer and main zones and a `*Sync` rule over all of `src/` (dropped for tests and configs); the engine zones and the override that limits the `*Sync` rule to main and the renderer come with the first build PR. Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
