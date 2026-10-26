@@ -129,7 +129,34 @@ describe("createWebTool repeated reads", () => {
     });
     const connects = network.targets.length;
     expect(await web.read("http://example.test/final", signal)).toEqual(moved);
+    expect(await web.read("http://example.test/moved", signal)).toEqual(moved);
     expect(network.targets).toHaveLength(connects);
+  });
+});
+
+describe("createWebTool aborts", () => {
+  it("returns aborted for a signal aborted before the call, even for a kept page", async () => {
+    const web = tool();
+    await web.read("http://example.test/one", signal);
+    const outcome = await web.read(
+      "http://example.test/one",
+      AbortSignal.abort(),
+    );
+    expect(outcome).toEqual({ ok: false, cause: "aborted" });
+  });
+
+  it("lets one caller of a shared read abort without failing the other", async () => {
+    const web = tool();
+    const first = new AbortController();
+    const reads = [
+      web.read("http://example.test/one", first.signal),
+      web.read("http://example.test/one", signal),
+    ];
+    first.abort();
+    const [aborted, kept] = await Promise.all(reads);
+    expect(aborted).toEqual({ ok: false, cause: "aborted" });
+    expect(kept).toMatchObject({ ok: true, page: { id: "s1" } });
+    expect(network.targets).toHaveLength(1);
   });
 });
 

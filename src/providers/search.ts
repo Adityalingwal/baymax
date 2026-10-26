@@ -1,5 +1,3 @@
-// Web search: the outcome types every search call returns.
-
 export type SearchHit = { url: string; title: string; snippet: string };
 export type SearchFailure =
   | "keyRejected"

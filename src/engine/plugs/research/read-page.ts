@@ -28,7 +28,6 @@ export type ReadLimits = {
 type ReadDeps = { lookup: LookupAll; connect: Connect; limits: ReadLimits };
 type Exchange = { request: ClientRequest; response: IncomingMessage };
 
-// What to do with a response, decided from its status and headers before any body is read.
 type Decision =
   | { next: "redirect"; location: string }
   | {
@@ -81,7 +80,13 @@ function send(
         resolve({ request, response });
       },
     );
+    // A 101 never emits a response, so it ends as an HTTP error instead of waiting forever.
+    request.on("upgrade", (response, socket) => {
+      socket.destroy();
+      resolve({ request, response });
+    });
     request.on("error", reject);
+    request.on("close", () => reject(new Error("closed before a response")));
     request.end();
   });
 }
@@ -137,12 +142,14 @@ async function readDecided(
   checked: CheckedUrl,
   decision: Extract<Decision, { next: "read" }>,
   limits: ReadLimits,
+  signal: AbortSignal,
 ): Promise<PageOutcome> {
   try {
     const bytes = await readBody(
       exchange.response,
       decision.encoding,
       limits.maxBytes,
+      signal,
     );
     return pageTextFrom({
       body: decodeText(bytes, decision.charset),
@@ -169,7 +176,13 @@ async function followRedirects(
     const exchange = await send(check.checked, deps, signal);
     const decision = decide(exchange.response);
     if (decision.next === "read") {
-      return readDecided(exchange, check.checked, decision, deps.limits);
+      return readDecided(
+        exchange,
+        check.checked,
+        decision,
+        deps.limits,
+        signal,
+      );
     }
     close(exchange);
     if (decision.next === "stop") return decision.outcome;

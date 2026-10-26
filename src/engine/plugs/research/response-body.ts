@@ -1,7 +1,8 @@
 import type { IncomingMessage } from "node:http";
 import { pipeline } from "node:stream/promises";
+import { addAbortSignal } from "node:stream";
 import type { Transform } from "node:stream";
-import { constants, createBrotliDecompress, createGunzip } from "node:zlib";
+import { createBrotliDecompress, createGunzip } from "node:zlib";
 
 export type BodyEncoding = "identity" | "gzip" | "br";
 
@@ -54,24 +55,26 @@ async function collect(
   }
 }
 
+type Budget = { maxBytes: number; hit: boolean };
+
 async function* capped(
   source: AsyncIterable<Buffer>,
-  maxBytes: number,
+  budget: Budget,
 ): AsyncGenerator<Buffer> {
   let total = 0;
   for await (const chunk of source) {
-    const part = chunk.subarray(0, maxBytes - total);
+    const part = chunk.subarray(0, budget.maxBytes - total);
     total += part.length;
     yield part;
-    if (total >= maxBytes) return;
+    if (total >= budget.maxBytes) {
+      budget.hit = true;
+      return;
+    }
   }
 }
 
-// A sync finish flush lets a stream cut at the encoded budget end without an error.
 function createDecompressor(encoding: "gzip" | "br"): Transform {
-  return encoding === "gzip"
-    ? createGunzip({ finishFlush: constants.Z_SYNC_FLUSH })
-    : createBrotliDecompress({ finishFlush: constants.BROTLI_OPERATION_FLUSH });
+  return encoding === "gzip" ? createGunzip() : createBrotliDecompress();
 }
 
 async function readCompressed(
@@ -80,18 +83,21 @@ async function readCompressed(
   kept: Keeper,
   maxBytes: number,
 ): Promise<void> {
+  const budget: Budget = { maxBytes, hit: false };
   let origin: "network" | "decompression" | null = null;
   response.on("error", () => (origin ??= "network"));
   decompressor.on("error", () => (origin ??= "decompression"));
   // Errors on any stage also end the loop below, which reports them.
   pipeline(
     response,
-    (source: AsyncIterable<Buffer>) => capped(source, maxBytes),
+    (source: AsyncIterable<Buffer>) => capped(source, budget),
     decompressor,
   ).catch(() => undefined);
   try {
     await collect(decompressor, kept);
   } catch (err) {
+    // A body cut at the encoded budget ends mid-stream; what was decoded before the cut is kept.
+    if (budget.hit) return;
     throw origin === "decompression" ? decompressionError(err) : err;
   }
 }
@@ -100,19 +106,21 @@ export async function readBody(
   response: IncomingMessage,
   encoding: BodyEncoding,
   maxBytes: number,
+  signal: AbortSignal,
 ): Promise<Buffer> {
   const kept = createKeeper(maxBytes);
   if (encoding === "identity") {
     await collect(response, kept);
-    return kept.bytes();
+  } else {
+    const decompressor = addAbortSignal(signal, createDecompressor(encoding));
+    try {
+      await readCompressed(response, decompressor, kept, maxBytes);
+    } finally {
+      decompressor.destroy();
+      response.destroy();
+    }
   }
-  const decompressor = createDecompressor(encoding);
-  try {
-    await readCompressed(response, decompressor, kept, maxBytes);
-  } finally {
-    decompressor.destroy();
-    response.destroy();
-  }
+  signal.throwIfAborted();
   return kept.bytes();
 }
 

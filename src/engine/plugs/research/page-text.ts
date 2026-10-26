@@ -2,7 +2,7 @@ import { convert } from "html-to-text";
 import type { HtmlToTextOptions } from "html-to-text";
 import type { Source } from "../../../shared/cards";
 
-export type ReadPage = Source & { text: string }; // text is capped
+export type ReadPage = Source & { text: string };
 export type PageText = Omit<ReadPage, "id">; // only the web tool gives ids
 
 export type BodyKind = "html" | "plain";

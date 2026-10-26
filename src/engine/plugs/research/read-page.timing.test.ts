@@ -1,5 +1,6 @@
 import { setTimeout as wait } from "node:timers/promises";
-import { gzipSync } from "node:zlib";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LookupAll } from "./connection";
 import { dripRoute, startFakeNetwork, testLimits } from "./fake-network";
@@ -12,8 +13,8 @@ const limits = { ...testLimits, timeoutMs: 300 };
 const publicAnswer = ["93.184.216.34"];
 
 // A valid gzip stream sent one byte every 50 ms, so only the deadline can end it.
-function gzipDripRoute(): Omit<DripRoute, "written"> {
-  const body = gzipSync("a".repeat(10_000), { level: 0 });
+async function gzipDripRoute(): Promise<Omit<DripRoute, "written">> {
+  const body = await promisify(gzip)("a".repeat(10_000), { level: 0 });
   let closedEarly = false;
   return {
     route: (_req, res) => {
@@ -124,7 +125,7 @@ describe("readPage deadline and mid-body abort", () => {
   });
 
   it("times out on a valid gzip body that drips a byte every 50 ms and closes the socket", async () => {
-    const drip = gzipDripRoute();
+    const drip = await gzipDripRoute();
     network.route("/", drip.route);
     const started = Date.now();
     const outcome = await read(new AbortController().signal);
