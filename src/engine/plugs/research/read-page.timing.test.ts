@@ -1,20 +1,38 @@
 import { setTimeout as wait } from "node:timers/promises";
+import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LookupAll } from "./connection";
-import { dripRoute, startFakeNetwork } from "./fake-network";
-import type { FakeNetwork } from "./fake-network";
+import { dripRoute, startFakeNetwork, testLimits } from "./fake-network";
+import type { DripRoute, FakeNetwork } from "./fake-network";
 import { readPage } from "./read-page";
-import type { PageOutcome, ReadLimits } from "./read-page";
+import type { PageOutcome } from "./read-page";
 
-const limits: ReadLimits = {
-  maxBytes: 100_000,
-  timeoutMs: 300,
-  maxRedirects: 5,
-  maxChars: 8_000,
-  minChars: 20,
-};
+const limits = { ...testLimits, timeoutMs: 300 };
 
 const publicAnswer = ["93.184.216.34"];
+
+// A valid gzip stream sent one byte every 50 ms, so only the deadline can end it.
+function gzipDripRoute(): Omit<DripRoute, "written"> {
+  const body = gzipSync("a".repeat(10_000), { level: 0 });
+  let closedEarly = false;
+  return {
+    route: (_req, res) => {
+      res.writeHead(200, {
+        "Content-Type": "text/plain",
+        "Content-Encoding": "gzip",
+      });
+      let sent = 0;
+      const timer = setInterval(() => {
+        if (!res.destroyed) res.write(body.subarray(sent, (sent += 1)));
+      }, 50);
+      res.on("close", () => {
+        clearInterval(timer);
+        closedEarly = !res.writableFinished;
+      });
+    },
+    closedEarly: () => closedEarly,
+  };
+}
 
 type LookupRow = {
   name: string;
@@ -103,6 +121,16 @@ describe("readPage deadline and mid-body abort", () => {
     const outcome = await read(new AbortController().signal);
     expect(outcome).toEqual({ ok: false, cause: "timeout" });
     expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("times out on a valid gzip body that drips a byte every 50 ms and closes the socket", async () => {
+    const drip = gzipDripRoute();
+    network.route("/", drip.route);
+    const started = Date.now();
+    const outcome = await read(new AbortController().signal);
+    expect(outcome).toEqual({ ok: false, cause: "timeout" });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    await vi.waitFor(() => expect(drip.closedEarly()).toBe(true));
   });
 
   it("returns aborted when the caller aborts mid-body and closes the socket", async () => {

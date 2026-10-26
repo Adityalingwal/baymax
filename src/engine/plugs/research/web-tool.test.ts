@@ -98,6 +98,17 @@ describe("createWebTool repeated reads", () => {
     expect(network.targets).toHaveLength(1);
   });
 
+  it("keeps the URL without the fragment or trailing dot it was first read with", async () => {
+    const web = tool();
+    const first = await web.read("http://example.test./one#part", signal);
+    expect(first).toMatchObject({
+      ok: true,
+      page: { id: "s1", url: "http://example.test/one" },
+    });
+    expect(await web.read("http://example.test/one", signal)).toEqual(first);
+    expect(network.targets).toHaveLength(1);
+  });
+
   it("opens one connection for two reads of one URL started together", async () => {
     const web = tool();
     const [first, second] = await Promise.all([

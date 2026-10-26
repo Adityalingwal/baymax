@@ -5,18 +5,13 @@ import {
   readablePage,
   sendRoute,
   startFakeNetwork,
+  testLimits,
 } from "./fake-network";
 import type { FakeNetwork, FakeRoute } from "./fake-network";
 import { readPage } from "./read-page";
-import type { PageOutcome, ReadLimits } from "./read-page";
+import type { PageOutcome } from "./read-page";
 
-const limits: ReadLimits = {
-  maxBytes: 100_000,
-  timeoutMs: 5_000,
-  maxRedirects: 3,
-  maxChars: 8_000,
-  minChars: 20,
-};
+const limits = { ...testLimits, maxRedirects: 3 };
 
 const page = sendRoute({
   headers: { "Content-Type": "text/html" },
@@ -24,6 +19,7 @@ const page = sendRoute({
 });
 const public4 = "93.184.216.34";
 const public6 = "2606:4700::1111";
+const nat64 = "64:ff9b::14cf:4952";
 
 function redirectTo(location: string, headers = {}): FakeRoute {
   return sendRoute({
@@ -60,6 +56,33 @@ const connectionRows: ConnectionRow[] = [
     lookups: ["both.test"],
     targets: [{ address: public4 }],
     host: "both.test",
+  },
+  {
+    name: "a NAT64 address carrying a public IPv4 is the target",
+    url: "http://nat64.test/",
+    answers: [["nat64.test", [nat64]]],
+    routes: [["/", page]],
+    lookups: ["nat64.test"],
+    targets: [{ address: nat64 }],
+    host: "nat64.test",
+  },
+  {
+    name: "IPv4 is picked from a NAT64 and IPv4 answer",
+    url: "http://nat64.test/",
+    answers: [["nat64.test", [nat64, public4]]],
+    routes: [["/", page]],
+    lookups: ["nat64.test"],
+    targets: [{ address: public4 }],
+    host: "nat64.test",
+  },
+  {
+    name: "a public NAT64 literal is connected to directly, with no servername",
+    url: `https://[${nat64}]/`,
+    answers: [],
+    routes: [["/", page]],
+    lookups: [],
+    targets: [{ address: nat64, tls: true, port: 443, servername: null }],
+    host: `[${nat64}]`,
   },
   {
     name: "the port follows the URL",

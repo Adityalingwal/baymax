@@ -183,10 +183,10 @@ async function followRedirects(
 function failureFrom(
   err: unknown,
   caller: AbortSignal,
-  deadline: AbortSignal,
+  deadline: AbortSignal | null,
 ): ReadFailure {
   if (caller.aborted) return { ok: false, cause: "aborted" };
-  if (deadline.aborted) return { ok: false, cause: "timeout" };
+  if (deadline?.aborted === true) return { ok: false, cause: "timeout" };
   const rule = refusalOf(err);
   if (rule !== null) return refused(rule);
   if (isDecompressionFailure(err)) return failed("noUsableText");
@@ -199,9 +199,10 @@ export async function readPage(
   signal: AbortSignal,
 ): Promise<PageOutcome> {
   if (signal.aborted) return { ok: false, cause: "aborted" };
-  const deadline = AbortSignal.timeout(deps.limits.timeoutMs);
-  const combined = AbortSignal.any([signal, deadline]);
+  let deadline: AbortSignal | null = null;
   try {
+    deadline = AbortSignal.timeout(deps.limits.timeoutMs);
+    const combined = AbortSignal.any([signal, deadline]);
     return await followRedirects(url, deps, combined);
   } catch (err) {
     return failureFrom(err, signal, deadline);

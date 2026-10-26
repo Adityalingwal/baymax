@@ -8,7 +8,6 @@ export type RefusalRule =
   | "privateAddress"
   | "tooManyRedirects";
 
-// A URL that may be requested: the stripped hostname is used for the lookup, Host and TLS.
 export type CheckedUrl = {
   url: URL;
   hostname: string;
@@ -42,22 +41,29 @@ function isBlockedName(hostname: string): boolean {
   );
 }
 
-function strippedHostname(url: URL): string {
-  const lower = url.hostname.toLowerCase();
-  const name = lower.endsWith(".") ? lower.slice(0, -1) : lower;
+// The fragment and a trailing dot are dropped, so the kept URL, the lookup, Host and TLS all use one name.
+function cleaned(url: URL): URL {
+  url.hash = "";
+  if (url.hostname.endsWith(".")) url.hostname = url.hostname.slice(0, -1);
+  return url;
+}
+
+function bareHostname(url: URL): string {
+  const name = url.hostname.toLowerCase();
   return name.startsWith("[") && name.endsWith("]") ? name.slice(1, -1) : name;
 }
 
 export function checkUrl(raw: string, base?: string): UrlCheck {
-  const url = parse(raw, base);
-  if (url === null) return { ok: false, rule: "scheme" };
+  const parsed = parse(raw, base);
+  if (parsed === null) return { ok: false, rule: "scheme" };
+  const url = cleaned(parsed);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { ok: false, rule: "scheme" };
   }
   if (url.username !== "" || url.password !== "") {
     return { ok: false, rule: "credentials" };
   }
-  const hostname = strippedHostname(url);
+  const hostname = bareHostname(url);
   if (isBlockedName(hostname)) return { ok: false, rule: "blockedHost" };
   const literal = isIP(hostname) !== 0;
   if (literal && !isPublicAddress(hostname)) {

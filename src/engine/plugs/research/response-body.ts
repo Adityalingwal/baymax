@@ -44,12 +44,12 @@ export function isDecompressionFailure(err: unknown): boolean {
   );
 }
 
-async function readPlain(
-  response: IncomingMessage,
+async function collect(
+  source: AsyncIterable<Buffer>,
   kept: Keeper,
 ): Promise<void> {
-  for await (const chunk of response) {
-    kept.add(chunk as Buffer);
+  for await (const chunk of source) {
+    kept.add(chunk);
     if (kept.full()) break;
   }
 }
@@ -90,16 +90,12 @@ async function readCompressed(
     decompressor,
   ).catch(() => undefined);
   try {
-    for await (const chunk of decompressor) {
-      kept.add(chunk as Buffer);
-      if (kept.full()) break;
-    }
+    await collect(decompressor, kept);
   } catch (err) {
     throw origin === "decompression" ? decompressionError(err) : err;
   }
 }
 
-// Reads at most maxBytes off the socket and keeps at most maxBytes decoded; a stop at a budget is not an error.
 export async function readBody(
   response: IncomingMessage,
   encoding: BodyEncoding,
@@ -107,7 +103,7 @@ export async function readBody(
 ): Promise<Buffer> {
   const kept = createKeeper(maxBytes);
   if (encoding === "identity") {
-    await readPlain(response, kept);
+    await collect(response, kept);
     return kept.bytes();
   }
   const decompressor = createDecompressor(encoding);

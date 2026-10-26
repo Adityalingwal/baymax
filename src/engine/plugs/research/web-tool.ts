@@ -4,6 +4,7 @@ import type { Connect, LookupAll } from "./connection";
 import type { PageText, ReadPage } from "./page-text";
 import { readPage } from "./read-page";
 import type { ReadFailure, ReadLimits } from "./read-page";
+import { checkUrl } from "./url-rules";
 
 export type ReadOutcome = { ok: true; page: ReadPage } | ReadFailure;
 export type WebTool = {
@@ -20,27 +21,20 @@ const defaultLimits: ReadLimits = {
   minChars: 200,
 };
 
-// The URL without its fragment; null when it does not parse.
+// The same cleaned URL the reader keeps, so a repeat read finds the kept page.
 function readKey(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    parsed.hash = "";
-    return parsed.href;
-  } catch {
-    return null;
-  }
+  const check = checkUrl(url);
+  return check.ok ? check.checked.url.href : null;
 }
 
 function keepPage(kept: ReadPage[], page: PageText): ReadPage {
-  const key = readKey(page.url);
-  const known = kept.find((keptPage) => readKey(keptPage.url) === key);
+  const known = kept.find((keptPage) => keptPage.url === page.url);
   if (known !== undefined) return known;
   const added: ReadPage = { id: `s${kept.length + 1}`, ...page };
   kept.push(added);
   return added;
 }
 
-// One web tool per task: it holds every page the task read, by source id.
 export function createWebTool(options: {
   search: SearchFn;
   lookup?: LookupAll;
@@ -53,33 +47,30 @@ export function createWebTool(options: {
     limits: { ...defaultLimits, ...options.limits },
   };
   const kept: ReadPage[] = [];
-  const reads = new Map<string, Promise<ReadOutcome>>();
+  const inFlight = new Map<string, Promise<ReadOutcome>>();
 
   async function readAndKeep(
-    key: string | null,
     url: string,
     signal: AbortSignal,
   ): Promise<ReadOutcome> {
     const outcome = await readPage(url, deps, signal);
-    if (!outcome.ok) {
-      if (key !== null) reads.delete(key);
-      return outcome;
-    }
-    const success = { ok: true, page: keepPage(kept, outcome.page) } as const;
-    const finalKey = readKey(success.page.url);
-    if (finalKey !== null) reads.set(finalKey, Promise.resolve(success));
-    return success;
+    return outcome.ok
+      ? { ok: true, page: keepPage(kept, outcome.page) }
+      : outcome;
   }
 
   function read(url: string, signal: AbortSignal): Promise<ReadOutcome> {
     const key = readKey(url);
-    // A URL that does not parse goes to the reader, which refuses it.
-    if (key === null) return readAndKeep(null, url, signal);
-    const known = reads.get(key);
-    if (known !== undefined) return known;
-    const pending = readAndKeep(key, url, signal);
-    reads.set(key, pending);
-    return pending;
+    if (key === null) return readAndKeep(url, signal);
+    const known = kept.find((page) => page.url === key);
+    if (known !== undefined) return Promise.resolve({ ok: true, page: known });
+    const pending = inFlight.get(key);
+    if (pending !== undefined) return pending;
+    const started = readAndKeep(url, signal).finally(() =>
+      inFlight.delete(key),
+    );
+    inFlight.set(key, started);
+    return started;
   }
 
   return {

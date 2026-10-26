@@ -6,7 +6,7 @@ import type { Duplex } from "node:stream";
 import { isPublicAddress } from "./address";
 import type { CheckedUrl, RefusalRule } from "./url-rules";
 
-export type LookupAll = (hostname: string) => Promise<string[]>; // every address the name resolves to
+export type LookupAll = (hostname: string) => Promise<string[]>;
 export type ConnectTarget = {
   address: string;
   port: number;
@@ -21,6 +21,14 @@ type ConnectionHook = (
   oncreate: (err: Error | null, socket: Duplex) => void,
 ) => undefined;
 
+const refusalRules: string[] = [
+  "scheme",
+  "credentials",
+  "blockedHost",
+  "privateAddress",
+  "tooManyRedirects",
+] satisfies RefusalRule[];
+
 function refusalError(rule: RefusalRule): Error {
   return new Error(`refused: ${rule}`, { cause: { rule } });
 }
@@ -31,7 +39,9 @@ export function refusalOf(err: unknown): RefusalRule | null {
   if (typeof cause !== "object" || cause === null || !("rule" in cause)) {
     return null;
   }
-  return cause.rule === "privateAddress" ? "privateAddress" : null;
+  return typeof cause.rule === "string" && refusalRules.includes(cause.rule)
+    ? (cause.rule as RefusalRule)
+    : null;
 }
 
 // The lookup takes no signal, so the read's signal ends the wait instead.

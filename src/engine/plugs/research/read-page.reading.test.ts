@@ -10,6 +10,7 @@ import {
   readablePage,
   sendRoute,
   startFakeNetwork,
+  testLimits,
 } from "./fake-network";
 import type { FakeNetwork, FakeRoute } from "./fake-network";
 import { readPage } from "./read-page";
@@ -18,13 +19,7 @@ import type { PageOutcome, ReadLimits } from "./read-page";
 const gzipped = promisify(gzip);
 const brotlied = promisify(brotliCompress);
 
-const limits: ReadLimits = {
-  maxBytes: 100_000,
-  timeoutMs: 5_000,
-  maxRedirects: 5,
-  maxChars: 8_000,
-  minChars: 20,
-};
+const limits = testLimits;
 
 const html = { "Content-Type": "text/html; charset=utf-8" };
 const words = "Plain words for a reader to keep. ";
@@ -292,11 +287,14 @@ describe("readPage early stops", () => {
 });
 
 describe("readPage unreachable", () => {
-  it("gives unreachable for an unknown name and for a closed port", async () => {
+  it("gives unreachable for a name that does not resolve", async () => {
     expect(await read("http://unknown.test/")).toEqual({
       ok: false,
       cause: "unreachable",
     });
+  });
+
+  it("gives unreachable for a connection to a closed port", async () => {
     const port = await closedPort();
     const outcome = await read("http://example.test/", {}, () =>
       netConnect(port, "127.0.0.1"),

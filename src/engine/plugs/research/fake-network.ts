@@ -8,8 +8,15 @@ import type {
 import { connect as netConnect } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Connect, ConnectTarget, LookupAll } from "./connection";
+import type { ReadLimits } from "./read-page";
 
-// Test support only: a real local HTTP server behind a fake DNS lookup and a fake connection.
+export const testLimits: ReadLimits = {
+  maxBytes: 100_000,
+  timeoutMs: 5_000,
+  maxRedirects: 5,
+  maxChars: 8_000,
+  minChars: 20,
+};
 
 export type FakeRoute = (req: IncomingMessage, res: ServerResponse) => void;
 export type SeenRequest = { path: string; headers: IncomingHttpHeaders };
@@ -101,7 +108,6 @@ export function sendRoute(params: {
   };
 }
 
-// Writes a chunk on an interval until total bytes are written (then ends) or the client goes away.
 export function dripRoute(params: {
   status?: number;
   headers?: OutgoingHttpHeaders;
@@ -127,7 +133,6 @@ export function dripRoute(params: {
   return { route, written: () => written, closedEarly: () => closedEarly };
 }
 
-// A port with nothing listening: a throwaway server is started and closed.
 export async function closedPort(): Promise<number> {
   const server = createServer();
   const port = await listen(server);
