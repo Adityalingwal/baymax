@@ -17,6 +17,18 @@ function subscribe<C extends keyof MainToRenderer>(
   };
 }
 
+// Ask main to replay the current state after subscribing, in case it changed before the window loaded.
+function subscribeWithReplay<C extends keyof MainToRenderer>(
+  channel: C,
+  replayChannel:
+    typeof ipcChannels.getHoldState | typeof ipcChannels.getDisplayState,
+  callback: (payload: MainToRenderer[C]) => void,
+): () => void {
+  const cleanup = subscribe(channel, callback);
+  ipcRenderer.send(replayChannel);
+  return cleanup;
+}
+
 function send<C extends keyof RendererToMain>(
   channel: C,
   payload: RendererToMain[C],
@@ -26,21 +38,22 @@ function send<C extends keyof RendererToMain>(
 
 // Only the typed BaymaxApi crosses the bridge: no raw IPC, no shell or URL access.
 const api: BaymaxApi = {
-  onHoldState: (callback) => {
-    const cleanup = subscribe(ipcChannels.holdState, callback);
-    // Ask main to replay the current state, in case the key is already held.
-    ipcRenderer.send(ipcChannels.getHoldState);
-    return cleanup;
-  },
+  onHoldState: (callback) =>
+    subscribeWithReplay(
+      ipcChannels.holdState,
+      ipcChannels.getHoldState,
+      callback,
+    ),
   getStartupInfo: () => ipcRenderer.invoke(ipcChannels.getStartupInfo),
   openAccessibilitySettings: () => {
     ipcRenderer.send(ipcChannels.openAccessibilitySettings);
   },
-  onDisplayState: (callback) => {
-    const cleanup = subscribe(ipcChannels.displayState, callback);
-    ipcRenderer.send(ipcChannels.getDisplayState);
-    return cleanup;
-  },
+  onDisplayState: (callback) =>
+    subscribeWithReplay(
+      ipcChannels.displayState,
+      ipcChannels.getDisplayState,
+      callback,
+    ),
   submitQuestion: (payload) => send(ipcChannels.submitQuestion, payload),
   answerQuestion: (payload) => send(ipcChannels.answerQuestion, payload),
   cancelTask: (payload) => send(ipcChannels.cancelTask, payload),

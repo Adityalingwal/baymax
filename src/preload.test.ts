@@ -7,7 +7,7 @@ type Listener = (event: unknown, payload: unknown) => void;
 
 const fake = vi.hoisted(() => {
   const listeners = new Map<string, Set<Listener>>();
-  const exposed: { api: unknown } = { api: null };
+  const exposed: { key: string; api: unknown } = { key: "", api: null };
   const ipcRenderer = {
     on: vi.fn((channel: string, listener: Listener) => {
       const set = listeners.get(channel) ?? new Set<Listener>();
@@ -21,7 +21,8 @@ const fake = vi.hoisted(() => {
     invoke: vi.fn(),
   };
   const contextBridge = {
-    exposeInMainWorld: vi.fn((_key: string, api: unknown) => {
+    exposeInMainWorld: vi.fn((key: string, api: unknown) => {
+      exposed.key = key;
       exposed.api = api;
     }),
   };
@@ -41,8 +42,15 @@ vi.mock("electron", () => ({
 const api = fake.exposed.api as BaymaxApi;
 
 beforeEach(() => {
+  fake.ipcRenderer.on.mockClear();
   fake.ipcRenderer.send.mockClear();
   fake.ipcRenderer.invoke.mockReset();
+});
+
+describe("preload bridge", () => {
+  it("exposes the api as window.baymax", () => {
+    expect(fake.exposed.key).toBe("baymax");
+  });
 });
 
 type ActionRow = {
@@ -193,25 +201,35 @@ const subscriptionRows: SubscriptionRow[] = [
 
 describe("preload subscriptions", () => {
   it.each(subscriptionRows)(
-    "$name passes the payload without the event, and its cleanup stops delivery",
+    "$name passes the payload without the event, and a cleanup stops only its own listener",
     ({ subscribe, channel, payload }) => {
-      const callback = vi.fn();
-      const cleanup = subscribe(callback);
+      const first = vi.fn();
+      const second = vi.fn();
+      const cleanupFirst = subscribe(first);
+      const cleanupSecond = subscribe(second);
 
       fake.emit(channel, payload);
-      expect(callback.mock.calls).toEqual([[payload]]);
+      expect(first.mock.calls).toEqual([[payload]]);
 
-      cleanup();
+      cleanupFirst();
       fake.emit(channel, payload);
-      expect(callback).toHaveBeenCalledTimes(1);
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(second).toHaveBeenCalledTimes(2);
+
+      cleanupSecond();
+      fake.emit(channel, payload);
+      expect(second).toHaveBeenCalledTimes(2);
     },
   );
 
   it.each(subscriptionRows)(
-    "$name asks main for a replay only when the state is current",
+    "$name asks main for a replay only when the state is current, after its listener is attached",
     ({ subscribe, replay }) => {
       const cleanup = subscribe(vi.fn());
       expect(fake.ipcRenderer.send.mock.calls).toEqual(replay);
+      const attached = fake.ipcRenderer.on.mock.invocationCallOrder;
+      const asked = fake.ipcRenderer.send.mock.invocationCallOrder;
+      expect(asked.every((order) => order > attached[0])).toBe(true);
       cleanup();
     },
   );
