@@ -8,7 +8,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 | --- | --- | --- | --- |
 | Main and engine | Electron main process (hold-key, windows, voice providers, speech) and the agent engine, which runs inside main behind a port in V1 | `src/index.ts`, `src/main/`, `src/engine/` (planned) | Aditya |
 | UI | Renderer: window contents, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Somesh, Kashish |
-| Shared contract | Contracts between processes: renderer <-> main (`src/shared/ipc.ts`), main <-> engine (`src/shared/engine.ts`), the types both carry, and provider code shared by main and the engine only | `src/preload.ts`, `src/shared/`, `src/providers/` (planned) | both sides |
+| Shared contract | Contracts between the renderer, main and the engine: renderer <-> main (`src/shared/ipc.ts`), main <-> engine (`src/shared/engine.ts`), the types both carry, and provider code shared by main and the engine only | `src/preload.ts`, `src/shared/`, `src/providers/` (planned) | both sides |
 | Build and config | Tooling and packaging | `package.json`, `forge.config.ts`, `webpack.*.ts`, `tsconfig.json`, `.eslintrc.json` | anyone, in its own small PR |
 
 - Paths move as the code grows; the area is what counts. The current folder map is in `docs/architecture.md`.
