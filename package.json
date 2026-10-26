@@ -35,8 +35,8 @@
     "@tailwindcss/postcss": "^4.1.18",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
+    "@typescript-eslint/eslint-plugin": "^8.72.1",
+    "@typescript-eslint/parser": "^8.72.1",
     "@vercel/webpack-asset-relocator-loader": "^1.7.3",
     "autoprefixer": "^10.4.24",
     "copy-webpack-plugin": "^13.0.1",
@@ -54,7 +54,7 @@
     "style-loader": "^3.3.4",
     "tailwindcss": "^4.1.18",
     "ts-loader": "^9.5.4",
-    "typescript": "~4.5.4",
+    "typescript": "~5.9.3",
     "vitest": "^5.0.5"
   },
   "dependencies": {
