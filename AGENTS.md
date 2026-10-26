@@ -89,4 +89,4 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 Prettier formats the code, the pre-commit hook runs ESLint and Prettier on staged files, and CI runs the checks on every PR.
 
-ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer, main, engine and providers zones and a `*Sync` rule over all of `src/` (dropped for tests and configs). Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
+ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer, main, engine, providers, preload and shared-file zones (the two link files never import each other) and a `*Sync` rule over all of `src/` (dropped for tests and configs). Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
