@@ -76,8 +76,10 @@ describe("intake failures and retry", () => {
       setup(h);
       const command = h.sent.at(-1);
       fail(h);
+      const [published, sent] = counts(h);
       h.state.retryTask("t1");
-      expect(h.sent.at(-1)).toEqual(command);
+      expect(h.sent.slice(sent)).toEqual([command]);
+      expect(h.published.length).toBe(published + 1);
       expect(h.card("t1")).toMatchObject({ line: null, canRetry: false });
       const before = counts(h);
       h.state.retryTask("t1");

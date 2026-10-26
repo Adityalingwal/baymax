@@ -5,11 +5,9 @@ import { shownQuestion } from "./record";
 
 const RECENT_COUNT = 5;
 
+// A deep copy, so a changed snapshot never reaches the model or the source allowlist.
 function copyCard(card: TaskCard): TaskCard {
-  return {
-    ...card,
-    question: card.question === null ? null : { ...card.question },
-  };
+  return structuredClone(card);
 }
 
 export function buildDisplay(model: Model): DisplayState {

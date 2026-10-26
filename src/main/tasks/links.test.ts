@@ -57,6 +57,17 @@ describe("open a source", () => {
     expect(h.logs.length).toBe(logs + 1);
   });
 
+  it("keeps the allowlist when a published card is changed", () => {
+    const h = threeTasks();
+    h.state.displayState().tasks[0].answer?.sources.push({
+      id: "s9",
+      url: "https://unread.example",
+      title: "unread",
+    });
+    h.state.openSource({ taskId: "t1", url: "https://unread.example" });
+    expect(h.opened).toEqual([]);
+  });
+
   it("logs a rejected open", async () => {
     const h = threeTasks();
     h.failOpen("no browser");

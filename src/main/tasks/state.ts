@@ -112,7 +112,7 @@ function createUpdatePath(
 ): (input: Input) => void {
   const inbox: Input[] = [];
   let running = false;
-  // A throwing dep (a closed window or port) must not stop the other outputs or the inbox.
+  // A closed window or a failed line must not stop the other outputs or the inbox.
   const guarded = (what: string, call: () => void): void => {
     try {
       call();
@@ -121,8 +121,9 @@ function createUpdatePath(
     }
   };
   const flush = (output: Output): void => {
+    // A failed send leaves a command the model counts as held, so it surfaces to main's restart path.
     if (output.kind === "send") {
-      guarded("send", () => deps.send(output.command));
+      deps.send(output.command);
     } else if (output.kind === "say") {
       guarded("say", () => deps.say(output.line));
     } else {

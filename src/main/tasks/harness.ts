@@ -61,13 +61,19 @@ export type Harness = {
   lastTaskId: () => TaskId;
   replyWith: (reply: Reply) => void;
   failOpen: (message: string) => void;
+  failPublish: (message: string) => void;
 };
 
 type Seen = Pick<
   Harness,
   "published" | "sent" | "said" | "logs" | "opened" | "timeline"
 >;
-type Controls = { reply: Reply; openFailure: string | null; ids: number };
+type Controls = {
+  reply: Reply;
+  openFailure: string | null;
+  publishFailure: string | null;
+  ids: number;
+};
 
 function fakeDeps(
   seen: Seen,
@@ -83,6 +89,9 @@ function fakeDeps(
       if (event !== null) receive(event);
     },
     publish: (display) => {
+      if (controls.publishFailure !== null) {
+        throw new Error(controls.publishFailure);
+      }
       seen.published.push(display);
       seen.timeline.push("publish");
     },
@@ -116,7 +125,12 @@ export function createHarness(): Harness {
     opened: [],
     timeline: [],
   };
-  const controls: Controls = { reply: () => null, openFailure: null, ids: 0 };
+  const controls: Controls = {
+    reply: () => null,
+    openFailure: null,
+    publishFailure: null,
+    ids: 0,
+  };
   const state: MainState = createMainState(
     fakeDeps(seen, controls, clock.setTimer, (event) => state.receive(event)),
   );
@@ -134,6 +148,9 @@ export function createHarness(): Harness {
     },
     failOpen: (message) => {
       controls.openFailure = message;
+    },
+    failPublish: (message) => {
+      controls.publishFailure = message;
     },
   };
 }

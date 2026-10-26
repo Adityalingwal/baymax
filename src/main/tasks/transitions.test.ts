@@ -74,14 +74,19 @@ describe("card fields on cancel", () => {
 });
 
 describe("a throwing dependency", () => {
-  it("is logged and the outputs after it still run", () => {
+  it("logs a failed publish and still sends", () => {
+    const h = createHarness();
+    h.failPublish("window gone");
+    h.state.ask("hi", null, null);
+    expect(h.logs).toContain("publish failed: Error: window gone");
+    expect(h.sent.map((command) => command.type)).toEqual(["question"]);
+  });
+
+  it("lets a failed send surface to main's restart path", () => {
     const h = createHarness();
     h.replyWith(() => {
       throw new Error("port closed");
     });
-    h.state.ask("hi", null, null);
-    expect(h.logs).toContain("send failed: Error: port closed");
-    h.advance(1500);
-    expect(h.said.at(-1)).toMatchObject({ taskId: "t1", kind: "letMeCheck" });
+    expect(() => h.state.ask("hi", null, null)).toThrow("port closed");
   });
 });
