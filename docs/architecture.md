@@ -261,20 +261,21 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 
 | Path | Responsibility |
 | --- | --- |
-| `src/index.ts` | Main process entry: window, hotkey wiring, IPC |
+| `src/index.ts` | Main process entry: hotkey wiring, IPC |
 | `src/preload.ts` | Bridge between main and renderer (`window.baymax`) |
 | `src/renderer.ts`, `src/renderer/` | The screen (React): text box, cards, mic recording, playback |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
 | `src/main/hold.ts` | Hold state from key events; pure |
 | `src/main/platform.ts` | Platform flags and labels |
+| `src/main/window.ts` | The Baymax window: creation, navigation and pop-ups blocked |
 | `src/engine/index.ts` (planned) | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` (planned) | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |
 | `src/engine/plugs/research/` (planned) | The research plug: the web tool, its prompts and its done condition |
 | `src/engine/plugs/index.ts` (planned) | The one list of plugs, as explicit re-exports |
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
-| `src/shared/engine.ts` (planned) | Main <-> engine port message types |
-| `src/shared/` third file (planned, named by what it holds, for example `cards.ts`) | Types both links carry: a card, a task state |
+| `src/shared/engine.ts` | Main <-> engine port message types |
+| `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
 | `src/providers/` (planned) | Process-neutral provider code: the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.
