@@ -271,12 +271,12 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/window.ts` | The Baymax window: creation, navigation and pop-ups blocked |
 | `src/engine/index.ts` (planned) | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` (planned) | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |
-| `src/engine/plugs/research/` (planned) | The research plug: the web tool, its prompts and its done condition |
+| `src/engine/plugs/research/` | The research plug: the web tool (safe page reads, pages kept by source id), its prompts and its done condition |
 | `src/engine/plugs/index.ts` (planned) | The one list of plugs, as explicit re-exports |
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
-| `src/providers/` (planned) | Process-neutral provider code: the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/` | Process-neutral provider code: the search call and its outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.
 - `src/engine/` imports nothing from `src/main/`, `src/renderer/` or `electron`. `src/main/` imports the engine only through `src/engine/index.ts`. The renderer never imports `src/shared/engine.ts` or the engine.
