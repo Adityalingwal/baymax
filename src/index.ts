@@ -1,17 +1,10 @@
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  shell,
-  systemPreferences,
-} from "electron";
+import { app, ipcMain, shell, systemPreferences } from "electron";
+import type { BrowserWindow } from "electron";
 import { startHoldKey, stopHoldKey } from "./main/hotkey";
 import { holdKeyLabel, isMac } from "./main/platform";
+import { createMainWindow } from "./main/window";
 import { ipcChannels } from "./shared/ipc";
 import type { HoldState, StartupInfo } from "./shared/ipc";
-
-declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
-declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- the package ships no type declarations, so it is loaded untyped.
@@ -36,26 +29,6 @@ let holdState: HoldState = "idle";
 function getAccessibilityStatus(): boolean | null {
   if (!isMac) return null;
   return systemPreferences.isTrustedAccessibilityClient(false);
-}
-
-function createWindow(): void {
-  const browserWindow = new BrowserWindow({
-    width: 360,
-    height: 200,
-    title: "Baymax",
-    webPreferences: {
-      preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-  mainWindow = browserWindow;
-  browserWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY).catch((error: unknown) => {
-    console.error("[Window] Failed to load the page:", error);
-  });
-  browserWindow.on("closed", () => {
-    mainWindow = null;
-  });
 }
 
 function sendHoldState(state: HoldState): void {
@@ -101,7 +74,10 @@ if (gotSingleInstanceLock) {
           });
       });
 
-      createWindow();
+      mainWindow = createMainWindow();
+      mainWindow.on("closed", () => {
+        mainWindow = null;
+      });
 
       if (!isMac || accessibilityAtStartup) {
         startHoldKey((state) => sendHoldState(state));
