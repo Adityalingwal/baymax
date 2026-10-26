@@ -1,0 +1,256 @@
+import type { DisplayState, TaskId, UtteranceId } from "../../shared/cards";
+import type {
+  EngineCommand,
+  EngineEvent,
+  IntakeOutcome,
+  WaitingQuestion,
+} from "../../shared/engine";
+import type {
+  AnswerQuestion,
+  OpenSource,
+  SetCardFolded,
+} from "../../shared/ipc";
+import { buildDisplay, waitingQuestion } from "./display";
+import { applyIntakeOutcome, ask, failIntake } from "./intake";
+import { fixedLines } from "./lines";
+import type {
+  Change,
+  Input,
+  Model,
+  Output,
+  SaidKind as RecordSaidKind,
+  SaidLine as RecordSaidLine,
+  TaskRecord,
+} from "./record";
+import {
+  closeIntakeStep,
+  createModel,
+  dropped,
+  holdsIntake,
+  say,
+  showNextQuestion,
+} from "./record";
+import {
+  admit,
+  cancelTask,
+  receiveRunEvent,
+  receiveUnaskedCancel,
+  receiveWhileCancelling,
+  startNext,
+} from "./run";
+
+// Defined beside the model, which records the lines; named here as part of the public interface.
+export type SaidKind = RecordSaidKind;
+export type SaidLine = RecordSaidLine;
+
+// Injected so the state runs and is tested without Electron, real timers or random ids.
+export type Timers = { setTimer: (ms: number, fire: () => void) => () => void };
+
+export type MainStateDeps = {
+  send: (command: EngineCommand) => void;
+  publish: (state: DisplayState) => void;
+  say: (line: SaidLine) => void;
+  openUrl: (url: string) => Promise<void>;
+  log: (message: string) => void;
+  timers: Timers;
+  newTaskId: () => TaskId;
+};
+
+export type MainState = {
+  ask: (
+    words: string,
+    utteranceId: UtteranceId | null,
+    waiting: WaitingQuestion | null,
+  ) => void;
+  waitingQuestion: () => WaitingQuestion | null;
+  answerQuestion: (payload: AnswerQuestion) => void;
+  cancelTask: (taskId: TaskId) => void;
+  retryTask: (taskId: TaskId) => void;
+  closeCard: (taskId: TaskId) => void;
+  setCardFolded: (payload: SetCardFolded) => void;
+  openSource: (payload: OpenSource) => void;
+  setMuted: (muted: boolean) => void;
+  setVoiceAvailable: (available: boolean) => void;
+  showNotice: (notice: "wordsNotCaught" | "restarting") => void;
+  receive: (event: EngineEvent) => void;
+  displayState: () => DisplayState;
+};
+
+export function createMainState(deps: MainStateDeps): MainState {
+  const model = createModel();
+  const update = createUpdatePath(model, deps);
+  return {
+    ask: (words, utteranceId, waiting) =>
+      update((c) => ask(c, deps.newTaskId, { words, utteranceId, waiting })),
+    waitingQuestion: () => waitingQuestion(model),
+    answerQuestion: (payload) =>
+      update((c) => dropped(c, `answer for ${payload.taskId}`)),
+    cancelTask: (taskId) => update((c) => cancelTask(c, taskId)),
+    retryTask: (taskId) => update((c) => dropped(c, `retry ${taskId}`)),
+    closeCard: (taskId) => update((c) => closeCard(c, taskId)),
+    setCardFolded: (payload) => update((c) => setCardFolded(c, payload)),
+    openSource: (payload) => update((c) => openSource(c, deps, payload)),
+    setMuted: (muted) => update((c) => setMuted(c, muted)),
+    setVoiceAvailable: (available) =>
+      update((c) => setVoiceAvailable(c, available)),
+    showNotice: (notice) => update((c) => showNotice(c, notice)),
+    receive: (event) => update((c) => receiveEvent(c, event)),
+    displayState: () => buildDisplay(model),
+  };
+}
+
+// One path for every change; an input that arrives while it runs (the engine may reply inside send) waits its turn.
+function createUpdatePath(
+  model: Model,
+  deps: MainStateDeps,
+): (input: Input) => void {
+  const inbox: Input[] = [];
+  let running = false;
+  const flush = (output: Output): void => {
+    if (output.kind === "send") deps.send(output.command);
+    else if (output.kind === "say") deps.say(output.line);
+    else deps.timers.setTimer(output.ms, () => update(output.fire));
+  };
+  const apply = (input: Input): void => {
+    const change: Change = { model, outputs: [], log: deps.log };
+    if (!input(change)) return;
+    startNext(change);
+    showNextQuestion(change);
+    deps.publish(buildDisplay(model));
+    change.outputs.forEach(flush);
+  };
+  const update = (input: Input): void => {
+    inbox.push(input);
+    if (running) return;
+    running = true;
+    try {
+      for (let next = inbox.shift(); next; next = inbox.shift()) apply(next);
+    } finally {
+      running = false;
+    }
+  };
+  return update;
+}
+
+function receiveEvent(change: Change, event: EngineEvent): boolean {
+  const record = change.model.records.get(event.taskId);
+  if (record === undefined) {
+    return dropped(change, `${event.type} for unknown ${event.taskId}`);
+  }
+  if (record.card.state === "cancelling") {
+    return receiveWhileCancelling(change, record, event);
+  }
+  switch (event.type) {
+    case "cancelled":
+      return receiveUnaskedCancel(change, record, event.findings);
+    case "intake":
+      return receiveIntake(change, record, event.outcome);
+    case "failure":
+      return failIntake(change, record, event.kind);
+    default:
+      return receiveRunEvent(change, record, event);
+  }
+}
+
+function receiveIntake(
+  change: Change,
+  record: TaskRecord,
+  outcome: IntakeOutcome,
+): boolean {
+  if (!holdsIntake(record)) {
+    return dropped(change, `intake for ${record.card.taskId}`);
+  }
+  if (outcome.route !== "newTask" && outcome.route !== "outsideResearch") {
+    return dropped(change, `intake route ${outcome.route}`);
+  }
+  closeIntakeStep(record);
+  if (outcome.route === "newTask") return admit(change, record, outcome);
+  return applyIntakeOutcome(change, record, outcome);
+}
+
+function closeCard(change: Change, taskId: TaskId): boolean {
+  const record = change.model.records.get(taskId);
+  const state = record?.card.state;
+  const ended =
+    state === "done" || state === "incomplete" || state === "cancelled";
+  if (record === undefined || !record.shown || !ended) {
+    return dropped(change, `close ${taskId}`);
+  }
+  record.shown = false;
+  return true;
+}
+
+function setCardFolded(change: Change, payload: SetCardFolded): boolean {
+  const record = change.model.records.get(payload.taskId);
+  const state = record?.card.state;
+  if (
+    record === undefined ||
+    !record.shown ||
+    (state !== "done" && state !== "incomplete") ||
+    record.card.folded === payload.folded
+  ) {
+    return dropped(change, `fold ${payload.taskId}`);
+  }
+  record.card.folded = payload.folded;
+  return true;
+}
+
+// Opening changes no state, so it always returns false and publishes nothing.
+function openSource(
+  change: Change,
+  deps: MainStateDeps,
+  { taskId, url }: OpenSource,
+): false {
+  const answer = change.model.records.get(taskId)?.card.answer ?? null;
+  const listed = answer?.sources.some((source) => source.url === url) ?? false;
+  if (!listed || !isWebUrl(url)) {
+    return dropped(change, `open ${url} for ${taskId}`);
+  }
+  deps.openUrl(url).catch((error: unknown) => {
+    deps.log(`opening ${url} failed: ${String(error)}`);
+  });
+  return false;
+}
+
+function isWebUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function setMuted(change: Change, muted: boolean): boolean {
+  if (change.model.muted === muted) return dropped(change, "same muted");
+  change.model.muted = muted;
+  return true;
+}
+
+function setVoiceAvailable(change: Change, available: boolean): boolean {
+  const { model } = change;
+  if (model.voiceAvailable === available) {
+    return dropped(change, "same voice availability");
+  }
+  model.voiceAvailable = available;
+  if (!available && model.notice === null) {
+    model.notice = fixedLines.voiceUnavailable;
+  }
+  if (available && model.notice === fixedLines.voiceUnavailable) {
+    model.notice = null;
+  }
+  return true;
+}
+
+function showNotice(
+  change: Change,
+  notice: "wordsNotCaught" | "restarting",
+): boolean {
+  const { model } = change;
+  if (model.notice === fixedLines.restarting) {
+    return dropped(change, `notice ${notice} after restarting`);
+  }
+  model.notice = fixedLines[notice];
+  say(change, null, model.notice, "notice");
+  return true;
+}
