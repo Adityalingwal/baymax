@@ -269,6 +269,8 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/hold.ts` | Hold state from key events; pure |
 | `src/main/platform.ts` | Platform flags and labels |
 | `src/main/window.ts` | The Baymax window: creation, navigation and pop-ups blocked |
+| `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
+| `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime and the fixed lines, through one update path |
 | `src/engine/index.ts` (planned) | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` (planned) | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |
 | `src/engine/plugs/research/` (planned) | The research plug: the web tool, its prompts and its done condition |
