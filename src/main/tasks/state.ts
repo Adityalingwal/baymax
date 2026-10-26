@@ -33,6 +33,7 @@ import {
   createModel,
   dropped,
   holdsIntake,
+  isEnded,
   say,
   showNextQuestion,
 } from "./record";
@@ -111,17 +112,31 @@ function createUpdatePath(
 ): (input: Input) => void {
   const inbox: Input[] = [];
   let running = false;
+  // A throwing dep (a closed window or port) must not stop the other outputs or the inbox.
+  const guarded = (what: string, call: () => void): void => {
+    try {
+      call();
+    } catch (error: unknown) {
+      deps.log(`${what} failed: ${String(error)}`);
+    }
+  };
   const flush = (output: Output): void => {
-    if (output.kind === "send") deps.send(output.command);
-    else if (output.kind === "say") deps.say(output.line);
-    else deps.timers.setTimer(output.ms, () => update(output.fire));
+    if (output.kind === "send") {
+      guarded("send", () => deps.send(output.command));
+    } else if (output.kind === "say") {
+      guarded("say", () => deps.say(output.line));
+    } else {
+      guarded("timer", () =>
+        deps.timers.setTimer(output.ms, () => update(output.fire)),
+      );
+    }
   };
   const apply = (input: Input): void => {
     const change: Change = { model, outputs: [], log: deps.log };
     if (!input(change)) return;
     startNext(change);
     showNextQuestion(change);
-    deps.publish(buildDisplay(model));
+    guarded("publish", () => deps.publish(buildDisplay(model)));
     change.outputs.forEach(flush);
   };
   const update = (input: Input): void => {
@@ -180,10 +195,7 @@ function receiveIntake(
 
 function closeCard(change: Change, taskId: TaskId): boolean {
   const record = change.model.records.get(taskId);
-  const state = record?.card.state;
-  const ended =
-    state === "done" || state === "incomplete" || state === "cancelled";
-  if (record === undefined || !record.shown || !ended) {
+  if (record === undefined || !record.shown || !isEnded(record.card.state)) {
     return dropped(change, `close ${taskId}`);
   }
   record.shown = false;
@@ -196,7 +208,9 @@ function setCardFolded(change: Change, payload: SetCardFolded): boolean {
   if (
     record === undefined ||
     !record.shown ||
-    (state !== "done" && state !== "incomplete") ||
+    state === undefined ||
+    !isEnded(state) ||
+    state === "cancelled" ||
     record.card.folded === payload.folded
   ) {
     return dropped(change, `fold ${payload.taskId}`);

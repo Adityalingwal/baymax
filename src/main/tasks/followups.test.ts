@@ -233,6 +233,7 @@ describe("recent exchanges", () => {
     h.state.ask("f", null, null);
     h.state.ask("g", null, null);
     const command = h.sent.at(-1);
+    expect(command).toMatchObject({ type: "question", taskId: "t7" });
     expect(command?.type === "question" ? command.recent : null).toEqual([
       {
         taskId: "t2",

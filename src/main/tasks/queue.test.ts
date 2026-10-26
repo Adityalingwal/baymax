@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Harness } from "./harness";
-import { askNew, brief, createHarness, finish } from "./harness";
+import { askNew, brief, counts, createHarness, finish } from "./harness";
 
 const queuedLine = "Okay, I'll look at that after the current one.";
 const queueFullLine =
@@ -96,9 +96,10 @@ describe("leaving the queue", () => {
 
   it("cancels a queued task without a message and keeps the others' order", () => {
     const h = fourTasks();
-    const sentBefore = h.sent.length;
+    const [, sentBefore, saidBefore] = counts(h);
     h.state.cancelTask("t2");
     expect(h.sent.length).toBe(sentBefore);
+    expect(h.said.length).toBe(saidBefore);
     expect(h.card("t2")?.state).toBe("cancelled");
     finish(h, "t1");
     finish(h, "t3");

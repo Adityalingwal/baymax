@@ -26,7 +26,7 @@ import {
 
 const LET_ME_CHECK_MS = 1500;
 
-export type AskWords = {
+type AskWords = {
   words: string;
   utteranceId: UtteranceId | null;
   waiting: WaitingQuestion | null;
@@ -118,12 +118,7 @@ function clarify(
 
 // Words that answer the waiting question are not a task, so their card goes at once.
 function removeThinkingCard(change: Change, record: TaskRecord): void {
-  const { model } = change;
-  const { taskId } = record.card;
-  model.records.delete(taskId);
-  model.answers.delete(taskId);
-  model.queue = model.queue.filter((id) => id !== taskId);
-  model.questions = model.questions.filter((id) => id !== taskId);
+  change.model.records.delete(record.card.taskId);
 }
 
 function validReply(
@@ -146,7 +141,6 @@ export function bindAnswer(
   const question = record?.card.question ?? null;
   if (
     record?.card.state !== "clarifying" ||
-    record.sent !== null ||
     question === null ||
     question.answered ||
     question.questionId !== questionId ||

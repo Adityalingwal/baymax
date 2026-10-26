@@ -173,7 +173,6 @@ export function intake(taskId: TaskId, outcome: IntakeOutcome): EngineEvent {
   return { type: "intake", taskId, outcome };
 }
 
-// Asks and admits a new task; returns its id.
 export function askNew(h: Harness, sayBack: string): TaskId {
   h.state.ask(`tell me ${sayBack}`, null, null);
   const taskId = h.lastTaskId();
@@ -191,7 +190,6 @@ export function followUp(parentTaskId: TaskId, sayBack: string): IntakeOutcome {
   };
 }
 
-// Asks and admits a follow-up of parentTaskId; returns its id.
 export function askFollowUp(
   h: Harness,
   parentTaskId: TaskId,
@@ -211,7 +209,6 @@ export function question(questionId: string): ClarifyingQuestion {
   };
 }
 
-// Asks words the intake answers with a clarifying question; returns the task id.
 export function askClarify(h: Harness, questionId: string): TaskId {
   h.state.ask(`about ${questionId}`, null, null);
   const taskId = h.lastTaskId();
@@ -234,7 +231,6 @@ export function finish(h: Harness, taskId: TaskId, text = "Done."): void {
   });
 }
 
-// What the fakes saw so far, to show that a dropped input changed nothing.
 export function counts(h: Harness): [number, number, number] {
   return [h.published.length, h.sent.length, h.said.length];
 }

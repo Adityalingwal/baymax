@@ -27,7 +27,7 @@ describe("notices", () => {
     h.state.showNotice("restarting");
     h.state.setVoiceAvailable(false);
     expect(h.last().notice).toBe(restarting);
-    expect(counts(h).slice(1)).toEqual(before.slice(1));
+    expect(counts(h)).toEqual([before[0] + 1, before[1], before[2]]);
   });
 
   it("shows the voice line unsaid while voice is unavailable", () => {

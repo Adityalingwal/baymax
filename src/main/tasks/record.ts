@@ -3,6 +3,7 @@ import type {
   Findings,
   TaskCard,
   TaskId,
+  TaskState,
 } from "../../shared/cards";
 import type {
   EngineCommand,
@@ -26,16 +27,16 @@ export type TaskRecord = {
   spokenLine: string | null;
   hiddenQuestion: ClarifyingQuestion | null;
   letMeCheckDue: boolean;
-  sent: EngineCommand | null; // the command the engine holds right now
-  failed: EngineCommand | null; // the command a retry re-sends
+  sent: EngineCommand | null;
+  failed: EngineCommand | null;
 };
 
 export type Model = {
-  records: Map<TaskId, TaskRecord>; // in created order
+  records: Map<TaskId, TaskRecord>;
   created: number;
   answers: Map<TaskId, ParentResult>;
   queue: TaskId[];
-  questions: TaskId[]; // tasks with a hidden question, in arrival order
+  questions: TaskId[];
   notice: string | null;
   muted: boolean;
   voiceAvailable: boolean;
@@ -53,7 +54,6 @@ export type Change = {
   log: (message: string) => void;
 };
 
-// Returns false when the input is dropped: nothing changed and nothing was recorded.
 export type Input = (change: Change) => boolean;
 
 const LEAVE_MS = 3000;
@@ -138,6 +138,10 @@ export function setTimer(change: Change, ms: number, fire: Input): void {
 export function dropped(change: Change, reason: string): false {
   change.log(`dropped: ${reason}`);
   return false;
+}
+
+export function isEnded(state: TaskState): boolean {
+  return state === "done" || state === "incomplete" || state === "cancelled";
 }
 
 export function holdsIntake(record: TaskRecord): boolean {

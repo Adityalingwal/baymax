@@ -51,7 +51,7 @@ function partialLine(
   return `${task} ${partialEndings[ending]}${tail}`;
 }
 
-export type IncompleteLines = {
+type IncompleteLines = {
   line: string | null;
   missing: string | null;
   spoken: string;
