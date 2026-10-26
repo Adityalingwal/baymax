@@ -106,7 +106,7 @@ cards      <--IPC--  whole display state                       <--- task events
 | Intake check | Claude Sonnet 5.5 (Haiku 5.5 if the first spoken line is too slow) |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
-| Web | One `web` tool owned by Baymax: a search provider (Exa or Tavily) and plain page reads |
+| Web | One `web` tool owned by Baymax: a search provider (Exa or Tavily, called with plain `fetch`) and plain page reads |
 | Agent runtime | Our own loop on the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), in the engine |
 | Storage | Memory only |
 | Keys | Our own keys from `.env` ([Processes and the port](#processes-and-the-port)) |
@@ -124,6 +124,7 @@ cards      <--IPC--  whole display state                       <--- task events
 
 - **The port.** The engine code lives in `src/engine/` and imports nothing from `src/main/`, the renderer or `electron`. It builds its own providers from `src/providers/`; its start takes only serializable values (keys, paths, settings), and test fakes enter through a separate optional parameter. Main and the engine talk only through one port object (`send`, `onMessage`, `close`) carrying plain JSON messages with ids, typed in `src/shared/engine.ts`. Cancel is a port message (`{ type: "cancel", taskId }`) that the engine maps to its own `AbortController`. V1 implements the port in-process; V2 swaps in a `utilityProcess` behind the same port.
 - **Who runs what.** The engine runs the intake check at once for every question, typed or spoken, even while a task runs, and tells main through the port what the words are (a new task, a follow-up, the answer to the waiting question, or outside research), with the start line and the brief. Main owns the queue: it queues the task or sends the engine a run message when none runs. Only then does the engine's runner run the worker and the done check, attaching a queued follow-up's parent result at that moment, and report back through the port. Answers kept for follow-ups stay apart from the running task's state, so a database can later be added beside them.
+- **The engine keeps nothing across tasks.** Main sends what each step needs: a question carries the user's exact words, main's short record of recent questions and answers, and the clarifying question shown at key-down if any; a run message carries the task id, goal version, depth and brief, and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines and the "Let me check." timer.
 - **Why in main.** The reasons for a separate process (synchronous SQLite, crash resume, restart) are V2, the agent loop mostly waits on the network, the spike ran the loop inside main, and a separate process was never tested on this repo's Electron 40.
 - **The risk and its limits.** Engine code that blocks would also freeze voice and cancel. V1 lowers this without guaranteeing against it: no `*Sync` calls anywhere in `src/`; every model and web call has an `AbortSignal` and a deadline; downloads are capped before parsing ([Web tool](#web-tool)); history and kept page text are bounded. Expected network, model and parsing failures are caught at their awaited task boundaries and end the task with a [failure line](#failures-the-user-hears). A truly uncaught exception or unhandled rejection is not attributed to a task and normal work is not resumed, because Node's state may be undefined: main logs it, shows "Baymax hit a problem and is restarting." and relaunches the app (`app.relaunch()`, then exit). Only a separate process (V2) can stop a truly stuck engine.
 - **Keys.** Main reads `.env` once at start, keeps the Deepgram, Anthropic and search keys, and deletes them from `process.env` before any window opens. The renderer gets no key and makes no network calls; the display state carries display fields only.
@@ -131,7 +132,8 @@ cards      <--IPC--  whole display state                       <--- task events
 
 ### Voice
 
-- **Listening.** The renderer records the microphone (`getUserMedia`) while Option is held and hands the clip to main over typed IPC at key release; it also plays speech (Web Audio), because Chrome's echo canceller only removes audio Chrome itself plays (Electron issue #47043). Main sends the clip once to Deepgram's pre-recorded transcription. A hold longer than the cap is ended by code as a key-up. If the transcript fails or comes back empty, Baymax says "I didn't catch that, say it again."; a late transcript for an old utterance is dropped. If the renderer dies or reloads while recording or playing, main drops that clip and the playing line and clears the hold state. A voice failure never stops research that is running.
+- **Listening.** The renderer records the microphone (`getUserMedia`) while Option is held and hands the clip to main over typed IPC at key release; it also plays speech (Web Audio), because Chrome's echo canceller only removes audio Chrome itself plays (Electron issue #47043). Main sends the clip once to Deepgram's pre-recorded transcription. A hold longer than the cap is ended by code as a key-up, and counts as a question.
+- **Hold filter.** Recording is requested at key-down so the first word is not lost; because IPC, the mic permission and the recorder start are asynchronous, that is a measured target, not a guarantee. At release the hold tracker accepts or discards the hold: a hold under about 0.3 s, or one during which any other key was pressed (Option + arrow jumps a word in a terminal), is discarded silently, with no card and no transcription call. Main passes the time with each key event, so the tracker stays pure; any key-down still silences speech at once. The renderer always hands over the clip; main drops a discarded one. If the transcript fails or comes back empty, Baymax says "I didn't catch that, say it again."; a late transcript for an old utterance is dropped. If the renderer dies or reloads while recording or playing, main drops that clip and the playing line and clears the hold state. A voice failure never stops research that is running.
 - **Why single calls.** V1 reads nothing before key release and does not continue a cut line, so a live stream (reconnects, end-of-turn signals, keep-alive) adds about a day for little gain. The cost is about one second more before the transcript and no live words on screen while speaking.
 - **Speaking.** Baymax speaks in four places only, and everything spoken is also on the screen: the clarifying question, the start line ("Okay, looking at how Hermes works."), a one- or two-line answer with the rest on the card, and a failure line. A queued task folds into the start line ("Okay, I'll look at that after the current one.").
 - **One playback owner.** All speech goes through one `speak(line, kind)` function in main. Each line carries its task id; one line plays at a time and a new line waits for it; the fixed "Let me check." is dropped if the start line is ready first; a line for a cancelled or replaced task is dropped. A key press, mute or cancel clears the pending lines as well as the one playing. Nothing is spoken while the key is held, and pressing the key while Baymax speaks silences it at once.
@@ -143,7 +145,7 @@ cards      <--IPC--  whole display state                       <--- task events
 - **The intake check** is one structured Sonnet 5.5 call, its say-back line first in the output. It gets the user's exact words, a short code-kept record of the recent questions and answers, and the waiting clarifying question if any. It decides whether the words are a new question, the answer to the waiting question or a follow-up; whether a clarifying question is needed (only when missing intent, constraints or the thing referred to would change the work); the start line; and the worker brief. If the start line is not ready about 1.5 seconds after the final transcript, code speaks a fixed "Let me check."
 - **Outside research.** A request for anything but research gets the fixed [line](#failures-the-user-hears), and no task starts.
 - **The say-back** names what Baymax understood ("how Hermes works inside, from its docs and code"). It is feedback, not a gate: the work starts at once, and a wrong say-back is fixed by cancelling the card and asking again.
-- **Tasks and the queue.** Main keeps one list of tasks, each with an id and a state: thinking, clarifying, queued, running, done, incomplete or cancelled. A "thinking" card appears at key release (or on submit) before the intake returns, and its id becomes the task's id. Each task carries a goal version (always 1 in V1) and a depth value (always "normal" in V1).
+- **Tasks and the queue.** Main keeps one list of tasks, each with an id and a state: thinking, clarifying, queued, running, done, incomplete or cancelled. At most three tasks wait while one runs. The intake still runs for every question, because the words may answer the waiting question; main refuses only a new task or follow-up when three already wait, with "I already have three waiting. Cancel one or ask again later.", and that card leaves like a cancelled one. A "thinking" card appears at key release (or on submit) before the intake returns, and its id becomes the task's id. Each task carries a goal version (always 1 in V1) and a depth value (always "normal" in V1).
 - **Clarifying questions.** At most one waits at a time. It has two to four choices, the first marked recommended, plus "something else", and is answered by voice, typing or click, bound to the question's id. One answer per id; a second click or a late answer is ignored; a spoken answer binds to the question shown when the key went down. The answer goes back to the intake in a second call that carries the task and question ids, never creates another task, and on failure shows a retryable failure on that card. While a question waits, words that clearly do not answer it go through the intake as a new question and are queued; the question stays pending.
 - **Follow-ups.** Each answer is stored under its task id. A follow-up gets a `parentTaskId`, and its brief carries the parent's answer, its source references and its open points; an unrelated question starts without a parent. A follow-up queued before its parent finishes keeps the parent reference and gets the parent's final result when it starts; if the parent ended incomplete or cancelled, the start line says so and the follow-up uses what the parent found, labelled partial, or asks one question when nothing usable exists. It never runs as if a finished parent answer existed.
 - **No steering.** Anything said while a task runs goes through the intake and is queued as a follow-up or a new question.
@@ -152,7 +154,7 @@ cards      <--IPC--  whole display state                       <--- task events
 
 - **The brief.** The intake writes it in four parts (the goal, the result shape, the tools or sources, the limits) plus the user's exact words, because a restated goal can lose a nuance ("an office laptop, not gaming"). The worker gets only the web tool and never the whole conversation. Text in a page is never an instruction to it.
 - **One profile.** The worker decides while it works how much to search: a simple question ("today's weather in Delhi") stops after one or two searches, a bigger one ("how does Hermes work inside") reads six to eight pages, within one set of [limits](#limits-and-cost). This is checked on the first integrated path with a simple current fact and a moderately detailed product question (time to a useful answer, needless searches, source support, the incomplete outcome at a limit); if the worker over-searches or is too slow, the intake's quick or normal choice comes back through the depth value.
-- **The answer.** The worker writes the answer itself and maps each important claim to the source ids that support it; there is no separate writer. A near match is never called a full match: with no exact match it names the closest alternatives and the unmet constraints. An ambiguity that needs the user ends the task incomplete with one focused next question on the card.
+- **The answer.** The worker writes the answer itself and maps each important claim to the source ids that support it; there is no separate writer. One output holds both parts: a one- or two-line spoken summary and the full card text in Markdown (headings, points, source links). There is no separate model call for the spoken line. A near match is never called a full match: with no exact match it names the closest alternatives and the unmet constraints. An ambiguity that needs the user ends the task incomplete with one focused next question on the card.
 - **Prompt cache.** The prompt start (instructions and tool list) stays fixed during a run.
 - **Context.** If the prompt fills up despite the capped page text, the task ends incomplete, limit hit, and shows what it found.
 - **Incomplete.** Baymax never calls a short result done. The card shows what was found and one line on what is missing, with one of three kinds: limit hit, sources thin, or a tool or provider error. A cancel by the user is "cancelled", not incomplete.
@@ -163,7 +165,8 @@ It checks support and completion, not truth.
 
 - The web tool keeps every page it read in code: source id, URL and capped text. The worker's answer cites those ids.
 - **Code check first:** an answer exists, it cites sources, and every cited id is a page that was really read; an id from a search snippet only cannot pass.
-- **Then the judge** gets the intake's goal, constraints and expected result, the answer and the code-kept excerpts. It checks that the answer meets the goal and that the important claims are backed by a page; a well-supported answer to the wrong question fails. The judge fetches nothing itself.
+- **Then the judge** gets the intake's goal, constraints and expected result, the answer and the code-kept excerpts. It checks that the answer meets the goal and that the important claims are backed by a page; a well-supported answer to the wrong question fails. It also checks that the spoken line is backed by the card text; a spoken line that is not counts as a failed check. The judge fetches nothing itself.
+- Only a done result shows and speaks the pair. An incomplete result shows its findings, labelled, with its failure line, and its spoken summary is not played.
 - If the check fails, the worker gets one more round. If it still fails, or the judge itself fails, the task ends incomplete with the unchecked part named, never done.
 - Baymax closes a task itself once the check passes and the result is shown.
 
@@ -186,7 +189,9 @@ It checks support and completion, not truth.
 
 - Main sends the screen its whole display state each time something changes, never keys, clients, prompts or raw provider objects. A window that subscribes or reloads gets the current state at once.
 - All changes go through one state-update path in main, which drops a late callback from a cancelled or finished step before it can publish.
-- **Cards:** the task card (with its state), the clarifying question card and the result card (the answer and its sources). Answers render as plain text or sanitized Markdown without remote embeds; a source link opens through one typed main action. How the cards look and where they sit is the UI team's call.
+- **Cards:** the task card (with its state), the clarifying question card and the result card (the answer and its sources). Answers render as Markdown with `react-markdown`: raw HTML skipped, no raw-HTML plugin, no images. A source link opens through one typed main action, which opens a URL only if it is one of the task's read sources; renderer navigation and pop-ups are blocked. The look and fonts are set on the design canvas.
+- **The window** unfolds from the MacBook notch at the top centre, with the cards and the text box (HeyClicky as the pattern reference, our own look); a screen without a notch gets the same shape as a top-centre pill. Electron documents that a macOS window cannot go above the menu bar height, so a time-boxed spike on the demo Mac decides the route before the window is built: Electron window settings first, then a small native addon that places the window, and only by an explicit decision another toolkit; a shape flush under the menu bar is the last-resort look.
+- **Card lifetime.** A done or incomplete answer never closes by itself: it stays open until the user closes it or folds it into the notch, where a small dot reopens it. A cancelled card shows "cancelled" and leaves after about 3 s.
 - **Progress** is minimal: the task card shows the latest step as a line built by code from the tool's own arguments ("searching: how Hermes works", "reading github.com"), never from page text, plus a small count such as sources read. The engine emits these as small structured progress events.
 
 ### Limits and cost
@@ -232,6 +237,9 @@ It checks support and completion, not truth.
 | Model calls per task | about 15 |
 | Dollars per task | about 15 cents |
 | Done check retry rounds | 1 |
+| Shortest hold that counts as a question | about 0.3 s |
+| Tasks waiting while one runs | 3 |
+| Cancelled card stays | about 3 s |
 | Output-token ceilings | intake 1,024, worker 2,048 per step, judge 1,024 |
 
 ### Checks
@@ -240,10 +248,14 @@ Run before the code that depends on them:
 
 1. The Anthropic SDK's retry and timeout defaults and its error causes for a dropped connection.
 2. What Electron 40's main process does on an uncaught exception and an unhandled rejection.
-3. Which Deepgram models the team key reaches for pre-recorded transcription and REST speech.
-4. The search provider (Exa or Tavily) on the demo question, in the web tool's first PR.
+3. The search provider (Exa or Tavily) on the demo pair and one current-fact question, in the web tool's first PR.
+4. The notch window spike on the demo Mac, before the window is built.
 
-In build week: the time to the first spoken line; mic timing and the held-clip transcript; the one-profile measurement above.
+Which Deepgram models the key reaches is not a separate check: the first voice PR's first real call shows it.
+
+**The demo pair.** The demo asks "how does Hermes agent work inside?" from Claude Code, then the follow-up "how is it different from Claude Code?". The search provider check and the tuning of the worker and the done check use this pair plus the current-fact question of the one-profile measurement. A working demo pair is not by itself V1 validation: limits, cancel and provider failures are proven by offline tests.
+
+In build week: the time to the first spoken line; mic timing (first word, cold and warm) and the held-clip transcript; the one-profile measurement above.
 
 ### Folder map
 
@@ -272,8 +284,9 @@ In build week: the time to the first spoken line; mic timing and the held-clip t
 Config changes in the first build PR (asked first):
 
 - `tsconfig.json` `target` to `ES2022` and TypeScript to 5.x, because TypeScript 4.5.5 with `target: ES6` cannot compile the `for await` loop the SDK's streaming responses need; checked against the SDK's minimum TypeScript, `@typescript-eslint` and `fork-ts-checker`.
-- `.eslintrc.json`: extend the `import/no-restricted-paths` zones (the engine never imports main, the renderer or `electron`; main imports the engine only through its entry; the renderer never imports `src/shared/engine.ts`; `src/providers/` imports no process folder); keep the `*Sync` rule over all of `src/`; add `src/engine/index.ts` to `ignoreExports`; give `src/engine/**` an override with `env.browser: false`; show each changed rule failing on a bad example.
-- Dependencies: `@anthropic-ai/sdk`, the Deepgram client (or plain `fetch`), the search provider client; `.env.example` gains their key names.
+- `.eslintrc.json`: extend the `import/no-restricted-paths` zones (the engine never imports main, the renderer or `electron`; main imports the engine only through its entry; the renderer never imports `src/shared/engine.ts`; `src/providers/` imports no process folder); keep the `*Sync` rule over all of `src/`; add `src/engine/index.ts` to `ignoreExports`; set `ignoreUnusedTypeExports` so a types-only contract passes lint; give `src/engine/**` an override with `env.browser: false`; show each changed rule failing on a bad example.
+- Dependencies: `@anthropic-ai/sdk` and `react-markdown`; Deepgram and the search provider are called with plain `fetch`. `.env.example` drops `OPENROUTER_API_KEY` and gains the search provider key names. TypeScript 5.x likely needs a newer `@typescript-eslint`.
+- The microphone usage description and the audio-input entitlement in the packaging config.
 - CI moves from `windows-latest` to `macos-latest`.
 
 ### Set at build
@@ -281,7 +294,7 @@ Config changes in the first build PR (asked first):
 - The exact message shapes in `src/shared/ipc.ts` and `src/shared/engine.ts`; the files inside `src/engine/core/` beyond this map.
 - Prompts, including the intake's (how much of the recent record it sees).
 - Result details: card layout, how many sources show, spoken length.
-- How many tasks may queue; whether a second utterance waits while an intake call is in flight; when a done or cancelled card leaves the screen.
+- Whether a second utterance waits while an intake call is in flight.
 - The incomplete card's choices (starting form: "search more", "change the question", "try again").
 - Each tool's abort time.
 - The fixed spoken lines, tuned by ear.
