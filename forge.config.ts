@@ -13,6 +13,11 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     appBundleId: "com.adityalingwal.baymax",
+    // entitlements.mac.plist (audio input) is wired in when signing is set up; it only takes effect in a signed, hardened-runtime build.
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        "Baymax listens while you hold the Option key so you can ask by voice.",
+    },
   },
   rebuildConfig: {
     // uiohook-napi ships N-API prebuilds for macOS and Windows; rebuilding it needs a C++ compiler on every machine.

@@ -62,11 +62,12 @@
       {
         "unusedExports": true,
         "ignoreExports": [
-          "src/index.ts",
+          "src/{index,engine/index}.ts",
           "src/preload.ts",
           "src/renderer.ts",
           "forge.config.ts"
-        ]
+        ],
+        "ignoreUnusedTypeExports": true
       }
     ],
     "import/no-restricted-paths": [
@@ -75,13 +76,81 @@
         "zones": [
           {
             "target": ["./src/renderer", "./src/renderer.ts"],
-            "from": ["./src/index.ts", "./src/main", "./src/preload.ts"],
+            "from": [
+              "./src/index.ts",
+              "./src/main",
+              "./src/preload.ts",
+              "./src/engine",
+              "./src/shared/engine.ts",
+              "./src/providers"
+            ],
             "message": "The renderer talks to main only through window.baymax (AGENTS.md)."
           },
           {
             "target": ["./src/index.ts", "./src/main"],
             "from": ["./src/renderer", "./src/renderer.ts"],
             "message": "Core imports nothing from the renderer (AGENTS.md)."
+          },
+          {
+            "target": ["./src/engine"],
+            "from": [
+              "./src/index.ts",
+              "./src/main",
+              "./src/preload.ts",
+              "./src/renderer",
+              "./src/renderer.ts"
+            ],
+            "message": "The engine imports nothing from main or the renderer (AGENTS.md)."
+          },
+          {
+            "target": ["./src/index.ts", "./src/main"],
+            "from": ["./src/engine"],
+            "except": ["./index.ts"],
+            "message": "Main imports the engine only through src/engine/index.ts (AGENTS.md)."
+          },
+          {
+            "target": ["./src/providers"],
+            "from": [
+              "./src/index.ts",
+              "./src/main",
+              "./src/engine",
+              "./src/preload.ts",
+              "./src/renderer",
+              "./src/renderer.ts"
+            ],
+            "message": "Provider code imports no process folder (AGENTS.md)."
+          },
+          {
+            "target": ["./src/preload.ts"],
+            "from": [
+              "./src/engine",
+              "./src/providers",
+              "./src/shared/engine.ts"
+            ],
+            "message": "The preload only bridges the renderer and main; it imports no engine or provider code (AGENTS.md)."
+          },
+          {
+            "target": ["./src/shared/ipc.ts"],
+            "from": ["./src/shared/engine.ts"],
+            "message": "Link files never import each other; shared types go in a third shared file (AGENTS.md)."
+          },
+          {
+            "target": ["./src/shared/engine.ts"],
+            "from": ["./src/shared/ipc.ts"],
+            "message": "Link files never import each other; shared types go in a third shared file (AGENTS.md)."
+          },
+          {
+            "target": ["./src/shared"],
+            "from": [
+              "./src/index.ts",
+              "./src/main",
+              "./src/engine",
+              "./src/preload.ts",
+              "./src/providers",
+              "./src/renderer",
+              "./src/renderer.ts"
+            ],
+            "message": "Shared files hold process-neutral contracts and import no process folder (AGENTS.md)."
           }
         ]
       }
@@ -156,6 +225,12 @@
               },
               {
                 "name": "uiohook-napi",
+                "message": "The renderer talks to main only through window.baymax (AGENTS.md)."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["electron/*"],
                 "message": "The renderer talks to main only through window.baymax (AGENTS.md)."
               }
             ]
@@ -243,6 +318,97 @@
             "object": "navigator",
             "property": "sendBeacon",
             "message": "The renderer makes no network calls (AGENTS.md)."
+          },
+          {
+            "object": "process",
+            "property": "platform",
+            "message": "Mac/Windows differences live in src/main/platform.ts (AGENTS.md)."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/engine/**/*", "src/providers/**/*"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "electron",
+                "message": "The engine and providers import nothing from electron (AGENTS.md)."
+              },
+              {
+                "name": "uiohook-napi",
+                "message": "The engine and providers import nothing from electron (AGENTS.md)."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["electron/*"],
+                "message": "The engine and providers import nothing from electron (AGENTS.md)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/engine/**/*"],
+      "env": {
+        "browser": false,
+        "node": true
+      },
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "window",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          },
+          {
+            "name": "document",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          },
+          {
+            "name": "navigator",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          },
+          {
+            "name": "localStorage",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          },
+          {
+            "name": "sessionStorage",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "globalThis",
+            "property": "window",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "document",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "navigator",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "localStorage",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "sessionStorage",
+            "message": "The engine runs in main; no browser globals (AGENTS.md)."
           },
           {
             "object": "process",

@@ -283,7 +283,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 
 Config changes in the first build PR (asked first):
 
-- `tsconfig.json` `target` to `ES2022` and TypeScript to 5.x, because TypeScript 4.5.5 with `target: ES6` cannot compile the `for await` loop the SDK's streaming responses need; checked against the SDK's minimum TypeScript, `@typescript-eslint` and `fork-ts-checker`.
+- `tsconfig.json` `target` to `ES2022` and TypeScript to 5.x, so the SDK's streams are read with native `for await` on a current TypeScript (TypeScript 4.5.5 already type-checks `for await` through the lib that `@types/node` loads, so that was not the reason); checked against the SDK's minimum TypeScript, `@typescript-eslint` and `fork-ts-checker`.
 - `.eslintrc.json`: extend the `import/no-restricted-paths` zones (the engine never imports main, the renderer or `electron`; main imports the engine only through its entry; the renderer never imports `src/shared/engine.ts`; `src/providers/` imports no process folder); keep the `*Sync` rule over all of `src/`; add `src/engine/index.ts` to `ignoreExports`; set `ignoreUnusedTypeExports` so a types-only contract passes lint; give `src/engine/**` an override with `env.browser: false`; show each changed rule failing on a bad example.
 - Dependencies: `@anthropic-ai/sdk` and `react-markdown`; Deepgram and the search provider are called with plain `fetch`. `.env.example` drops `OPENROUTER_API_KEY` and gains the search provider key names. TypeScript 5.x likely needs a newer `@typescript-eslint`.
 - The microphone usage description and the audio-input entitlement in the packaging config.
