@@ -1,5 +1,7 @@
+import { lookup as dnsLookup } from "node:dns/promises";
 import type { ClientRequestArgs } from "node:http";
-import { isIP } from "node:net";
+import { connect as netConnect, isIP } from "node:net";
+import { connect as tlsConnect } from "node:tls";
 import type { Duplex } from "node:stream";
 import { isPublicAddress } from "./address";
 import type { CheckedUrl, RefusalRule } from "./url-rules";
@@ -101,4 +103,21 @@ export function createGuardedConnection(
       );
     return undefined;
   };
+}
+
+export async function lookupHost(hostname: string): Promise<string[]> {
+  const answers = await dnsLookup(hostname, { all: true });
+  return answers.map((answer) => answer.address);
+}
+
+// TLS is verified by Node's defaults against the servername.
+export function connectSocket(target: ConnectTarget): Duplex {
+  if (!target.tls)
+    return netConnect({ host: target.address, port: target.port });
+  return tlsConnect({
+    host: target.address,
+    port: target.port,
+    servername: target.servername ?? undefined,
+    ALPNProtocols: ["http/1.1"],
+  });
 }
