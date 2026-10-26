@@ -19,6 +19,14 @@ const silentRows: { name: string; act: (h: Harness) => void }[] = [
       h.state.receive({ type: "failure", taskId: "t1", kind: "error" });
     },
   },
+  {
+    name: "a failure is retried",
+    act: (h) => {
+      h.advance(1000);
+      h.state.receive({ type: "failure", taskId: "t1", kind: "error" });
+      h.state.retryTask("t1");
+    },
+  },
 ];
 
 describe("the 1.5 s line", () => {

@@ -22,7 +22,10 @@ type RunEvent = Extract<
   EngineEvent,
   { type: "progress" } | { type: "result" } | { type: "incomplete" }
 >;
-type AdmittedOutcome = Extract<IntakeOutcome, { route: "newTask" }>;
+type AdmittedOutcome = Extract<
+  IntakeOutcome,
+  { route: "newTask" } | { route: "followUp" }
+>;
 
 function slotBusy(model: Model): boolean {
   for (const record of model.records.values()) {
@@ -67,6 +70,23 @@ function startTask(
   });
 }
 
+// A parent created after the follow-up would let two thinking tasks name each other.
+function validParent(
+  change: Change,
+  record: TaskRecord,
+  outcome: AdmittedOutcome,
+): TaskId | null {
+  if (outcome.route !== "followUp") return null;
+  const parent = change.model.records.get(outcome.parentTaskId);
+  if (parent !== undefined && parent.created < record.created) {
+    return outcome.parentTaskId;
+  }
+  change.log(
+    `${record.card.taskId} names parent ${outcome.parentTaskId}; admitted as a new task`,
+  );
+  return null;
+}
+
 export function admit(
   change: Change,
   record: TaskRecord,
@@ -77,6 +97,7 @@ export function admit(
   const admission = { startLine: outcome.startLine, brief: outcome.brief };
   record.admission = admission;
   card.sayBack = outcome.sayBack;
+  card.parentTaskId = validParent(change, record, outcome);
   card.question = null;
   card.canRetry = false;
   if (!slotBusy(model) && canStart(model, record)) {
@@ -99,9 +120,11 @@ export function startNext(change: Change): void {
   if (slotBusy(model)) return;
   for (const taskId of model.queue) {
     const record = model.records.get(taskId);
-    if (record?.admission == null || !canStart(model, record)) continue;
+    const admission = record?.admission ?? null;
+    if (record === undefined || admission === null) continue;
+    if (!canStart(model, record)) continue;
     model.queue = model.queue.filter((id) => id !== taskId);
-    startTask(change, record, record.admission);
+    startTask(change, record, admission);
     return;
   }
 }

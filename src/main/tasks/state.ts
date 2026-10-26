@@ -11,7 +11,13 @@ import type {
   SetCardFolded,
 } from "../../shared/ipc";
 import { buildDisplay, waitingQuestion } from "./display";
-import { applyIntakeOutcome, ask, failIntake } from "./intake";
+import {
+  applyIntakeOutcome,
+  ask,
+  bindAnswer,
+  failIntake,
+  retryTask,
+} from "./intake";
 import { fixedLines } from "./lines";
 import type {
   Change,
@@ -83,10 +89,9 @@ export function createMainState(deps: MainStateDeps): MainState {
     ask: (words, utteranceId, waiting) =>
       update((c) => ask(c, deps.newTaskId, { words, utteranceId, waiting })),
     waitingQuestion: () => waitingQuestion(model),
-    answerQuestion: (payload) =>
-      update((c) => dropped(c, `answer for ${payload.taskId}`)),
+    answerQuestion: (payload) => update((c) => bindAnswer(c, payload)),
     cancelTask: (taskId) => update((c) => cancelTask(c, taskId)),
-    retryTask: (taskId) => update((c) => dropped(c, `retry ${taskId}`)),
+    retryTask: (taskId) => update((c) => retryTask(c, taskId)),
     closeCard: (taskId) => update((c) => closeCard(c, taskId)),
     setCardFolded: (payload) => update((c) => setCardFolded(c, payload)),
     openSource: (payload) => update((c) => openSource(c, deps, payload)),
@@ -160,11 +165,16 @@ function receiveIntake(
   if (!holdsIntake(record)) {
     return dropped(change, `intake for ${record.card.taskId}`);
   }
-  if (outcome.route !== "newTask" && outcome.route !== "outsideResearch") {
-    return dropped(change, `intake route ${outcome.route}`);
+  if (outcome.route === "answer" && record.sent?.type === "clarifyingAnswer") {
+    change.log(
+      `answer route in reply to a clarifying answer for ${record.card.taskId}`,
+    );
+    return failIntake(change, record, "error");
   }
   closeIntakeStep(record);
-  if (outcome.route === "newTask") return admit(change, record, outcome);
+  if (outcome.route === "newTask" || outcome.route === "followUp") {
+    return admit(change, record, outcome);
+  }
   return applyIntakeOutcome(change, record, outcome);
 }
 

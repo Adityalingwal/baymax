@@ -1,4 +1,5 @@
 import type {
+  ClarifyingQuestion,
   DisplayState,
   Findings,
   TaskCard,
@@ -177,6 +178,50 @@ export function askNew(h: Harness, sayBack: string): TaskId {
   h.state.ask(`tell me ${sayBack}`, null, null);
   const taskId = h.lastTaskId();
   h.state.receive(intake(taskId, newTask(sayBack)));
+  return taskId;
+}
+
+export function followUp(parentTaskId: TaskId, sayBack: string): IntakeOutcome {
+  return {
+    route: "followUp",
+    parentTaskId,
+    sayBack,
+    startLine: `Looking into ${sayBack}.`,
+    brief: brief(sayBack),
+  };
+}
+
+// Asks and admits a follow-up of parentTaskId; returns its id.
+export function askFollowUp(
+  h: Harness,
+  parentTaskId: TaskId,
+  sayBack: string,
+): TaskId {
+  h.state.ask(`and ${sayBack}`, null, null);
+  const taskId = h.lastTaskId();
+  h.state.receive(intake(taskId, followUp(parentTaskId, sayBack)));
+  return taskId;
+}
+
+export function question(questionId: string): ClarifyingQuestion {
+  return {
+    questionId,
+    text: `Question ${questionId}?`,
+    choices: ["First", "Second", "Third"],
+  };
+}
+
+// Asks words the intake answers with a clarifying question; returns the task id.
+export function askClarify(h: Harness, questionId: string): TaskId {
+  h.state.ask(`about ${questionId}`, null, null);
+  const taskId = h.lastTaskId();
+  h.state.receive(
+    intake(taskId, {
+      route: "clarify",
+      sayBack: `about ${questionId}`,
+      question: question(questionId),
+    }),
+  );
   return taskId;
 }
 

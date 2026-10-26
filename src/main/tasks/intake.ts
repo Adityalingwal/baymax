@@ -1,9 +1,15 @@
-import type { TaskId, UtteranceId } from "../../shared/cards";
+import type {
+  ClarifyingQuestion,
+  ClarifyingReply,
+  TaskId,
+  UtteranceId,
+} from "../../shared/cards";
 import type {
   FailureKind,
   IntakeOutcome,
   WaitingQuestion,
 } from "../../shared/engine";
+import type { AnswerQuestion } from "../../shared/ipc";
 import { recentExchanges } from "./display";
 import { failureLine, fixedLines } from "./lines";
 import type { Change, Input, TaskRecord } from "./record";
@@ -65,16 +71,121 @@ function letMeCheck(taskId: TaskId): Input {
   };
 }
 
-type OtherOutcome = Extract<IntakeOutcome, { route: "outsideResearch" }>;
+type OtherOutcome = Exclude<
+  IntakeOutcome,
+  { route: "newTask" } | { route: "followUp" }
+>;
 
 export function applyIntakeOutcome(
   change: Change,
   record: TaskRecord,
   outcome: OtherOutcome,
 ): boolean {
-  if (outcome.route === "outsideResearch") {
-    endCancelled(change, record, null, fixedLines.outsideResearch);
+  switch (outcome.route) {
+    case "outsideResearch":
+      endCancelled(change, record, null, fixedLines.outsideResearch);
+      return true;
+    case "clarify":
+      clarify(change, record, outcome.sayBack, outcome.question);
+      return true;
+    case "answer":
+      removeThinkingCard(change, record);
+      bindAnswer(change, {
+        taskId: outcome.waitingTaskId,
+        questionId: outcome.questionId,
+        reply: outcome.reply,
+      });
+      return true;
   }
+}
+
+// The update path shows the question when no other one is shown.
+function clarify(
+  change: Change,
+  record: TaskRecord,
+  sayBack: string,
+  question: ClarifyingQuestion,
+): void {
+  const { card } = record;
+  card.state = "clarifying";
+  card.sayBack = sayBack;
+  card.line = null;
+  card.canRetry = false;
+  card.question = null;
+  record.hiddenQuestion = question;
+  change.model.questions.push(card.taskId);
+}
+
+// Words that answer the waiting question are not a task, so their card goes at once.
+function removeThinkingCard(change: Change, record: TaskRecord): void {
+  const { model } = change;
+  const { taskId } = record.card;
+  model.records.delete(taskId);
+  model.answers.delete(taskId);
+  model.queue = model.queue.filter((id) => id !== taskId);
+  model.questions = model.questions.filter((id) => id !== taskId);
+}
+
+function validReply(
+  question: ClarifyingQuestion,
+  reply: ClarifyingReply,
+): boolean {
+  if (reply.kind === "text") return reply.text.trim() !== "";
+  return (
+    Number.isInteger(reply.index) &&
+    reply.index >= 0 &&
+    reply.index < question.choices.length
+  );
+}
+
+export function bindAnswer(
+  change: Change,
+  { taskId, questionId, reply }: AnswerQuestion,
+): boolean {
+  const record = change.model.records.get(taskId);
+  const question = record?.card.question ?? null;
+  if (
+    record?.card.state !== "clarifying" ||
+    record.sent !== null ||
+    question === null ||
+    question.answered ||
+    question.questionId !== questionId ||
+    !validReply(question, reply)
+  ) {
+    return dropped(change, `answer for ${taskId} question ${questionId}`);
+  }
+  question.answered = true;
+  hold(change, record, {
+    type: "clarifyingAnswer",
+    taskId,
+    words: record.card.words,
+    question: {
+      questionId,
+      text: question.text,
+      choices: [...question.choices],
+    },
+    reply,
+    recent: recentExchanges(change.model, taskId),
+  });
+  return true;
+}
+
+export function retryTask(change: Change, taskId: TaskId): boolean {
+  const record = change.model.records.get(taskId);
+  const state = record?.card.state;
+  const failed = record?.failed ?? null;
+  if (
+    record === undefined ||
+    (state !== "thinking" && state !== "clarifying") ||
+    !record.card.canRetry ||
+    failed === null
+  ) {
+    return dropped(change, `retry ${taskId}`);
+  }
+  record.card.canRetry = false;
+  record.card.line = null;
+  record.failed = null;
+  hold(change, record, failed);
   return true;
 }
 
