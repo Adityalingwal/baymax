@@ -1,12 +1,12 @@
 # AGENTS.md
 
-Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailwind) for macOS in cut 1, Windows later. Setup is in `README.md`. Product and stack decisions are in `docs/architecture.md`.
+Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailwind) for macOS in V1, Windows later. Setup is in `README.md`. Product and stack decisions are in `docs/architecture.md`.
 
 ## Areas
 
 | Area | What it covers | Paths today | Works here |
 | --- | --- | --- | --- |
-| Main and engine | Electron main process (hold-key, windows, voice providers, speech queue, talker) and the engine process (agent engine, SQLite) | `src/index.ts`, `src/main/`, `src/engine/` (planned) | Aditya |
+| Main and engine | Electron main process (hold-key, windows, voice providers, speech) and the agent engine, which runs inside main behind a port in V1 | `src/index.ts`, `src/main/`, `src/engine/` (planned) | Aditya |
 | UI | Renderer: window contents, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Somesh, Kashish |
 | Shared contract | Contracts between processes: renderer <-> main (`src/shared/ipc.ts`), main <-> engine (`src/shared/engine.ts`), the types both carry, and provider code shared by main and the engine only | `src/preload.ts`, `src/shared/`, `src/providers/` (planned) | both sides |
 | Build and config | Tooling and packaging | `package.json`, `forge.config.ts`, `webpack.*.ts`, `tsconfig.json`, `.eslintrc.json` | anyone, in its own small PR |
@@ -26,7 +26,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 - When the same concept is written twice, move it to one place. Code that only looks similar stays separate.
 - Delete exports, options and code that nothing calls.
 - Await every promise or give it a `.catch`.
-- Keep the main process responsive: use async file and process APIs (no `*Sync` calls) and run CPU-heavy work outside main.
+- Keep the main process responsive: use async file and process APIs (no `*Sync` calls anywhere in `src/`, the engine included, since it runs in main in V1), and no CPU-heavy work.
 - When a provider (STT, LLM, TTS, agent model) fails, show or speak an error that names the cause and the fix. The app keeps running.
 - Give a provider its key, client or `fetch` as a parameter so it can be tested offline. Add an interface only when a second real provider exists.
 - Keep imports acyclic. Use named exports and explicit re-exports.
@@ -34,13 +34,12 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 ## Process boundaries
 
 - The renderer talks to main only through `window.baymax` from `src/preload.ts`. It imports no `electron`, no Node modules, no main or engine files, no `src/shared/engine.ts` and no `src/providers/` code, and makes no network calls. It never talks to the engine.
-- The engine imports nothing from `src/main/` or `src/renderer/`. Main imports nothing from `src/engine/` except the built bundle path, and nothing from `src/renderer/`. `src/providers/` (provider calls shared by main and the engine) imports nothing from either process folder.
-- Main owns the shown app state (hold, listening, agent status, pending items). The engine owns the saved run state and is the only process that opens SQLite. The renderer shows what main sends.
+- The engine imports nothing from `src/main/`, `src/renderer/` or `electron`. Main imports the engine only through `src/engine/index.ts` (its start function and port), and nothing from `src/renderer/`. Main and the engine talk only through the port, with plain JSON messages, so V2 can move the engine into its own process without changing either side. `src/providers/` (provider calls shared by main and the engine) imports nothing from either process folder.
+- Main owns the shown app state (hold, listening, the task list and its cards). The engine owns the running task's state; V1 has no database. The renderer shows what main sends.
 - Define channel names and payload types once per link: renderer <-> main in `src/shared/ipc.ts`, main <-> engine in `src/shared/engine.ts`; both sides of a link import them. Types both links carry live in a third shared file; link files never import each other.
 - Mac/Windows differences live in `src/main/platform.ts`; main sends platform-specific labels to the renderer.
 - Keep `contextIsolation: true` and `nodeIntegration: false`. `preload.ts` exposes narrow, typed functions; subscriptions return a cleanup function.
-- The no-`*Sync` rule in Code applies to main and the renderer; the engine runs outside main and may use synchronous SQLite, kept inside its database module by review.
-- API keys come from `.env` and are read only in main. Main passes the engine the keys it needs when it starts it (the `env` option of `utilityProcess.fork`, set explicitly). No key reaches the renderer.
+- API keys come from `.env` and are read only in main, which removes them from `process.env` before any window opens. Main passes the engine the keys it needs as start parameters. No key reaches the renderer.
 
 ## Comments and docs
 
@@ -90,4 +89,4 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 Prettier formats the code, the pre-commit hook runs ESLint and Prettier on staged files, and CI runs the checks on every PR.
 
-ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer and main zones and a `*Sync` rule over all of `src/` (dropped for tests and configs); the engine zones and the override that limits the `*Sync` rule to main and the renderer come with the first build PR. Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
+ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer and main zones and a `*Sync` rule over all of `src/` (dropped for tests and configs); the engine zones come with the first build PR, and the `*Sync` rule stays over all of `src/`. Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
