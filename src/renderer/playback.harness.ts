@@ -43,9 +43,9 @@ export function createHarness() {
       holder.onStop = callback;
       return unsubscribeStop;
     },
-    reportPlaybackFinished: (payload: PlaybackFinished) => {
+    reportPlaybackFinished: vi.fn((payload: PlaybackFinished) => {
       reports.push(payload);
-    },
+    }),
   };
   const cleanup = startPlayback(bridge, player);
   const speak = (lineId: string, bytes = [1]) =>
@@ -62,6 +62,7 @@ export function createHarness() {
     reports,
     plays,
     player,
+    bridge,
     unsubscribeSpeech,
     unsubscribeStop,
   };
@@ -83,7 +84,14 @@ type Deferred<T> = {
   reject: (e: unknown) => void;
 };
 
-function createStubSource() {
+// Set by a test to make the next source's start or stop throw.
+type Faults = { start: boolean; stop: boolean };
+
+function failIf(fault: boolean, what: string): void {
+  if (fault) throw new DOMException(`${what} failed`, "InvalidStateError");
+}
+
+function createStubSource(faults: Faults) {
   const slots: {
     buffer: object | null;
     onended: ((event: Event) => void) | null;
@@ -91,8 +99,8 @@ function createStubSource() {
   return Object.assign(slots, {
     connect: vi.fn(),
     disconnect: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
+    start: vi.fn(() => failIf(faults.start, "start")),
+    stop: vi.fn(() => failIf(faults.stop, "stop")),
   });
 }
 
@@ -101,6 +109,7 @@ export function createStubOutput(state: "running" | "suspended") {
   const decodes: (Deferred<object> & { audio: ArrayBuffer })[] = [];
   const resumes: Deferred<void>[] = [];
   const sources: ReturnType<typeof createStubSource>[] = [];
+  const faults: Faults = { start: false, stop: false };
   const output = {
     state,
     destination: { node: "destination" },
@@ -111,7 +120,7 @@ export function createStubOutput(state: "running" | "suspended") {
         }),
     ),
     createBufferSource: vi.fn(() => {
-      const source = createStubSource();
+      const source = createStubSource(faults);
       sources.push(source);
       return source;
     }),
@@ -124,5 +133,5 @@ export function createStubOutput(state: "running" | "suspended") {
     close: vi.fn(() => Promise.resolve()),
   } satisfies AudioOutput;
   const createOutput = vi.fn(() => output);
-  return { output, createOutput, decodes, resumes, sources };
+  return { output, createOutput, decodes, resumes, sources, faults };
 }

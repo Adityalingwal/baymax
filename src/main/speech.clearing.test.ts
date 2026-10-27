@@ -105,6 +105,31 @@ describe("cancel touches only that task", () => {
   });
 });
 
+describe("cancel leaves another task's work alone", () => {
+  it("another task's synthesis is not aborted and is still sent", async () => {
+    const h = createHarness();
+    h.speech.speak(said("other", "t2"));
+    h.speech.speak(said("cancelled", "t1"));
+    h.speech.cancelTask("t1");
+    expect(h.calls[0].signal.aborted).toBe(false);
+    await resolveCall(h, 0);
+    expect(h.speeches).toHaveLength(1);
+    expect(h.texts()).toEqual(["other"]);
+  });
+
+  it("another task's playing line is not stopped and still holds the queue", async () => {
+    const h = createHarness();
+    const lineId = await play(h, said("other", "t2"));
+    h.speech.speak(said("waiting", "t3"));
+    h.speech.cancelTask("t1");
+    expect(h.stops).toEqual([]);
+    expect(h.timers[0].cancelled).toBe(false);
+    expect(h.texts()).toEqual(["other"]);
+    finish(h, lineId);
+    expect(h.texts()).toEqual(["other", "waiting"]);
+  });
+});
+
 async function resolveAndId(h: Harness, index: number): Promise<string> {
   await resolveCall(h, index);
   return h.speeches[h.speeches.length - 1].lineId;

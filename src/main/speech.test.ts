@@ -151,6 +151,37 @@ describe("failures in the injected callbacks never escape", () => {
   });
 });
 
+describe("failures in the injected timers never escape", () => {
+  it("a throwing setTimer is logged, drops that line, and the next is synthesized", async () => {
+    const h = createHarness();
+    h.setTimer.mockImplementationOnce(() => {
+      throw new Error("no timers");
+    });
+    h.speech.speak(said("first"));
+    h.speech.speak(said("second"));
+    await resolveCall(h, 0);
+    expect(h.speeches).toEqual([]);
+    expect(h.texts()).toEqual(["first", "second"]);
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("[Speech] setTimer threw"),
+    );
+  });
+
+  it("a throwing deadline cancel is logged and the next line plays", async () => {
+    const h = createHarness();
+    h.setTimer.mockImplementationOnce(() => () => {
+      throw new Error("timer gone");
+    });
+    const lineId = await play(h, said("first"));
+    h.speech.speak(said("second"));
+    expect(() => finish(h, lineId)).not.toThrow();
+    expect(h.texts()).toEqual(["first", "second"]);
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("[Speech] cancelDeadline threw"),
+    );
+  });
+});
+
 describe("a callback that re-enters", () => {
   it("playbackFinished called from inside sendSpeech ends that line", async () => {
     const h = createHarness();

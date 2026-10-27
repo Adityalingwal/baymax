@@ -99,7 +99,7 @@ function endPlaying(state: SpeechState, lineId: LineId): boolean {
   const playing = state.playing;
   if (playing === null || playing.lineId !== lineId) return false;
   state.playing = null;
-  playing.cancelDeadline();
+  guarded("cancelDeadline", playing.cancelDeadline);
   return true;
 }
 
@@ -145,9 +145,14 @@ function startPlaying(
   result: Audio,
 ): void {
   const lineId = randomUUID();
-  const cancelDeadline = deps.timers.setTimer(playbackDeadlineMs, () =>
-    deadlinePassed(state, deps, lineId),
-  );
+  let cancelDeadline = (): void => undefined;
+  const timed = guarded("setTimer", () => {
+    cancelDeadline = deps.timers.setTimer(playbackDeadlineMs, () =>
+      deadlinePassed(state, deps, lineId),
+    );
+  });
+  // Without a deadline a lost report could block speech for good, so the line is dropped.
+  if (!timed) return pump(state, deps);
   state.playing = {
     lineId,
     taskId: line.taskId,

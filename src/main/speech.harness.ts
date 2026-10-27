@@ -32,7 +32,9 @@ export function createHarness() {
   const speeches: SpeechLine[] = [];
   const stops: StopPlayback[] = [];
   const voice: { available: boolean; cause: VoiceDownCause | null }[] = [];
-  const { timers, setTimer } = createFakeTimers();
+  const fakeTimers = createFakeTimers();
+  const timers = fakeTimers.timers;
+  const setTimer = vi.fn(fakeTimers.setTimer);
   const synthesize = vi.fn(
     (text: string, signal: AbortSignal) =>
       new Promise<Synthesis>((resolve, reject) => {
@@ -66,6 +68,7 @@ export function createHarness() {
     stops,
     voice,
     timers,
+    setTimer,
     synthesize,
     sendSpeech,
     sendStop,

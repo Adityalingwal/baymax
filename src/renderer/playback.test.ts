@@ -93,6 +93,48 @@ describe("playback failures", () => {
   });
 });
 
+describe("a throwing player or bridge never leaves a line half-finished", () => {
+  it("an onEnded fired inside stop reports stopped once and leaves the new line alone", () => {
+    const h = createHarness();
+    h.speak("a");
+    h.player.stop.mockImplementationOnce(() => h.plays[0].onEnded());
+    h.speak("b");
+    expect(h.reports).toEqual([{ lineId: "a", outcome: "stopped" }]);
+    h.plays[1].onEnded();
+    expect(h.reports).toEqual([
+      { lineId: "a", outcome: "stopped" },
+      { lineId: "b", outcome: "ended" },
+    ]);
+  });
+
+  it("a throwing stop still reports stopped and plays the new line", () => {
+    const h = createHarness();
+    h.speak("a");
+    h.player.stop.mockImplementationOnce(() => {
+      throw new Error("already stopped");
+    });
+    h.speak("b");
+    expect(h.reports).toEqual([{ lineId: "a", outcome: "stopped" }]);
+    expect(h.plays).toHaveLength(2);
+  });
+
+  it("a throwing report is logged and the next line still reports", async () => {
+    const h = createHarness();
+    h.bridge.reportPlaybackFinished.mockImplementationOnce(() => {
+      throw new Error("bridge gone");
+    });
+    h.speak("a");
+    h.plays[0].reject(new DOMException("bad audio", "EncodingError"));
+    await flush();
+    h.speak("b");
+    h.plays[1].onEnded();
+    expect(h.reports).toEqual([{ lineId: "b", outcome: "ended" }]);
+    expect(console.log).toHaveBeenCalledWith(
+      "[Playback] reporting failed: Error",
+    );
+  });
+});
+
 describe("playback cleanup", () => {
   it("unsubscribes, stops and disposes, reports nothing, and a later onEnded reports nothing", () => {
     const h = createHarness();
@@ -104,6 +146,16 @@ describe("playback cleanup", () => {
     expect(h.player.dispose).toHaveBeenCalledTimes(1);
     h.plays[0].onEnded();
     expect(h.reports).toEqual([]);
+  });
+
+  it("cleanup still disposes when stop throws", () => {
+    const h = createHarness();
+    h.speak("a");
+    h.player.stop.mockImplementationOnce(() => {
+      throw new Error("already stopped");
+    });
+    h.cleanup();
+    expect(h.player.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("is safe to call twice", () => {

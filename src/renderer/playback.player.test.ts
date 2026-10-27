@@ -77,6 +77,32 @@ describe("the default Web Audio player stops, fails and disposes", () => {
   });
 });
 
+describe("the default Web Audio player when a source throws", () => {
+  it("a start that throws rejects the play, disconnects the source and never stops it later", async () => {
+    const stub = createStubOutput("running");
+    stub.faults.start = true;
+    const player = createWebAudioPlayer(stub.createOutput);
+    const started = player.play(bytesOf([1]), vi.fn());
+    stub.decodes[0].resolve(decoded);
+    await expect(started).rejects.toThrow("start failed");
+    expect(stub.sources[0].disconnect).toHaveBeenCalledTimes(1);
+    player.stop();
+    expect(stub.sources[0].stop).not.toHaveBeenCalled();
+  });
+
+  it("a stop that throws still disconnects, and dispose still closes the output", async () => {
+    const stub = createStubOutput("running");
+    const player = createWebAudioPlayer(stub.createOutput);
+    const started = player.play(bytesOf([1]), vi.fn());
+    stub.decodes[0].resolve(decoded);
+    await started;
+    stub.faults.stop = true;
+    expect(() => player.dispose()).toThrow("stop failed");
+    expect(stub.sources[0].disconnect).toHaveBeenCalledTimes(1);
+    expect(stub.output.close).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("a stopped or replaced play never starts audio", () => {
   it("a stop while decoding: no source is created", async () => {
     const stub = createStubOutput("running");

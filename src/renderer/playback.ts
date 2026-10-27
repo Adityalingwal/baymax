@@ -56,8 +56,11 @@ function stopSource(web: WebAudio): void {
   const source = web.source;
   web.source = null;
   if (source === null) return;
-  source.stop();
-  source.disconnect();
+  try {
+    source.stop();
+  } finally {
+    source.disconnect();
+  }
 }
 
 async function playAudio(
@@ -79,17 +82,26 @@ async function playAudio(
   source.buffer = decoded;
   source.connect(output.destination);
   source.onended = () => onEnded();
+  try {
+    source.start();
+  } catch (error) {
+    source.disconnect();
+    throw error;
+  }
+  // Kept only once started, so a later stop never meets a source that never ran.
   web.source = source;
-  source.start();
 }
 
 function disposeOutput(web: WebAudio): void {
-  stopSource(web);
   const output = web.output;
   web.output = null;
-  output?.close().catch((error: unknown) => {
-    console.log(`[Playback] closing the output failed: ${errorName(error)}`);
-  });
+  try {
+    stopSource(web);
+  } finally {
+    output?.close().catch((error: unknown) => {
+      console.log(`[Playback] closing the output failed: ${errorName(error)}`);
+    });
+  }
 }
 
 export function createWebAudioPlayer(createOutput: () => AudioOutput): Player {
@@ -110,6 +122,15 @@ function errorName(error: unknown): string {
   return error instanceof Error ? error.name : String(error);
 }
 
+// A throwing player or bridge must not leave a line half-finished.
+function logged(what: string, call: () => void): void {
+  try {
+    call();
+  } catch (error) {
+    console.log(`[Playback] ${what} failed: ${errorName(error)}`);
+  }
+}
+
 function isActive(playback: Playback, lineId: LineId): boolean {
   return !playback.disposed && playback.active === lineId;
 }
@@ -122,8 +143,10 @@ function finish(
 ): void {
   if (!isActive(playback, lineId)) return;
   playback.active = null;
-  if (outcome === "stopped") playback.player.stop();
-  playback.bridge.reportPlaybackFinished({ lineId, outcome });
+  if (outcome === "stopped") logged("stopping", () => playback.player.stop());
+  logged("reporting", () =>
+    playback.bridge.reportPlaybackFinished({ lineId, outcome }),
+  );
 }
 
 function playFailed(playback: Playback, lineId: LineId, error: unknown) {
@@ -147,8 +170,8 @@ function playLine(playback: Playback, line: SpeechLine): void {
 function closePlayback(playback: Playback): void {
   playback.disposed = true;
   playback.active = null;
-  playback.player.stop();
-  playback.player.dispose();
+  logged("stopping", () => playback.player.stop());
+  logged("disposing", () => playback.player.dispose());
 }
 
 export function startPlayback(
