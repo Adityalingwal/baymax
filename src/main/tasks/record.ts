@@ -27,7 +27,7 @@ export type TaskRecord = {
   spokenLine: string | null;
   hiddenQuestion: ClarifyingQuestion | null;
   letMeCheckDue: boolean;
-  builtOnPartial: boolean; // started from an incomplete or cancelled parent that had findings
+  builtOnPartial: boolean;
   sent: EngineCommand | null;
   failed: EngineCommand | null;
 };

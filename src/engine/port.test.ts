@@ -189,18 +189,18 @@ describe("startEngine dev log", () => {
 });
 
 describe("startEngine command from a listener", () => {
-  it("runs a task sent from a listener of that task's intake event", async () => {
+  it("runs a task sent from a listener of that task's intake event, and holds and cancels it", async () => {
     const engine = startTestEngine([questionReply(task), "waitForAbort"]);
+    const run = {
+      type: "runTask" as const,
+      taskId: "task-1",
+      goalVersion: 1,
+      depth: "normal" as const,
+      brief: { ...task.brief, userWords: words },
+      parent: null,
+    };
     engine.port.onMessage((event) => {
-      if (event.type !== "intake") return;
-      engine.port.send({
-        type: "runTask",
-        taskId: event.taskId,
-        goalVersion: 1,
-        depth: "normal",
-        brief: { ...task.brief, userWords: words },
-        parent: null,
-      });
+      if (event.type === "intake") engine.port.send(run);
     });
     engine.port.send(question(words));
     await engine.settle(1);
@@ -209,6 +209,16 @@ describe("startEngine command from a listener", () => {
       event: "duplicateTask",
       taskId: "task-1",
     });
+    // The intake's cleanup must not drop the run's hold: a second run is refused and cancel reaches the run.
+    engine.port.send(run);
+    expect(engine.entries).toContainEqual({
+      event: "duplicateTask",
+      taskId: "task-1",
+    });
+    engine.port.send(cancel("task-1"));
+    const events = await engine.settle(2);
+    expect(events.map((event) => event.type)).toEqual(["intake", "cancelled"]);
+    expect(engine.requests).toHaveLength(2);
     engine.port.close();
   });
 });
