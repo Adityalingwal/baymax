@@ -118,3 +118,17 @@ describe("main's lines and voice", () => {
     ]);
   });
 });
+
+describe("closing the wiring", () => {
+  it("ends an open recording and ignores later holds", () => {
+    const w = wire();
+    w.wiring.voice.holdChanged("listening", null);
+    w.wiring.close();
+    w.wiring.voice.holdChanged("idle", "accept");
+    w.wiring.voice.holdChanged("listening", null);
+    expect(w.recordings.map((command) => command.type)).toEqual([
+      "start",
+      "stop",
+    ]);
+  });
+});

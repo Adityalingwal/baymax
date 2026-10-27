@@ -11,7 +11,7 @@ export type WiringDeps = Omit<MainStateDeps, "send" | "say" | "silence"> & {
   ipc: RendererIpc;
   isOwnSender: (sender: RendererSender) => boolean;
   fail: (error: unknown) => void; // the restart path
-  voice: Omit<VoiceDeps, "timers">;
+  voice: Omit<VoiceDeps, "timers" | "fail">;
 };
 
 export type Wiring = { state: MainState; voice: Voice; close: () => void };
@@ -20,7 +20,7 @@ export type Wiring = { state: MainState; voice: Voice; close: () => void };
 export function wireMain(deps: WiringDeps): Wiring {
   const { port, ipc, isOwnSender, fail, voice: voiceDeps, ...stateDeps } = deps;
   // Main's state speaks through voice and voice reports to main's state, so voice gets the state once both exist.
-  const voice = createVoice({ ...voiceDeps, timers: deps.timers });
+  const voice = createVoice({ ...voiceDeps, timers: deps.timers, fail });
   const state = createMainState({
     ...stateDeps,
     send: (command) => port.send(command),
@@ -43,6 +43,7 @@ export function wireMain(deps: WiringDeps): Wiring {
     closed = true;
     removeActions();
     unsubscribe();
+    voice.stop();
     port.close();
   };
   return { state, voice, close };

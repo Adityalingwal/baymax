@@ -1,6 +1,5 @@
 import type { Synthesis, Transcription } from "../providers/deepgram";
-import type { TaskId, UtteranceId } from "../shared/cards";
-import type { WaitingQuestion } from "../shared/engine";
+import type { TaskId } from "../shared/cards";
 import type {
   Clip,
   HoldState,
@@ -13,12 +12,11 @@ import type { HoldOutcome } from "./hold";
 import { createRecording } from "./recording";
 import type { Heard, NotCaughtCause } from "./recording";
 import { createSpeech } from "./speech";
-import type { MainState, SaidLine, Timers } from "./tasks/state";
+import type { SaidLine, Timers } from "./tasks/state";
+import { admit, createModel, setStt, tellHealth } from "./voice-model";
+import type { VoiceModel, VoiceState } from "./voice-model";
 
-export type VoiceState = Pick<
-  MainState,
-  "ask" | "waitingQuestion" | "setMuted" | "setVoiceAvailable" | "showNotice"
->;
+export type { VoiceState } from "./voice-model";
 
 export type VoiceDeps = {
   sendRecording: (command: RecordingCommand) => void;
@@ -29,6 +27,7 @@ export type VoiceDeps = {
   timers: Timers;
   now: () => number;
   log: (message: string) => void;
+  fail: (error: unknown) => void; // the restart path
   deepgramKeyPresent: boolean;
 };
 
@@ -41,29 +40,13 @@ export type Voice = {
   say(line: SaidLine): void;
   silence(taskId: TaskId): void;
   rendererReset(): void;
-};
-
-// The waiting question at key-down and the hold's place in time, kept until its words are delivered.
-type Admitted = { waiting: WaitingQuestion | null; order: number };
-
-type VoiceModel = {
-  state: VoiceState | null;
-  admitted: Map<UtteranceId, Admitted>;
-  nextOrder: number;
-  current: UtteranceId | null;
-  sttUp: boolean;
-  sttOrder: number;
-  ttsUp: boolean;
-  told: boolean;
-  releasedAt: number | null;
+  stop(): void;
 };
 
 type Flows = {
   recording: ReturnType<typeof createRecording>;
   speech: ReturnType<typeof createSpeech>;
 };
-
-const admittedLimit = 16;
 
 // Voice never throws into main's state or the hold key; a failing call is logged.
 function contained(deps: VoiceDeps, name: string, call: () => void): void {
@@ -74,13 +57,13 @@ function contained(deps: VoiceDeps, name: string, call: () => void): void {
   }
 }
 
-function admit(model: VoiceModel, utteranceId: UtteranceId): void {
-  const waiting = model.state?.waitingQuestion() ?? null;
-  model.admitted.set(utteranceId, { waiting, order: model.nextOrder });
-  model.nextOrder += 1;
-  if (model.admitted.size <= admittedLimit) return;
-  const oldest = model.admitted.keys().next();
-  if (oldest.done !== true) model.admitted.delete(oldest.value);
+// A throw from main's state outside an IPC or engine listener is a bug, so it goes to the restart path.
+function forwarded(deps: VoiceDeps, call: () => void): void {
+  try {
+    call();
+  } catch (error: unknown) {
+    deps.fail(error);
+  }
 }
 
 function sendRecording(
@@ -107,30 +90,6 @@ function sendSpeech(model: VoiceModel, deps: VoiceDeps, line: SpeechLine) {
   deps.sendSpeech(line);
 }
 
-function tellHealth(model: VoiceModel): void {
-  const up = model.sttUp && model.ttsUp;
-  const state = model.state;
-  if (state === null || up === model.told) return;
-  model.told = up;
-  state.setVoiceAvailable(up);
-}
-
-// An older utterance's result arriving late never overrides a newer one's.
-function setStt(
-  model: VoiceModel,
-  deps: VoiceDeps,
-  up: boolean,
-  order: number,
-) {
-  if (order <= model.sttOrder) {
-    deps.log("an older transcript result left STT health as it was");
-    return;
-  }
-  model.sttOrder = order;
-  model.sttUp = up;
-  tellHealth(model);
-}
-
 function notCaught(
   model: VoiceModel,
   deps: VoiceDeps,
@@ -140,14 +99,14 @@ function notCaught(
 ): void {
   switch (cause) {
     case "empty":
-      setStt(model, deps, true, order);
+      setStt(model, deps.log, true, order);
       return state.showNotice("wordsNotCaught");
     case "error":
       return state.showNotice("wordsNotCaught");
     case "unreachable":
     case "keyRejected":
     case "noCredit":
-      return setStt(model, deps, false, order);
+      return setStt(model, deps.log, false, order);
     case "permissionDenied":
       return state.showNotice("micBlocked");
     case "noMicrophone":
@@ -166,7 +125,7 @@ function receiveHeard(model: VoiceModel, deps: VoiceDeps, heard: Heard) {
   if (heard.kind === "notCaught") {
     return notCaught(model, deps, state, heard.cause, entry.order);
   }
-  setStt(model, deps, true, entry.order);
+  setStt(model, deps.log, true, entry.order);
   state.ask(heard.words, heard.utteranceId, entry.waiting);
 }
 
@@ -176,7 +135,8 @@ function holdChanged(
   flows: Flows,
   change: { holdState: HoldState; outcome: HoldOutcome | null },
 ): void {
-  if (change.holdState === "listening") {
+  model.held = change.holdState === "listening";
+  if (model.held) {
     model.releasedAt = null;
     // Recording discards a hold still open when a new one starts.
     if (model.current !== null) model.admitted.delete(model.current);
@@ -197,7 +157,7 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
   const recording = createRecording({
     sendRecording: (command) => sendRecording(model, deps, command),
     transcribe: deps.transcribe,
-    onHeard: (heard) => receiveHeard(model, deps, heard),
+    onHeard: (heard) => forwarded(deps, () => receiveHeard(model, deps, heard)),
   });
   const speech = createSpeech({
     synthesize: deps.synthesize,
@@ -205,25 +165,32 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
     sendStop: deps.sendStop,
     onVoiceAvailable: (available) => {
       model.ttsUp = available;
-      tellHealth(model);
+      forwarded(deps, () => tellHealth(model));
     },
     timers: deps.timers,
   });
   return { recording, speech };
 }
 
-function createModel(): VoiceModel {
-  return {
-    state: null,
-    admitted: new Map(),
-    nextOrder: 1,
-    current: null,
-    sttUp: true,
-    sttOrder: 0,
-    ttsUp: true,
-    told: true,
-    releasedAt: null,
-  };
+function forgetRenderer(model: VoiceModel, flows: Flows): void {
+  flows.recording.rendererReset();
+  flows.speech.rendererReset();
+  model.admitted.clear();
+  model.current = null;
+  // The key may still be down, and nothing may be spoken while it is.
+  if (model.held) flows.speech.holdStarted();
+}
+
+// Restarting: the open recording ends, late transcripts are dropped, and speech may still say the restart line.
+function stopVoice(model: VoiceModel, flows: Flows): void {
+  if (model.stopped) return;
+  model.stopped = true;
+  flows.recording.holdEnded("discard");
+  flows.recording.rendererReset();
+  model.admitted.clear();
+  model.current = null;
+  model.held = false;
+  flows.speech.holdEnded();
 }
 
 // Joins recording and speech to main's state; main's state is built with say and silence first, then given here by start.
@@ -234,6 +201,7 @@ export function createVoice(deps: VoiceDeps): Voice {
   const withState = (name: string, call: (state: VoiceState) => void) => {
     const state = model.state;
     if (state === null) return deps.log(`${name} before start: ignored`);
+    if (model.stopped) return deps.log(`${name} after stop: ignored`);
     call(state);
   };
   return {
@@ -259,11 +227,7 @@ export function createVoice(deps: VoiceDeps): Voice {
     say: (line) => contained(deps, "say", () => speech.speak(line)),
     silence: (taskId) =>
       contained(deps, "silence", () => speech.cancelTask(taskId)),
-    rendererReset: () => {
-      recording.rendererReset();
-      speech.rendererReset();
-      model.admitted.clear();
-      model.current = null;
-    },
+    rendererReset: () => forgetRenderer(model, flows),
+    stop: () => stopVoice(model, flows),
   };
 }

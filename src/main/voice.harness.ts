@@ -19,16 +19,22 @@ export type Asked = {
 function fakeState() {
   const calls: string[] = [];
   const asked: Asked[] = [];
-  const control = { waiting: null as WaitingQuestion | null };
+  const control = {
+    waiting: null as WaitingQuestion | null,
+    stateFails: false,
+  };
   const state: VoiceState = {
     ask: (words, utteranceId, waiting) => {
+      if (control.stateFails) throw new Error("ask broke");
       asked.push({ words, utteranceId, waiting });
       calls.push(`ask ${words}`);
     },
     waitingQuestion: () => control.waiting,
     setMuted: (muted) => calls.push(`muted ${String(muted)}`),
-    setVoiceAvailable: (available) =>
-      calls.push(`voiceAvailable ${String(available)}`),
+    setVoiceAvailable: (available) => {
+      if (control.stateFails) throw new Error("voice state broke");
+      calls.push(`voiceAvailable ${String(available)}`);
+    },
     showNotice: (notice) => calls.push(`notice ${notice}`),
   };
   return { state, calls, asked, control };
@@ -47,6 +53,7 @@ export function createHarness(options: Options = {}) {
     timeline: [] as string[],
     transcriptions: [] as Deferred<Transcription>[],
     syntheses: [] as Deferred<Synthesis>[],
+    failures: [] as string[],
   };
   const control = { now: 0, recordingFails: false };
   const voice = createVoice({
@@ -62,11 +69,14 @@ export function createHarness(options: Options = {}) {
     },
     transcribe: () =>
       new Promise((resolve) => seen.transcriptions.push({ text: "", resolve })),
-    synthesize: (text) =>
-      new Promise((resolve) => seen.syntheses.push({ text, resolve })),
+    synthesize: (text) => {
+      seen.timeline.push(`synthesize ${text}`);
+      return new Promise((resolve) => seen.syntheses.push({ text, resolve }));
+    },
     timers: { setTimer: clock.setTimer },
     now: () => control.now,
     log: (message) => seen.logs.push(message),
+    fail: (error) => seen.failures.push(String(error)),
     deepgramKeyPresent: options.deepgramKeyPresent ?? true,
   });
   if (options.started ?? true) voice.start(fake.state);

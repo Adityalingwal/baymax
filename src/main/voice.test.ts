@@ -58,7 +58,11 @@ describe("hold routing", () => {
     await synthesized(h, 0, audio);
     expect(h.speeches).toHaveLength(1);
     h.voice.holdChanged("listening", null);
-    expect(h.timeline).toEqual(["stop playback", "recording start"]);
+    expect(h.timeline).toEqual([
+      "synthesize Hello.",
+      "stop playback",
+      "recording start",
+    ]);
   });
 
   it("stops the recording at release, then lets speech resume", () => {
@@ -67,11 +71,11 @@ describe("hold routing", () => {
     h.voice.say(line("Hello."));
     expect(h.syntheses).toHaveLength(0);
     h.voice.holdChanged("idle", "accept");
-    expect(h.recordings.map((command) => command.type)).toEqual([
-      "start",
-      "stop",
+    expect(h.timeline).toEqual([
+      "recording start",
+      "recording stop",
+      "synthesize Hello.",
     ]);
-    expect(h.syntheses).toHaveLength(1);
   });
 
   it("keeps working when the recording send throws", () => {

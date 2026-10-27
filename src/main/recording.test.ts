@@ -192,3 +192,14 @@ describe("transcription input", () => {
     expect(h.transcribe).toHaveBeenCalledWith(clip.audio, clip.mimeType);
   });
 });
+
+describe("clips that never come", () => {
+  it("keeps the outcomes of the last sixteen holds only", () => {
+    const h = createHarness();
+    const ids = Array.from({ length: 17 }, () => hold(h, "accept"));
+    h.flow.clipArrived(recorded(ids[0]));
+    expect(h.transcribe).not.toHaveBeenCalled();
+    h.flow.clipArrived(recorded(ids[1]));
+    expect(h.transcribe).toHaveBeenCalledTimes(1);
+  });
+});

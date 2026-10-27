@@ -28,6 +28,7 @@ const restart = createRestart({
   showNotice: () => wiring?.state.showNotice("restarting"),
   stopWork: () => {
     workStopped = true;
+    stopHoldKey();
     wiring?.close();
   },
   relaunch: (args) => app.relaunch({ args }),
