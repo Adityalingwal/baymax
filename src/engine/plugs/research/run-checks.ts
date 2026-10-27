@@ -131,6 +131,7 @@ async function judged(
 function statusEvent(run: CheckRun, answer: Answer): EngineEvent {
   const { taskId } = run.task;
   const card = answerFindings(answer, run.pages());
+  run.built(card);
   const findings = card.cardText.trim() === "" ? null : card;
   const { status, nextQuestion } = answer;
   if (status === "needsUser" && nextQuestion !== null) {
