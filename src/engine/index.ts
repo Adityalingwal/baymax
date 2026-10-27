@@ -7,15 +7,16 @@ import type {
   EnginePort,
   EngineStartOptions,
 } from "../shared/engine";
-import { guardLog, messageOf, writeDevLog } from "./core/dev-log";
+import { guardLog, writeDevLog } from "./core/dev-log";
 import type { DevLog } from "./core/dev-log";
 import type { DispatchDeps } from "./core/dispatch";
+import { cancelHold, closeHolds, createHolds, startHold } from "./core/holds";
+import type { Holds } from "./core/holds";
 import { runIntake } from "./core/intake";
 import type { IntakeResult } from "./core/intake";
 import type { IntakeCommand } from "./core/intake-prompt";
 import { createTaskBudget } from "./core/limits";
 import { createPort } from "./core/port";
-import type { PortSide } from "./core/port";
 
 export type EngineFakes = {
   model?: ModelCall; // replaces the real Anthropic call (src/providers/anthropic.ts)
@@ -23,13 +24,7 @@ export type EngineFakes = {
   log?: DevLog; // replaces the dev log
 };
 
-type Hold = { controller: AbortController; settled: Promise<void> };
-
-type Engine = {
-  deps: DispatchDeps;
-  holds: Map<TaskId, Hold>;
-  side: PortSide;
-};
+type Engine = { deps: DispatchDeps; holds: Holds };
 
 function eventFor(taskId: TaskId, result: IntakeResult): EngineEvent | null {
   if (result.kind === "intake") {
@@ -41,58 +36,16 @@ function eventFor(taskId: TaskId, result: IntakeResult): EngineEvent | null {
   return null;
 }
 
-// Catches everything, so the hold's settled promise never rejects.
-async function runCommand(
-  engine: Engine,
-  command: IntakeCommand,
-  controller: AbortController,
-): Promise<void> {
-  const { taskId } = command;
-  let event: EngineEvent | null;
-  try {
-    const budget = createTaskBudget();
-    const job = {
-      taskId,
-      role: "intake" as const,
-      budget,
-      signal: controller.signal,
-    };
-    event = eventFor(taskId, await runIntake(engine.deps, job, command));
-  } catch (error) {
-    engine.deps.log({
-      event: "commandError",
-      taskId,
-      message: messageOf(error),
-    });
-    event = { type: "failure", taskId, kind: "error" };
-  }
-  engine.holds.delete(taskId);
-  if (event !== null && !controller.signal.aborted) engine.side.emit(event);
-}
-
 function startIntake(engine: Engine, command: IntakeCommand): void {
-  if (engine.holds.has(command.taskId)) {
-    engine.deps.log({ event: "duplicateTask", taskId: command.taskId });
-    return;
-  }
-  const controller = new AbortController();
-  const hold: Hold = { controller, settled: Promise.resolve() };
-  engine.holds.set(command.taskId, hold);
-  hold.settled = runCommand(engine, command, controller);
-}
-
-function cancelTask(engine: Engine, taskId: TaskId): void {
-  const cancelled: EngineEvent = { type: "cancelled", taskId, findings: null };
-  const held = engine.holds.get(taskId);
-  if (held === undefined) {
-    engine.side.emitLater(cancelled);
-    return;
-  }
-  held.controller.abort();
-  held.settled.then(
-    () => engine.side.emit(cancelled),
-    () => undefined,
-  );
+  const { taskId } = command;
+  startHold(engine.holds, taskId, {
+    start: async (signal) => {
+      const budget = createTaskBudget();
+      const job = { taskId, role: "intake" as const, budget, signal };
+      return eventFor(taskId, await runIntake(engine.deps, job, command));
+    },
+    onThrow: { type: "failure", taskId, kind: "error" },
+  });
 }
 
 function receive(engine: Engine, command: EngineCommand): void {
@@ -102,10 +55,10 @@ function receive(engine: Engine, command: EngineCommand): void {
       startIntake(engine, command);
       return;
     case "cancel":
-      cancelTask(engine, command.taskId);
+      cancelHold(engine.holds, command.taskId);
       return;
     case "runTask":
-      engine.side.emitLater({
+      engine.holds.side.emitLater({
         type: "incomplete",
         taskId: command.taskId,
         incomplete: { kind: "error", cause: "error", findings: null },
@@ -130,16 +83,12 @@ export function startEngine(
     now: fakes.now ?? (() => performance.now()),
     log,
   };
-  const holds = new Map<TaskId, Hold>();
   const side = createPort({
     log,
-    // receive runs only on a later send, after engine below exists.
+    // receive and close run only on a later call, after engine below exists.
     receive: (command) => receive(engine, command),
-    close: () => {
-      for (const hold of holds.values()) hold.controller.abort();
-      holds.clear();
-    },
+    close: () => closeHolds(engine.holds),
   });
-  const engine: Engine = { deps, holds, side };
+  const engine: Engine = { deps, holds: createHolds(log, side) };
   return side.port;
 }

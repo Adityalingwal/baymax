@@ -102,7 +102,7 @@ export function startTestEngine(steps: FakeStep[]) {
   const events: EngineEvent[] = [];
   let clock = 0;
   const model: ModelCall = async (request, options) => {
-    requests.push(request);
+    requests.push(structuredClone(request));
     clock += 250;
     const step = steps.shift();
     if (step === undefined) throw new Error("no fake model step left");
