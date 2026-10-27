@@ -50,6 +50,9 @@ describe("startEngine intake request", () => {
     expect(request.output_config?.effort).toBe("low");
     expect(request.output_config?.format?.type).toBe("json_schema");
     expect(JSON.stringify(request.messages)).toContain(words);
+    expect(request.system).toContain(
+      "The earlier exchange may still be waiting or running, or may have ended incomplete or cancelled; it is still a followUp.",
+    );
     expect(routeEnum(request)).toEqual([
       "newTask",
       "followUp",
