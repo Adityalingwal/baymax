@@ -1,32 +1,56 @@
 import { uIOhook } from "uiohook-napi";
 import type { UiohookKeyboardEvent } from "uiohook-napi";
 import type { HoldState } from "../shared/ipc";
-import { createHoldTracker } from "./hold";
+import { createHoldTracker, holdLimits } from "./hold";
+import type { HoldOutcome } from "./hold";
 import { holdKeyLabel, holdKeys } from "./platform";
+
+type HoldChangeCallback = (
+  state: HoldState,
+  outcome: HoldOutcome | null,
+) => void;
 
 const tracker = createHoldTracker(holdKeys);
 let hookRunning = false;
-let holdChangeCallback: ((state: HoldState) => void) | null = null;
+let holdChangeCallback: HoldChangeCallback | null = null;
+let capTimer: ReturnType<typeof setTimeout> | null = null;
 
-function reportHoldChange(state: HoldState | null): void {
-  if (state === null) return;
-  console.log(
-    state === "listening"
-      ? "[Hotkey] Listening started"
-      : "[Hotkey] Listening stopped",
+function clearCapTimer(): void {
+  if (capTimer === null) return;
+  clearTimeout(capTimer);
+  capTimer = null;
+}
+
+function reportListening(): void {
+  clearCapTimer();
+  capTimer = setTimeout(
+    () => reportHoldEnd(tracker.endAtCap(), true),
+    holdLimits.longestMs,
   );
-  holdChangeCallback?.(state);
+  console.log("[Hotkey] Listening started");
+  holdChangeCallback?.("listening", null);
+}
+
+function reportHoldEnd(outcome: HoldOutcome | null, atCap: boolean): void {
+  if (outcome === null) return;
+  clearCapTimer();
+  console.log("[Hotkey] Listening stopped");
+  if (atCap) console.log("[Hotkey] Hold ended at the cap");
+  if (outcome === "discard") console.log("[Hotkey] Hold discarded");
+  holdChangeCallback?.("idle", outcome);
 }
 
 function onKeyDown(event: UiohookKeyboardEvent): void {
-  reportHoldChange(tracker.keyDown(event.keycode));
+  const now = performance.now();
+  if (tracker.keyDown(event.keycode, now) === "listening") reportListening();
 }
 
 function onKeyUp(event: UiohookKeyboardEvent): void {
-  reportHoldChange(tracker.keyUp(event.keycode));
+  const now = performance.now();
+  reportHoldEnd(tracker.keyUp(event.keycode, now), false);
 }
 
-export function startHoldKey(onHoldChange: (state: HoldState) => void): void {
+export function startHoldKey(onHoldChange: HoldChangeCallback): void {
   if (hookRunning) return;
   console.log("[Hotkey] Starting hotkey listener...");
   console.log(
@@ -48,6 +72,7 @@ export function stopHoldKey(): void {
   // uIOhook.stop() keeps JS listeners, so a later start would register them twice.
   uIOhook.removeListener("keydown", onKeyDown);
   uIOhook.removeListener("keyup", onKeyUp);
+  clearCapTimer();
   tracker.reset();
   hookRunning = false;
 }
