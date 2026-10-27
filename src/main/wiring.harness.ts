@@ -126,13 +126,11 @@ const audioOf = (text: string): Synthesis => ({
   mimeType: "audio/mpeg",
 });
 
-// Plays syntheses oldest first, as Deepgram and the renderer would.
 function playback(
   seen: ReturnType<typeof fakeVoice>["seen"],
   send: (channel: string, payload?: unknown) => void,
 ) {
   let settled = 0;
-  // Settles the oldest unsettled synthesis; returns the line it put on the speaker, if any.
   const settleNext = async (): Promise<SpeechLine | undefined> => {
     const job = seen.syntheses.at(settled);
     if (job === undefined) throw new Error("no synthesis to settle");

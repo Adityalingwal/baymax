@@ -36,19 +36,30 @@ describe("an ended card stays until the user acts", () => {
   );
 
   it.each(endedRows)(
-    "folds, unfolds and closes a $name card",
+    "folds a $name card and keeps it shown",
     ({ name, end }) => {
       const w = wire();
       end(w);
       fold(w, true);
       expect(w.card("t1")).toMatchObject({ state: name, folded: true });
-      fold(w, false);
-      expect(w.card("t1")).toMatchObject({ state: name, folded: false });
-      w.send(ipcChannels.closeCard, { taskId: "t1" });
-      expect(w.card("t1")).toBeUndefined();
-      expect(w.failures).toEqual([]);
     },
   );
+
+  it.each(endedRows)("reopens a folded $name card", ({ name, end }) => {
+    const w = wire();
+    end(w);
+    fold(w, true);
+    fold(w, false);
+    expect(w.card("t1")).toMatchObject({ state: name, folded: false });
+  });
+
+  it.each(endedRows)("removes a $name card on close", ({ end }) => {
+    const w = wire();
+    end(w);
+    w.send(ipcChannels.closeCard, { taskId: "t1" });
+    expect(w.card("t1")).toBeUndefined();
+    expect(w.failures).toEqual([]);
+  });
 });
 
 // t2 waits behind t1, so cancelling it ends it at once.

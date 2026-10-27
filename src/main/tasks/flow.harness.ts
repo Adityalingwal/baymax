@@ -59,7 +59,6 @@ export const questionReply = (fields: Record<string, unknown>): Outcome =>
     ...fields,
   });
 
-// A newTask intake reply with its start line and brief.
 export const newTaskReply = (sayBack: string): Outcome =>
   questionReply({
     sayBack,

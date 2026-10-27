@@ -47,14 +47,15 @@ describe("createModelCall during the retry wait", () => {
       signal: controller.signal,
     });
     await fake.failed;
-    // The rejection reaches the SDK's sleep within a few microtasks; this lands well inside it.
+    // Only microtasks run between the failed fetch and the SDK's sleep, so a timer fires inside the sleep.
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
     controller.abort();
     const outcome = await pending;
     const sinceFailure = performance.now() - fake.failedAt();
     await server.stop();
     expect(outcome.ok ? "ok" : outcome.failure).toBe("aborted");
-    expect(sinceFailure).toBeLessThan(shortestBackoffMs / 2);
+    // A sleep that ignored the abort would end no earlier than the shortest backoff after the failure.
+    expect(sinceFailure).toBeLessThan(shortestBackoffMs);
     expect(fake.calls()).toBe(1);
     expect(server.seen).toHaveLength(1);
   });

@@ -31,6 +31,15 @@ const rows: SpeechRow[] = [
     stopped: false,
   },
   {
+    name: "being synthesized after another line played",
+    taskId: "t2",
+    before: async (w) => {
+      await w.playNext();
+    },
+    spoken: [startLine],
+    stopped: false,
+  },
+  {
     name: "playing",
     taskId: "t1",
     before: async (w) => {
