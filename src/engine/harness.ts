@@ -96,7 +96,6 @@ function abortedWhen(signal: AbortSignal): Promise<ModelOutcome> {
 }
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
-const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 2));
 
 // A test that runs out of model steps fails in settle, so a missing step is never taken for the expected task error.
 export function startTestEngine(steps: FakeStep[], fakes: EngineFakes = {}) {
@@ -129,10 +128,10 @@ export function startTestEngine(steps: FakeStep[], fakes: EngineFakes = {}) {
   port.onMessage((event) => {
     events.push(event);
   });
-  // Waits until the count arrived (up to about 3 s), then a few more turns so a stray extra event would show.
+  // Waits until the count arrived, then a few more turns so a stray extra event would show.
   const settle = async (count = 0) => {
-    for (let wait = 0; wait < 1500 && events.length < count; wait += 1) {
-      await pause();
+    for (let turn = 0; turn < 100 && events.length < count; turn += 1) {
+      await nextTurn();
     }
     for (let turn = 0; turn < 5; turn += 1) await nextTurn();
     if (stepsMissing > 0)

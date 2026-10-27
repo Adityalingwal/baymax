@@ -70,7 +70,9 @@ describe("runTask happy path", () => {
     expect(run.queries).toEqual(["hermes agent internals"]);
     expect(run.requests).toHaveLength(5);
   });
+});
 
+describe("runTask worker requests", () => {
   it("gives the worker the brief and only the search and read tools, behind a fixed prompt start", async () => {
     const run = await startRun(happySteps(), [hits(pageUrl("one"))]);
     run.port.send(runTask());
@@ -93,7 +95,9 @@ describe("runTask happy path", () => {
       expect(promptStart(request)).toBe(promptStart(first));
     }
   });
+});
 
+describe("runTask prompt start", () => {
   it("keeps the prompt start byte-identical between two tasks", async () => {
     const run = await startRun([
       { ok: false, failure: "error", detail: "x" },
@@ -122,7 +126,9 @@ describe("runTask happy path", () => {
       content: [thinkingBlock, { type: "tool_use", name: "search" }],
     });
   });
+});
 
+describe("runTask judge request", () => {
   it("sends the judge the brief, the answer and the cited pages, with no tools", async () => {
     const run = await startRun(happySteps(), [hits(pageUrl("one"))]);
     run.port.send(runTask());
