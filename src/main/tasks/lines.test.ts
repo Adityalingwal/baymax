@@ -21,6 +21,14 @@ const fixedRows: { name: keyof typeof fixedLines; line: string }[] = [
   { name: "outsideResearch", line: "I can't do that yet in this version." },
   { name: "wordsNotCaught", line: "I didn't catch that, say it again." },
   {
+    name: "micBlocked",
+    line: "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question.",
+  },
+  {
+    name: "noMicrophone",
+    line: "I can't find a microphone. Connect one, or type your question.",
+  },
+  {
     name: "voiceUnavailable",
     line: "Voice isn't working right now. You can type your question instead.",
   },

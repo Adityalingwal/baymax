@@ -209,6 +209,8 @@ It checks support and completion, not truth.
 | Failure | Line |
 | --- | --- |
 | Words not caught | "I didn't catch that, say it again." |
+| Microphone blocked | "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question." |
+| No microphone | "I can't find a microphone. Connect one, or type your question." |
 | Voice unavailable | "Voice isn't working right now. You can type your question instead." |
 | Models unreachable | "I can't reach my models right now. Try again in a few minutes." |
 | Search not working | "Search isn't working right now. Try again in a few minutes." |

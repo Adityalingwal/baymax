@@ -12,6 +12,7 @@ import type {
 import type { AnswerQuestion } from "../../shared/ipc";
 import { recentExchanges } from "./display";
 import { failureLine, fixedLines } from "./lines";
+import { clearOneOffNotice } from "./notices";
 import type { Change, Input, TaskRecord } from "./record";
 import {
   addRecord,
@@ -40,9 +41,7 @@ export function ask(
   const trimmed = words.trim();
   if (trimmed === "") return dropped(change, "empty words");
   const { model } = change;
-  if (model.notice === fixedLines.wordsNotCaught) {
-    model.notice = model.voiceAvailable ? null : fixedLines.voiceUnavailable;
-  }
+  clearOneOffNotice(model);
   const taskId = newTaskId();
   const record = addRecord(model, taskId, trimmed);
   hold(change, record, {

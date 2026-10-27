@@ -18,7 +18,8 @@ import {
   failIntake,
   retryTask,
 } from "./intake";
-import { fixedLines } from "./lines";
+import { setVoiceAvailable, showNotice } from "./notices";
+import type { Notice } from "./notices";
 import type {
   Change,
   Input,
@@ -34,7 +35,6 @@ import {
   dropped,
   holdsIntake,
   isEnded,
-  say,
   showNextQuestion,
 } from "./record";
 import {
@@ -78,7 +78,7 @@ export type MainState = {
   openSource: (payload: OpenSource) => void;
   setMuted: (muted: boolean) => void;
   setVoiceAvailable: (available: boolean) => void;
-  showNotice: (notice: "wordsNotCaught" | "restarting") => void;
+  showNotice: (notice: Notice) => void;
   receive: (event: EngineEvent) => void;
   displayState: () => DisplayState;
 };
@@ -249,33 +249,5 @@ function isWebUrl(url: string): boolean {
 function setMuted(change: Change, muted: boolean): boolean {
   if (change.model.muted === muted) return dropped(change, "same muted");
   change.model.muted = muted;
-  return true;
-}
-
-function setVoiceAvailable(change: Change, available: boolean): boolean {
-  const { model } = change;
-  if (model.voiceAvailable === available) {
-    return dropped(change, "same voice availability");
-  }
-  model.voiceAvailable = available;
-  if (!available && model.notice === null) {
-    model.notice = fixedLines.voiceUnavailable;
-  }
-  if (available && model.notice === fixedLines.voiceUnavailable) {
-    model.notice = null;
-  }
-  return true;
-}
-
-function showNotice(
-  change: Change,
-  notice: "wordsNotCaught" | "restarting",
-): boolean {
-  const { model } = change;
-  if (model.notice === fixedLines.restarting) {
-    return dropped(change, `notice ${notice} after restarting`);
-  }
-  model.notice = fixedLines[notice];
-  say(change, null, model.notice, "notice");
   return true;
 }
