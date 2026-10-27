@@ -156,10 +156,14 @@ const withoutOpenPoints = Object.fromEntries(
   Object.entries(goodAnswer).filter(([key]) => key !== "openPoints"),
 );
 
-const malformedAnswers: { name: string; step: ModelOutcome }[] = [
-  { name: "max_tokens", step: reply(answerJson, "max_tokens") },
+// Stop reasons that are no answer turn end the run at once, with no retry round.
+const unanswered: { name: string; step: ModelOutcome }[] = [
   { name: "refusal", step: reply(answerJson, "refusal") },
   { name: "pause_turn", step: reply(answerJson, "pause_turn") },
+];
+
+const malformedAnswers: { name: string; step: ModelOutcome }[] = [
+  { name: "max_tokens", step: reply(answerJson, "max_tokens") },
   { name: "invalid JSON", step: reply("{ not json", "end_turn") },
   {
     name: "a missing field",
@@ -207,10 +211,18 @@ describe("runTask active time", () => {
 });
 
 describe("runTask malformed answers", () => {
-  it.each(malformedAnswers)("ends error on $name", async (row) => {
+  it.each(unanswered)("ends error at once on $name", async (row) => {
     const { last } = await runOf([row.step]);
     expect(last).toEqual([errorEnd]);
   });
+
+  it.each(malformedAnswers)(
+    "ends error on $name twice when nothing was found",
+    async (row) => {
+      const { last } = await runOf([row.step, row.step]);
+      expect(last).toEqual([errorEnd]);
+    },
+  );
 });
 
 const malformedCalls: { name: string; step: ModelOutcome }[] = [

@@ -107,7 +107,7 @@ const codeRows: CodeRow[] = [
     part: "citations to pages that were not read",
     findings: {
       ...goodFindings,
-      cardText: `A loop ${linked("s1", "one")} and memory [s7].`,
+      cardText: `A loop ${linked("s1", "one")} and memory .`,
       sources: [one],
     },
   },
@@ -126,11 +126,13 @@ const codeRows: CodeRow[] = [
   },
 ];
 
+// The retry round's answer fails the same way, so the second check ends the run.
 describe("runTask code check", () => {
   it.each(codeRows)(
-    "fails rule $name, without calling the judge",
+    "fails rule $name twice, without calling the judge",
     async (row) => {
-      const event = await finalEvent(readTwo(workerAnswer(row.answer)));
+      const failing = workerAnswer(row.answer);
+      const event = await finalEvent(readTwo(failing, failing));
       expect(event).toEqual(unchecked(row.part, row.findings));
     },
   );
@@ -153,7 +155,7 @@ const withText = (
   message: fakeMessage(text, { stopReason }),
 });
 
-const judgeRows: JudgeRow[] = [
+const failedVerdicts: JudgeRow[] = [
   {
     name: "goalMet false with its part",
     verdict: verdictReply({ goalMet: false, uncheckedPart: "the price" }),
@@ -169,6 +171,10 @@ const judgeRows: JudgeRow[] = [
     verdict: verdictReply({ spokenLineBacked: false, uncheckedPart: " " }),
     part: "whether the spoken line is backed by the card",
   },
+];
+
+// A judge that fails its own call gets no retry round.
+const brokenJudges: JudgeRow[] = [
   {
     name: "a verdict with an extra field",
     verdict: verdictReply({ reason: "x" }),
@@ -198,12 +204,18 @@ const judgeRows: JudgeRow[] = [
 ];
 
 describe("runTask judge", () => {
-  it.each(judgeRows)("ends unchecked on $name", async (row) => {
+  it.each(failedVerdicts)("ends unchecked on $name twice", async (row) => {
+    const steps = readTwo(workerAnswer(), row.verdict, workerAnswer());
+    const event = await finalEvent([...steps, row.verdict]);
+    expect(event).toEqual(unchecked(row.part, goodFindings));
+  });
+
+  it.each(brokenJudges)("ends unchecked at once on $name", async (row) => {
     const event = await finalEvent(readTwo(workerAnswer(), row.verdict));
     expect(event).toEqual(unchecked(row.part, goodFindings));
   });
 
-  it("ends limitHit with no findings when the judge call would cross a limit", async () => {
+  it("ends limitHit with the checked card when the judge call would cross a limit", async () => {
     const costly: ModelOutcome = {
       ok: true,
       message: fakeMessage(JSON.stringify(goodAnswer), {
@@ -214,7 +226,7 @@ describe("runTask judge", () => {
     expect(event).toEqual({
       type: "incomplete",
       taskId: "task-1",
-      incomplete: { kind: "limitHit", findings: null },
+      incomplete: { kind: "limitHit", findings: goodFindings },
     });
   });
 });

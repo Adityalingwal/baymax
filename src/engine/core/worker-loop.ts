@@ -14,8 +14,10 @@ type WorkerPrompt = {
   effort: Anthropic.OutputConfig["effort"];
 };
 
+// An answer turn ends the round; "cutOff" is one stopped at the output ceiling, whose text is not whole.
 type LoopOutcome =
   | { kind: "answer"; text: string }
+  | { kind: "cutOff" }
   | { kind: "end"; ending: LoopEnding }
   | { kind: "aborted" };
 
@@ -23,7 +25,6 @@ type WorkerLoop = {
   deps: DispatchDeps;
   job: DispatchJob;
   prompt: WorkerPrompt;
-  firstMessage: string;
   runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
 };
 
@@ -44,7 +45,12 @@ function dispatchEnding(
     : { kind: "end", ending: { kind: "error", cause } };
 }
 
+// A cut-off tool call cannot be followed by plain text, so it ends the run instead of a retry.
 function answerOf(message: Anthropic.Message): LoopOutcome {
+  if (message.stop_reason === "max_tokens") {
+    const calls = message.content.some((block) => block.type === "tool_use");
+    return calls ? failed : { kind: "cutOff" };
+  }
   const texts = message.content.filter((block) => block.type === "text");
   if (texts.length !== 1 || texts[0].type !== "text") return failed;
   return { kind: "answer", text: texts[0].text };
@@ -85,11 +91,12 @@ async function toolTurn(
 }
 
 // Ends only by an answer, an ending or abort; dispatch's model-call limit bounds the steps.
-export async function runWorkerLoop(loop: WorkerLoop): Promise<LoopOutcome> {
+// It only appends to the caller's history, so a later round goes on in the same conversation.
+export async function runWorkerLoop(
+  loop: WorkerLoop,
+  history: Anthropic.MessageParam[],
+): Promise<LoopOutcome> {
   const { deps, job } = loop;
-  const history: Anthropic.MessageParam[] = [
-    { role: "user", content: loop.firstMessage },
-  ];
   for (;;) {
     const outcome = await dispatch(
       deps,
@@ -100,7 +107,8 @@ export async function runWorkerLoop(loop: WorkerLoop): Promise<LoopOutcome> {
     if (!outcome.ok) return dispatchEnding(outcome);
     const { message } = outcome;
     history.push({ role: "assistant", content: message.content });
-    if (message.stop_reason === "end_turn") return answerOf(message);
+    const { stop_reason: stop } = message;
+    if (stop === "end_turn" || stop === "max_tokens") return answerOf(message);
     if (message.stop_reason !== "tool_use") return failed;
     const turn = await toolTurn(loop, message);
     if (job.signal.aborted || turn.kind === "aborted") {
