@@ -2,7 +2,7 @@
 
 Voice-first personal AI assistant: hold one key, speak, and your work goes to the agent you choose.
 
-Status: typed path (27 Oct 2026). Type a question in the window and Baymax researches it on the web: a card shows the start line, the progress, and then the checked answer with its sources. The hold-key still only shows *Listening…* and *Idle*; voice is not wired yet.
+Status: voice in the task flow (27 Oct 2026). Hold the hold-key (Option on macOS), ask a question and release, or type it in the window; Baymax researches it on the web: a card shows the start line, the progress, and then the checked answer with its sources, and Baymax speaks the start line and a short answer.
 
 ## Requirements
 

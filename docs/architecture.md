@@ -276,12 +276,13 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/platform.ts` | Platform flags and labels |
 | `src/main/recording.ts` | One utterance: recording commands, the clip, the transcript; discarded clips and late transcripts dropped |
 | `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, voice-down reported |
+| `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line timing |
 | `src/main/window.ts` | The Baymax window: creation, navigation and pop-ups blocked |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
 | `src/main/env-file.ts` | Reads `.env` from the app path into the environment once; a name the shell already set keeps its value |
 | `src/main/restart.ts` | The restart path: the restarting line, work stopped, one relaunch after a short delay, and the loop guard |
-| `src/main/wiring.ts` | Connects main's state to the engine port and the renderer actions; a state throw goes to the restart path |
-| `src/main/renderer-actions.ts` | The renderer -> main actions: sender and payload checks, then one state call each |
+| `src/main/wiring.ts` | Connects main's state to voice, the engine port and the renderer actions; a state throw goes to the restart path |
+| `src/main/renderer-actions.ts` | The renderer -> main actions: sender and payload checks, then one state or voice call each |
 | `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime and the fixed lines, through one update path |
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |
