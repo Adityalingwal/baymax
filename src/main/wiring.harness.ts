@@ -2,7 +2,7 @@ import type { Synthesis, Transcription } from "../providers/deepgram";
 import type { DisplayState, TaskId } from "../shared/cards";
 import type { EngineCommand, EngineEvent, EnginePort } from "../shared/engine";
 import { ipcChannels } from "../shared/ipc";
-import type { RecordingCommand, SpeechLine } from "../shared/ipc";
+import type { RecordingCommand, SpeechLine, StopPlayback } from "../shared/ipc";
 import type { RendererListener, RendererSender } from "./renderer-actions";
 import { createClock, findings, intake, newTask } from "./tasks/harness";
 import { wireMain } from "./wiring";
@@ -11,15 +11,24 @@ type Options = {
   sendFails?: (command: EngineCommand) => boolean;
   idFails?: boolean;
   deepgramKeyPresent?: boolean;
+  voiceFails?: boolean; // transcription and synthesis answer a Deepgram failure
+  port?: EnginePort; // a real engine; the fake port records around it
 };
 
 type Pending<T> = { input: string; resolve: (result: T) => void };
 
-// Deepgram and the renderer sends faked; each call waits until a test settles it.
-function fakeVoice(deepgramKeyPresent: boolean) {
+const deepgramDown = {
+  kind: "failed",
+  cause: "unreachable",
+  detail: "x",
+} as const;
+
+// Deepgram and the renderer sends faked; each call waits until a test settles it, or fails at once when voice fails.
+function fakeVoice(deepgramKeyPresent: boolean, fails: boolean) {
   const seen = {
     recordings: [] as RecordingCommand[],
     speeches: [] as SpeechLine[],
+    stops: [] as StopPlayback[],
     transcriptions: [] as Pending<Transcription>[],
     syntheses: [] as Pending<Synthesis>[],
     voiceLogs: [] as string[],
@@ -27,16 +36,18 @@ function fakeVoice(deepgramKeyPresent: boolean) {
   const deps = {
     sendRecording: (command: RecordingCommand) => seen.recordings.push(command),
     sendSpeech: (line: SpeechLine) => seen.speeches.push(line),
-    sendStop: () => undefined,
+    sendStop: (payload: StopPlayback) => seen.stops.push(payload),
     transcribe: (audio: ArrayBuffer, mimeType: string) =>
       new Promise<Transcription>((resolve) => {
         const bytes = [...new Uint8Array(audio)].join(",");
         seen.transcriptions.push({ input: `${mimeType} ${bytes}`, resolve });
+        if (fails) resolve(deepgramDown);
       }),
     synthesize: (text: string) =>
-      new Promise<Synthesis>((resolve) =>
-        seen.syntheses.push({ input: text, resolve }),
-      ),
+      new Promise<Synthesis>((resolve) => {
+        seen.syntheses.push({ input: text, resolve });
+        if (fails) resolve(deepgramDown);
+      }),
     now: () => 0,
     log: (message: string) => seen.voiceLogs.push(message),
     deepgramKeyPresent,
@@ -44,14 +55,25 @@ function fakeVoice(deepgramKeyPresent: boolean) {
   return { seen, deps };
 }
 
-function fakePort(sendFails: (command: EngineCommand) => boolean) {
+// Records every command and event; with a real engine it forwards commands to it and passes on its events.
+function fakePort(
+  sendFails: (command: EngineCommand) => boolean,
+  real: EnginePort | null,
+) {
   const sent: EngineCommand[] = [];
+  const events: EngineEvent[] = [];
   let listeners: ((event: EngineEvent) => void)[] = [];
   let closes = 0;
+  const emit = (event: EngineEvent) => {
+    events.push(event);
+    [...listeners].forEach((l) => l(event));
+  };
+  real?.onMessage(emit);
   const port: EnginePort = {
     send: (command) => {
       if (sendFails(command)) throw new Error(`send ${command.type} broke`);
       sent.push(command);
+      real?.send(command);
     },
     onMessage: (listener) => {
       listeners.push(listener);
@@ -62,12 +84,14 @@ function fakePort(sendFails: (command: EngineCommand) => boolean) {
     // Counts only, so a test can tell the wiring's own unsubscribe from the port's.
     close: () => {
       closes += 1;
+      real?.close();
     },
   };
   return {
     port,
     sent,
-    emit: (event: EngineEvent) => [...listeners].forEach((l) => l(event)),
+    events,
+    emit,
     listeners: () => listeners.length,
     closes: () => closes,
   };
@@ -93,6 +117,46 @@ function fakeIpc() {
   return { ipc, call, count, removals: () => removals };
 }
 
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+// The fake audio of a line is its own text, so a test reads what was sent as speech.
+const audioOf = (text: string): Synthesis => ({
+  kind: "audio",
+  audio: new TextEncoder().encode(text).buffer,
+  mimeType: "audio/mpeg",
+});
+
+function playback(
+  seen: ReturnType<typeof fakeVoice>["seen"],
+  send: (channel: string, payload?: unknown) => void,
+) {
+  let settled = 0;
+  const settleNext = async (): Promise<SpeechLine | undefined> => {
+    const job = seen.syntheses.at(settled);
+    if (job === undefined) throw new Error("no synthesis to settle");
+    settled += 1;
+    const before = seen.speeches.length;
+    job.resolve(audioOf(job.input));
+    await flush();
+    return seen.speeches.at(before);
+  };
+  const playNext = async (): Promise<void> => {
+    const line = await settleNext();
+    if (line === undefined) return;
+    send(ipcChannels.playbackFinished, {
+      lineId: line.lineId,
+      outcome: "ended",
+    });
+  };
+  const playAll = async (): Promise<void> => {
+    for (let turn = 0; turn < 20 && settled < seen.syntheses.length; turn += 1)
+      await playNext();
+  };
+  const spoken = () =>
+    seen.speeches.map((line) => new TextDecoder().decode(line.audio));
+  return { settleNext, playNext, playAll, spoken };
+}
+
 export function fakeSender() {
   const received: [string, DisplayState][] = [];
   const sender: RendererSender = {
@@ -101,12 +165,21 @@ export function fakeSender() {
   return { sender, received };
 }
 
+function fakesFor(options: Options) {
+  return {
+    clock: createClock(),
+    port: fakePort(options.sendFails ?? (() => false), options.port ?? null),
+    ipc: fakeIpc(),
+    own: fakeSender(),
+    voice: fakeVoice(
+      options.deepgramKeyPresent ?? true,
+      options.voiceFails ?? false,
+    ),
+  };
+}
+
 export function wire(options: Options = {}) {
-  const clock = createClock();
-  const port = fakePort(options.sendFails ?? (() => false));
-  const ipc = fakeIpc();
-  const own = fakeSender();
-  const voice = fakeVoice(options.deepgramKeyPresent ?? true);
+  const { clock, port, ipc, own, voice } = fakesFor(options);
   const seen = {
     published: [] as DisplayState[],
     opened: [] as string[],
@@ -137,7 +210,19 @@ export function wire(options: Options = {}) {
     ipc.call(channel, payload, sender);
   const card = (taskId: TaskId) =>
     seen.published.at(-1)?.tasks.find((shown) => shown.taskId === taskId);
-  return { ...seen, ...voice.seen, wiring, port, ipc, own, send, card };
+  const speech = playback(voice.seen, send);
+  return {
+    ...seen,
+    ...voice.seen,
+    ...speech,
+    advance: clock.advance,
+    wiring,
+    port,
+    ipc,
+    own,
+    send,
+    card,
+  };
 }
 
 export type Wired = ReturnType<typeof wire>;
@@ -161,4 +246,10 @@ export function runToDone(w: Wired): void {
     spokenLine: "Hermes runs a loop.",
     findings: findings("Hermes runs a loop.", [source]),
   });
+}
+
+// Asks by the text box and admits the new card as a new task; taskId is the id the ask mints.
+export function admitAs(w: Wired, taskId: TaskId, sayBack: string): void {
+  w.send(ipcChannels.submitQuestion, { text: `tell me ${sayBack}` });
+  w.port.emit(intake(taskId, newTask(sayBack)));
 }

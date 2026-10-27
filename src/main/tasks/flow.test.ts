@@ -1,66 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { DisplayState, TaskCard } from "../../shared/cards";
 import type { EngineCommand, EnginePort } from "../../shared/engine";
-import { startEngine } from "../../engine/index";
-import type { EngineFakes } from "../../engine/index";
+import type { ModelRequest, Outcome } from "./flow.harness";
+import {
+  briefParts,
+  closePorts,
+  questionReply,
+  reply,
+  startFakeEngine,
+  until,
+  unreachable,
+} from "./flow.harness";
 import type { MainState, SaidLine } from "./state";
 import { createMainState } from "./state";
-
-type ModelCall = NonNullable<EngineFakes["model"]>;
-type ModelRequest = Parameters<ModelCall>[0];
-type Outcome = Awaited<ReturnType<ModelCall>>;
-type Message = Extract<Outcome, { ok: true }>["message"];
-
-// A Messages API response with one JSON text block, as the SDK returns it.
-function reply(fields: Record<string, unknown>): Outcome {
-  const message: Message = {
-    id: "msg_fake",
-    type: "message",
-    role: "assistant",
-    model: "claude-sonnet-5-5",
-    container: null,
-    diagnostics: null,
-    content: [{ type: "text", text: JSON.stringify(fields), citations: null }],
-    stop_reason: "end_turn",
-    stop_details: null,
-    stop_sequence: null,
-    usage: {
-      input_tokens: 100,
-      output_tokens: 50,
-      cache_creation: null,
-      cache_creation_input_tokens: null,
-      cache_read_input_tokens: null,
-      inference_geo: null,
-      output_tokens_details: null,
-      server_tool_use: null,
-      service_tier: null,
-      speed: null,
-    },
-  };
-  return { ok: true, message };
-}
-
-const briefParts = (goal: string) => ({
-  goal,
-  resultShape: "a short answer",
-  sources: "the web",
-  limits: "normal",
-});
-
-// An intake reply to a question command: all seven fields, unused ones null.
-const questionReply = (fields: Record<string, unknown>): Outcome =>
-  reply({
-    sayBack: "what was asked",
-    route: "newTask",
-    parentTaskId: null,
-    startLine: null,
-    brief: null,
-    clarify: null,
-    reply: null,
-    ...fields,
-  });
-
-const workerFails: Outcome = { ok: false, failure: "unreachable", detail: "x" };
 
 const clarify = questionReply({
   sayBack: "a good laptop",
@@ -76,24 +28,7 @@ const laptopTask = reply({
   brief: briefParts("Find a good office laptop"),
 });
 
-const ports: EnginePort[] = [];
-
-afterEach(() => {
-  for (const port of ports.splice(0)) port.close();
-});
-
-const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
-
-function fakeModel(steps: Outcome[]) {
-  const requests: ModelRequest[] = [];
-  const model: ModelCall = async (request) => {
-    requests.push(structuredClone(request));
-    const step = steps.shift();
-    if (step === undefined) throw new Error("no fake model step left");
-    return step;
-  };
-  return { model, requests };
-}
+afterEach(closePorts);
 
 // Main's state with recording deps; send records each command and forwards it to the engine.
 function mainStateOn(port: EnginePort) {
@@ -126,19 +61,9 @@ function firstText(request: ModelRequest): string {
   return typeof content === "string" ? content : "";
 }
 
-async function until(what: string, done: () => boolean): Promise<void> {
-  for (let turn = 0; turn < 100 && !done(); turn += 1) await nextTurn();
-  if (!done()) throw new Error(`timed out waiting for ${what}`);
-}
-
 // Main's state wired to the real engine; only the model is fake.
 function startFlow(steps: Outcome[]) {
-  const { model, requests } = fakeModel(steps);
-  const port = startEngine(
-    { anthropicKey: "test-key", searchKey: "" },
-    { model, today: () => "2026-10-27", now: () => 0, log: () => undefined },
-  );
-  ports.push(port);
+  const { port, requests } = startFakeEngine(steps);
   const main = mainStateOn(port);
   const card = (taskId: string): TaskCard | undefined =>
     main.state.displayState().tasks.find((task) => task.taskId === taskId);
@@ -166,7 +91,7 @@ const demoPairSteps = (): Outcome[] => [
     startLine: "Okay, looking at how Hermes works.",
     brief: briefParts("How the Hermes agent works inside"),
   }),
-  workerFails,
+  unreachable,
   questionReply({
     sayBack: "how Hermes differs from Claude Code",
     route: "followUp",
@@ -174,7 +99,7 @@ const demoPairSteps = (): Outcome[] => [
     startLine: "Okay, comparing them.",
     brief: briefParts("How Hermes differs from Claude Code"),
   }),
-  workerFails,
+  unreachable,
 ];
 
 describe("main and the engine joined: a follow-up", () => {
@@ -217,7 +142,7 @@ describe("main and the engine joined: a follow-up", () => {
 
 describe("main and the engine joined: a clarifying answer", () => {
   it("continues a clarifying task answered by a click", async () => {
-    const flow = startFlow([clarify, laptopTask, workerFails]);
+    const flow = startFlow([clarify, laptopTask, unreachable]);
     flow.state.ask("find me a good laptop", null, null);
     await flow.until(
       "the question",
@@ -243,7 +168,7 @@ describe("main and the engine joined: a clarifying answer", () => {
       route: "answer",
       reply: { choiceIndex: 1, text: null },
     });
-    const flow = startFlow([clarify, answer, laptopTask, workerFails]);
+    const flow = startFlow([clarify, answer, laptopTask, unreachable]);
     flow.state.ask("find me a good laptop", null, null);
     await flow.until(
       "the question",
