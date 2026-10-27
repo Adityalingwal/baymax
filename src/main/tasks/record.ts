@@ -46,6 +46,7 @@ export type Model = {
 export type Output =
   | { kind: "send"; command: EngineCommand }
   | { kind: "say"; line: SaidLine }
+  | { kind: "silence"; taskId: TaskId }
   | { kind: "timer"; ms: number; fire: Input };
 
 export type Change = {
@@ -129,6 +130,11 @@ export function say(
   kind: SaidKind,
 ): void {
   change.outputs.push({ kind: "say", line: { taskId, text, kind } });
+}
+
+// Drops the task's pending and playing speech; never pushed in a change that then says a line for that task.
+export function silence(change: Change, taskId: TaskId): void {
+  change.outputs.push({ kind: "silence", taskId });
 }
 
 export function setTimer(change: Change, ms: number, fire: Input): void {
@@ -217,7 +223,8 @@ export function endCancelled(
   card.answer = null;
   card.missing = null;
   card.canRetry = false;
-  if (line !== null) say(change, card.taskId, line, "failure");
+  if (line === null) silence(change, card.taskId);
+  else say(change, card.taskId, line, "failure");
   setTimer(change, LEAVE_MS, leave(card.taskId));
 }
 

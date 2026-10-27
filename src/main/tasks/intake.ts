@@ -23,6 +23,7 @@ import {
   holdsIntake,
   say,
   setTimer,
+  silence,
 } from "./record";
 
 const LET_ME_CHECK_MS = 1500;
@@ -118,6 +119,7 @@ function clarify(
 // Words that answer the waiting question are not a task, so their card goes at once.
 function removeThinkingCard(change: Change, record: TaskRecord): void {
   change.model.records.delete(record.card.taskId);
+  silence(change, record.card.taskId);
 }
 
 function validReply(

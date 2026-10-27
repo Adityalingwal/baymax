@@ -36,6 +36,7 @@ import {
   holdsIntake,
   isEnded,
   showNextQuestion,
+  silence,
 } from "./record";
 import {
   admit,
@@ -57,6 +58,7 @@ export type MainStateDeps = {
   send: (command: EngineCommand) => void;
   publish: (state: DisplayState) => void;
   say: (line: SaidLine) => void;
+  silence: (taskId: TaskId) => void;
   openUrl: (url: string) => Promise<void>;
   log: (message: string) => void;
   timers: Timers;
@@ -126,6 +128,8 @@ function createUpdatePath(
       deps.send(output.command);
     } else if (output.kind === "say") {
       guarded("say", () => deps.say(output.line));
+    } else if (output.kind === "silence") {
+      guarded("silence", () => deps.silence(output.taskId));
     } else {
       guarded("timer", () =>
         deps.timers.setTimer(output.ms, () => update(output.fire)),
@@ -200,6 +204,7 @@ function closeCard(change: Change, taskId: TaskId): boolean {
     return dropped(change, `close ${taskId}`);
   }
   record.shown = false;
+  silence(change, taskId);
   return true;
 }
 

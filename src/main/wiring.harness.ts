@@ -85,6 +85,7 @@ export function wire(options: Options = {}) {
     isOwnSender: (sender) => sender === own.sender,
     publish: (display) => seen.published.push(display),
     say: () => undefined,
+    silence: () => undefined,
     openUrl: (url) => {
       seen.opened.push(url);
       return Promise.resolve();

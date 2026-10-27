@@ -100,6 +100,7 @@ async function startEngineAndWiring(): Promise<Wiring> {
     },
     // The line text holds the user's words, so the log carries only its kind.
     say: (line) => console.info("[main]", `say ${line.kind} ${line.taskId}`),
+    silence: (taskId) => console.info("[main]", `silence ${taskId}`),
     openUrl: (url) => shell.openExternal(url),
     timers: {
       setTimer: (ms, fire) => {

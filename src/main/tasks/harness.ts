@@ -52,6 +52,7 @@ export type Harness = {
   published: DisplayState[];
   sent: EngineCommand[];
   said: SaidLine[];
+  silenced: TaskId[];
   logs: string[];
   opened: string[];
   timeline: string[];
@@ -66,7 +67,7 @@ export type Harness = {
 
 type Seen = Pick<
   Harness,
-  "published" | "sent" | "said" | "logs" | "opened" | "timeline"
+  "published" | "sent" | "said" | "silenced" | "logs" | "opened" | "timeline"
 >;
 type Controls = {
   reply: Reply;
@@ -99,6 +100,10 @@ function fakeDeps(
       seen.said.push(line);
       seen.timeline.push(`say ${line.kind}`);
     },
+    silence: (taskId) => {
+      seen.silenced.push(taskId);
+      seen.timeline.push(`silence ${taskId}`);
+    },
     openUrl: (url) => {
       seen.opened.push(url);
       const failure = controls.openFailure;
@@ -121,6 +126,7 @@ export function createHarness(): Harness {
     published: [],
     sent: [],
     said: [],
+    silenced: [],
     logs: [],
     opened: [],
     timeline: [],
