@@ -186,6 +186,26 @@ const malformedAnswers: { name: string; step: ModelOutcome }[] = [
   },
 ];
 
+describe("runTask active time", () => {
+  it("counts a tool batch's time as active time", async () => {
+    const sent: { queries: string[] } = { queries: [] };
+    const now = () => (sent.queries.length > 0 ? 130_000 : 0);
+    const run = await startRun(
+      [toolUseReply([{ search: "hermes" }])],
+      [hits(pageUrl("one"))],
+      now,
+    );
+    sent.queries = run.queries;
+    run.port.send(runTask());
+    expect(await run.ended()).toEqual([
+      expect.objectContaining({ type: "progress" }),
+      limitHit,
+    ]);
+    expect(run.queries).toEqual(["hermes"]);
+    expect(run.requests).toHaveLength(1);
+  });
+});
+
 describe("runTask malformed answers", () => {
   it.each(malformedAnswers)("ends error on $name", async (row) => {
     const { last } = await runOf([row.step]);
