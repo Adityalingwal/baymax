@@ -90,6 +90,9 @@ export function App() {
         state={state}
         demo={demo}
         setMuted={actions.setMuted}
+        openAccessibilitySettings={() =>
+          window.baymax.openAccessibilitySettings()
+        }
       />
       <section className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3">
         {state.tasks.map((card) => (

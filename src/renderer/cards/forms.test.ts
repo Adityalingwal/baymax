@@ -89,10 +89,14 @@ const groupCases: [string, Source[], [string, string[]][]][] = [
 
 describe("sourceGroups", () => {
   it.each(groupCases)("%s", (_name, sources, expected) => {
-    const groups = sourceGroups(sources).map((group): [string, string[]] => [
+    const groups = sourceGroups(sources).map((group) => [
       group.label,
-      group.sources.map((item) => item.id),
+      group.sources,
     ]);
-    expect(groups).toEqual(expected);
+    const whole = expected.map(([label, ids]) => [
+      label,
+      ids.map((id) => sources.find((item) => item.id === id)),
+    ]);
+    expect(groups).toEqual(whole);
   });
 });

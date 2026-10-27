@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { DisplayState, TaskCard, TaskState } from "../shared/cards";
 import { applyDemoAction, demoDisplayState, type DemoAction } from "./demo";
 
+// Frozen, so a reducer that mutates its input throws instead of passing.
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null) {
+    Object.values(value).forEach(deepFreeze);
+    Object.freeze(value);
+  }
+  return value;
+}
+deepFreeze(demoDisplayState);
+
 function find(state: DisplayState, taskId: string): TaskCard | undefined {
   return state.tasks.find((card) => card.taskId === taskId);
 }

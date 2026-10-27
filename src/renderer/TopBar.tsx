@@ -2,17 +2,18 @@ import type { DisplayState } from "../shared/cards";
 import type { HoldState } from "../shared/ipc";
 import type { CardActions } from "./actions";
 
-function AccessibilityHint() {
+function AccessibilityHint({ openSettings }: { openSettings: () => void }) {
   return (
     <div className="flex flex-col items-center gap-2">
-      <p className="text-xs text-amber-700">
+      <p className="text-xs text-amber-300">
         Grant Accessibility access to the running app, then restart. During{" "}
         <code>npm start</code> macOS may list it as Electron; packaged builds
         show Baymax.
       </p>
       <button
-        className="rounded bg-slate-800 px-3 py-1 text-xs text-white"
-        onClick={() => window.baymax.openAccessibilitySettings()}
+        type="button"
+        className="cursor-pointer rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-100 hover:bg-zinc-700"
+        onClick={openSettings}
       >
         Open Accessibility settings
       </button>
@@ -55,6 +56,7 @@ type TopBarProps = {
   state: DisplayState;
   demo: boolean;
   setMuted: CardActions["setMuted"];
+  openAccessibilitySettings: () => void;
 };
 
 function holdText(hold: HoldState, holdKeyLabel: string): string {
@@ -65,6 +67,7 @@ function holdText(hold: HoldState, holdKeyLabel: string): string {
 
 export function TopBar(props: TopBarProps) {
   const { hold, holdKeyLabel, accessibility, state, demo, setMuted } = props;
+  const { openAccessibilitySettings } = props;
   const listening = hold === "listening";
   return (
     <header className="flex flex-col gap-2 p-3">
@@ -85,7 +88,9 @@ export function TopBar(props: TopBarProps) {
           setMuted={setMuted}
         />
       </div>
-      {accessibility === false && <AccessibilityHint />}
+      {accessibility === false && (
+        <AccessibilityHint openSettings={openAccessibilitySettings} />
+      )}
       {state.notice !== null && (
         <p className="text-sm text-zinc-300">{state.notice}</p>
       )}
