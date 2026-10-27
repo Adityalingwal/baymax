@@ -17,7 +17,7 @@ import { createMainState } from "./state";
 type PendingTimer = { at: number; order: number; fire: () => void };
 
 // A manual clock: advancing fires every due timer in time order, then stops at the target.
-function createClock() {
+export function createClock() {
   let now = 0;
   let order = 0;
   let pending: PendingTimer[] = [];

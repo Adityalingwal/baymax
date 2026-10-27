@@ -2,7 +2,7 @@
 
 Voice-first personal AI assistant: hold one key, speak, and your work goes to the agent you choose.
 
-Status: skeleton: hold-key only (23 Oct 2026). Today the app opens one small window that shows *Listening…* while you hold the key and *Idle* when you release it.
+Status: typed path (27 Oct 2026). Type a question in the window and Baymax researches it on the web: a card shows the start line, the progress, and then the checked answer with its sources. The hold-key still only shows *Listening…* and *Idle*; voice is not wired yet.
 
 ## Requirements
 
@@ -17,6 +17,8 @@ cd baymax
 npm install
 npm start
 ```
+
+Before `npm start`, copy `.env.example` to `.env` in the project root and fill in the keys. Only main reads it. Keys set only in the shell are not kept across an automatic restart, because main removes them from its environment.
 
 First run on macOS: the hold-key needs Accessibility permission. Grant it in System Settings > Privacy & Security > Accessibility to the running app, then restart. During `npm start` macOS may list it as Electron; packaged builds show Baymax. The window has a button that opens that settings pane.
 
