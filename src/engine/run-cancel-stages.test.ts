@@ -146,3 +146,37 @@ describe("runTask cancel at each stage", () => {
     },
   );
 });
+
+const cancelledNull = { type: "cancelled", taskId: "task-1", findings: null };
+
+describe("runTask repeated cancel", () => {
+  // A cancel in every microtask until cancelled arrives also lands between the work settling and the delivery.
+  it("sends one cancelled when cancels keep coming until it arrives", async () => {
+    const run = await startRun(["waitForAbort"]);
+    run.port.send(runTask());
+    await until(() => run.requests.length === 1);
+    run.port.send(cancel);
+    for (let turn = 0; turn < 100; turn += 1) {
+      await Promise.resolve();
+      if (run.events.length > 0) break;
+      run.port.send(cancel);
+    }
+    expect(await run.ended()).toEqual([cancelledNull]);
+    expect(await run.settle(2)).toEqual([cancelledNull]);
+  });
+
+  it("sends one cancelled when a cancelled listener cancels again", async () => {
+    const run = await startRun(["waitForAbort"]);
+    let again = true;
+    run.port.onMessage((event) => {
+      if (event.type !== "cancelled" || !again) return;
+      again = false;
+      run.port.send(cancel);
+    });
+    run.port.send(runTask());
+    await until(() => run.requests.length === 1);
+    run.port.send(cancel);
+    expect(await run.ended()).toEqual([cancelledNull]);
+    expect(await run.settle(2)).toEqual([cancelledNull]);
+  });
+});

@@ -6,10 +6,8 @@ import type { PortSide } from "./port";
 
 type Hold = {
   controller: AbortController;
-  settled: Promise<void>;
   cancelling: boolean; // a cancelled event is already promised for this hold
   finished: boolean; // the work has ended; its terminal event is sent or dropped
-  found: Findings | null; // what the work had found when it settled, for its cancelled event
 };
 
 export type Holds = {
@@ -40,7 +38,7 @@ function foundBy(work: HeldWork): Findings | null {
   }
 }
 
-// Catches everything, so settled never rejects; the hold is the only sender of its task's terminal event.
+// Catches everything, so it never rejects; the hold is the only sender of its task's terminal event.
 async function settleHold(
   holds: Holds,
   taskId: TaskId,
@@ -54,10 +52,13 @@ async function settleHold(
     holds.log({ event: "commandError", taskId, message: messageOf(error) });
     event = work.onThrow(foundBy(work));
   }
-  hold.found = foundBy(work);
   hold.finished = true;
   // Sent while the hold is still held, so a cancel from a listener of this event finds it finished.
-  if (event !== null && !hold.controller.signal.aborted) holds.side.emit(event);
+  if (hold.cancelling) {
+    holds.side.emit({ type: "cancelled", taskId, findings: foundBy(work) });
+  } else if (event !== null && !hold.controller.signal.aborted) {
+    holds.side.emit(event);
+  }
   if (holds.held.get(taskId) === hold) holds.held.delete(taskId);
 }
 
@@ -68,16 +69,16 @@ export function startHold(holds: Holds, taskId: TaskId, work: HeldWork): void {
   }
   const hold: Hold = {
     controller: new AbortController(),
-    settled: Promise.resolve(),
     cancelling: false,
     finished: false,
-    found: null,
   };
   holds.held.set(taskId, hold);
-  hold.settled = settleHold(holds, taskId, hold, work);
+  settleHold(holds, taskId, hold, work).catch((error: unknown) =>
+    holds.log({ event: "commandError", taskId, message: messageOf(error) }),
+  );
 }
 
-// One cancelled per held task, sent only after its work has settled, with what it had found.
+// One cancelled per held task: the hold sends it once its work has settled, with what it had found.
 export function cancelHold(holds: Holds, taskId: TaskId): void {
   const hold = holds.held.get(taskId);
   if (hold === undefined) {
@@ -91,10 +92,6 @@ export function cancelHold(holds: Holds, taskId: TaskId): void {
   }
   hold.cancelling = true;
   hold.controller.abort();
-  hold.settled.then(
-    () => holds.side.emit({ type: "cancelled", taskId, findings: hold.found }),
-    () => undefined,
-  );
 }
 
 export function closeHolds(holds: Holds): void {
