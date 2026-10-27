@@ -1,5 +1,7 @@
 import { createModelCall } from "../providers/anthropic";
 import type { ModelCall } from "../providers/anthropic";
+import { searchWeb } from "../providers/search";
+import type { SearchFn } from "../providers/search";
 import type { TaskId } from "../shared/cards";
 import type {
   EngineCommand,
@@ -17,14 +19,27 @@ import type { IntakeResult } from "./core/intake";
 import type { IntakeCommand } from "./core/intake-prompt";
 import { createTaskBudget } from "./core/limits";
 import { createPort } from "./core/port";
+import { runResearch } from "./plugs";
+import type { WebAccess } from "./plugs";
 
 export type EngineFakes = {
   model?: ModelCall; // replaces the real Anthropic call (src/providers/anthropic.ts)
   now?: () => number; // milliseconds; replaces performance.now
   log?: DevLog; // replaces the dev log
+  search?: SearchFn; // replaces the real search call (src/providers/search.ts)
+  lookup?: WebAccess["lookup"]; // replaces DNS for page reads
+  connect?: WebAccess["connect"]; // replaces sockets for page reads
+  today?: () => string; // ISO date, such as 2026-10-27
 };
 
-type Engine = { deps: DispatchDeps; holds: Holds };
+type Engine = {
+  deps: DispatchDeps;
+  holds: Holds;
+  access: WebAccess;
+  today: () => string;
+};
+
+type RunTaskCommand = Extract<EngineCommand, { type: "runTask" }>;
 
 function eventFor(taskId: TaskId, result: IntakeResult): EngineEvent | null {
   if (result.kind === "intake") {
@@ -48,6 +63,49 @@ function startIntake(engine: Engine, command: IntakeCommand): void {
   });
 }
 
+function endOf(event: EngineEvent | null): string {
+  if (event === null) return "cancelled";
+  if (event.type !== "incomplete") return event.type;
+  const { incomplete } = event;
+  return incomplete.kind === "error"
+    ? `error:${incomplete.cause}`
+    : incomplete.kind;
+}
+
+// One fresh budget per run, shared by the worker and the judge; the hold sends the one terminal event.
+function startRun(engine: Engine, command: RunTaskCommand): void {
+  const { taskId } = command;
+  const { deps, holds } = engine;
+  const run = (signal: AbortSignal) =>
+    runResearch({
+      deps,
+      task: { taskId, budget: createTaskBudget(), signal },
+      command,
+      access: engine.access,
+      today: engine.today(),
+      progress: (event) => {
+        if (!signal.aborted) holds.side.emit(event);
+      },
+    });
+  startHold(holds, taskId, {
+    start: async (signal) => {
+      let how = "thrown";
+      try {
+        const event = await run(signal);
+        how = endOf(signal.aborted ? null : event);
+        return event;
+      } finally {
+        deps.log({ event: "taskEnd", taskId, how });
+      }
+    },
+    onThrow: {
+      type: "incomplete",
+      taskId,
+      incomplete: { kind: "error", cause: "error", findings: null },
+    },
+  });
+}
+
 function receive(engine: Engine, command: EngineCommand): void {
   switch (command.type) {
     case "question":
@@ -58,11 +116,7 @@ function receive(engine: Engine, command: EngineCommand): void {
       cancelHold(engine.holds, command.taskId);
       return;
     case "runTask":
-      engine.holds.side.emitLater({
-        type: "incomplete",
-        taskId: command.taskId,
-        incomplete: { kind: "error", cause: "error", findings: null },
-      });
+      startRun(engine, command);
       return;
     default: {
       const unknownCommand: never = command;
@@ -89,6 +143,15 @@ export function startEngine(
     receive: (command) => receive(engine, command),
     close: () => closeHolds(engine.holds),
   });
-  const engine: Engine = { deps, holds: createHolds(log, side) };
+  const search: SearchFn =
+    fakes.search ??
+    ((query, signal) =>
+      searchWeb({ query, key: options.searchKey, fetch, signal }));
+  const engine: Engine = {
+    deps,
+    holds: createHolds(log, side),
+    access: { search, lookup: fakes.lookup, connect: fakes.connect },
+    today: fakes.today ?? (() => new Date().toISOString().slice(0, 10)),
+  };
   return side.port;
 }

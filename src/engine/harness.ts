@@ -7,6 +7,7 @@ import type {
 import type { EngineCommand, EngineEvent } from "../shared/engine";
 import type { DevLogEntry } from "./core/dev-log";
 import { startEngine } from "./index";
+import type { EngineFakes } from "./index";
 
 type MessageParts = {
   stopReason?: Anthropic.Message["stop_reason"];
@@ -95,33 +96,49 @@ function abortedWhen(signal: AbortSignal): Promise<ModelOutcome> {
 }
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
+const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 2));
 
-export function startTestEngine(steps: FakeStep[]) {
+// A test that runs out of model steps fails in settle, so a missing step is never taken for the expected task error.
+export function startTestEngine(steps: FakeStep[], fakes: EngineFakes = {}) {
   const requests: ModelRequest[] = [];
   const entries: DevLogEntry[] = [];
   const events: EngineEvent[] = [];
   let clock = 0;
+  let stepsMissing = 0;
   const model: ModelCall = async (request, options) => {
     requests.push(structuredClone(request));
     clock += 250;
     const step = steps.shift();
-    if (step === undefined) throw new Error("no fake model step left");
+    if (step === undefined) {
+      stepsMissing += 1;
+      throw new Error("no fake model step left");
+    }
     return step === "waitForAbort" ? abortedWhen(options.signal) : step;
   };
   const log = (entry: DevLogEntry) => {
     entries.push(entry);
   };
   const keys = { anthropicKey: "test-key", searchKey: "" };
-  const port = startEngine(keys, { model, now: () => clock, log });
+  const port = startEngine(keys, {
+    today: () => "2026-10-27",
+    ...fakes,
+    model,
+    now: () => clock,
+    log,
+  });
   port.onMessage((event) => {
     events.push(event);
   });
-  // Waits until the count arrived, then a few more turns so a stray extra event would show.
+  // Waits until the count arrived (up to about 3 s), then a few more turns so a stray extra event would show.
   const settle = async (count = 0) => {
-    for (let turn = 0; turn < 100 && events.length < count; turn += 1) {
-      await nextTurn();
+    for (let wait = 0; wait < 1500 && events.length < count; wait += 1) {
+      await pause();
     }
     for (let turn = 0; turn < 5; turn += 1) await nextTurn();
+    if (stepsMissing > 0)
+      throw new Error(
+        "the engine asked for more model steps than the test gave",
+      );
     return events;
   };
   return { port, requests, entries, events, settle };

@@ -89,9 +89,10 @@ describe("startEngine model failures", () => {
   });
 });
 
-describe("startEngine runTask", () => {
-  it("answers with one incomplete error", async () => {
-    const engine = startTestEngine([]);
+describe("startEngine runTask worker failures", () => {
+  it.each(failureRows)("$failure", async (row) => {
+    const step: ModelOutcome = { ok: false, failure: row.failure, detail: "x" };
+    const engine = startTestEngine([step]);
     engine.port.send({
       type: "runTask",
       taskId: "task-1",
@@ -104,9 +105,9 @@ describe("startEngine runTask", () => {
       {
         type: "incomplete",
         taskId: "task-1",
-        incomplete: { kind: "error", cause: "error", findings: null },
+        incomplete: { kind: "error", cause: row.kind, findings: null },
       },
     ]);
-    expect(engine.requests).toHaveLength(0);
+    expect(engine.requests).toHaveLength(1);
   });
 });
