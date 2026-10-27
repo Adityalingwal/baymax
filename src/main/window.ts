@@ -37,6 +37,8 @@ function createPanel(bounds: Electron.Rectangle): BrowserWindow {
     maximizable: false,
     fullscreenable: false,
     enableLargerThanScreen: true,
+    // The panel is never made active, so without this every first click would only activate it.
+    acceptFirstMouse: true,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
@@ -95,14 +97,23 @@ function placePanel(browserWindow: BrowserWindow, placement: Placement): void {
   }
 }
 
+function samePlacement(a: Placement, b: Placement): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 // Moves the panel to the chosen display and resends its shape; never shows or focuses it.
 function followDisplays(
   browserWindow: BrowserWindow,
+  first: Placement,
   setShape: (shape: WindowShape) => void,
 ): () => void {
+  let last = first;
+  // Work-area changes (Dock or menu bar showing) fire too; an unchanged placement must not collapse an open shell.
   const replace = () => {
     if (browserWindow.isDestroyed()) return;
     const placement = currentPlacement();
+    if (samePlacement(placement, last)) return;
+    last = placement;
     placePanel(browserWindow, placement);
     setShape(placement.shape);
     browserWindow.webContents.send(ipcChannels.windowShape, placement.shape);
@@ -125,7 +136,7 @@ function guardPage(browserWindow: BrowserWindow): void {
     if (details.url !== MAIN_WINDOW_WEBPACK_ENTRY) details.preventDefault();
   });
   // A page that reloads or crashes while it held the mouse must not leave a block that swallows clicks.
-  contents.on("did-finish-load", () => releaseMouse(browserWindow));
+  contents.on("did-start-loading", () => releaseMouse(browserWindow));
   contents.on("render-process-gone", () => releaseMouse(browserWindow));
 }
 
@@ -138,7 +149,7 @@ export function createMainWindow(): BrowserWindow {
   browserWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   guardPage(browserWindow);
   const stopChannels = connectWindowChannels(browserWindow, () => shape);
-  const stopDisplays = followDisplays(browserWindow, (next) => {
+  const stopDisplays = followDisplays(browserWindow, placement, (next) => {
     shape = next;
   });
   browserWindow.on("closed", () => {

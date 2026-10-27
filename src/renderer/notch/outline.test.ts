@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hoverZone, shellOutline } from "./outline";
+import { dotButtonRect, hoverZone, shellOutline } from "./outline";
 import type { OutlineGeometry } from "./outline";
 import type { ShellMode } from "./shell";
 
@@ -63,10 +63,10 @@ const boxRows: BoxRow[] = [
     box: { left: 170.5, right: 309.5, top: 0, bottom: 25 },
   },
   {
-    name: "dot adds a 28-point wing on each side of the notch",
+    name: "dot adds a 32-point wing on each side of the notch",
     geometry: notched,
     mode: "dot",
-    box: { left: 142.5, right: 337.5, top: 0, bottom: 25 },
+    box: { left: 138.5, right: 341.5, top: 0, bottom: 25 },
   },
   {
     name: "open spans the window width down to the content height",
@@ -97,6 +97,31 @@ describe("shellOutline", () => {
     expect(pathBox(shellOutline(geometry, mode))).toEqual(box);
   });
 
+  it.each<{ mode: ShellMode; path: string }>([
+    {
+      mode: "idle",
+      path: "M170.5,0 H309.5 V0 Q309.5,0 309.5,0 H309.5 Q309.5,0 309.5,0 V25 Q309.5,25 309.5,25 H170.5 Q170.5,25 170.5,25 V0 Q170.5,0 170.5,0 H170.5 Q170.5,0 170.5,0 Z",
+    },
+    {
+      mode: "open",
+      path: "M170.5,0 H309.5 V17 Q309.5,25 317.5,25 H458 Q480,25 480,47 V278 Q480,300 458,300 H22 Q0,300 0,278 V47 Q0,25 22,25 H162.5 Q170.5,25 170.5,17 Z",
+    },
+  ])("draws the $mode outline segment by segment", ({ mode, path }) => {
+    expect(shellOutline(notched, mode)).toBe(path);
+  });
+
+  it("keeps the whole reopen dot button inside the rounded right wing", () => {
+    const rect = dotButtonRect(notched);
+    const radius = 12.5;
+    const corner = { x: 341.5 - radius, y: 25 - radius };
+    expect(rect.x).toBeGreaterThanOrEqual(309.5);
+    expect(rect.y).toBeGreaterThanOrEqual(0);
+    const far = { x: rect.x + rect.width, y: rect.y + rect.height };
+    expect(Math.hypot(far.x - corner.x, far.y - corner.y)).toBeLessThanOrEqual(
+      radius,
+    );
+  });
+
   it("rounds the bottom corners of the idle pill only without a notch", () => {
     const corner = "Q309.5,25 297,25";
     expect(shellOutline(plain, "idle")).toContain(corner);
@@ -113,9 +138,9 @@ const zoneRows: ZoneRow[] = [
     rect: { x: 158.5, y: 0, width: 163, height: 37 },
   },
   {
-    name: "dot reaches 12 points past the winged outline",
+    name: "dot reaches 12 points past the left wing and below, and stops at the notch before the reopen dot",
     mode: "dot",
-    rect: { x: 130.5, y: 0, width: 219, height: 37 },
+    rect: { x: 126.5, y: 0, width: 183, height: 37 },
   },
 ];
 

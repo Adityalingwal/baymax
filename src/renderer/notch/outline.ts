@@ -14,7 +14,7 @@ export type Rect = { x: number; y: number; width: number; height: number };
 export type HitZone =
   { kind: "rect"; rect: Rect } | { kind: "path"; path: string };
 
-const wingWidth = 28;
+const wingWidth = 32;
 const filletRadius = 8;
 const bodyRadius = 22;
 const hoverMargin = 12;
@@ -95,15 +95,17 @@ export function shellOutline(
 }
 
 // Collapsed, the hover zone reaches past the notch, which has no pixels to point at; it never captures clicks.
+// With the dot it stops at the notch, so the pointer can reach the reopen dot without opening the shell first.
 export function hoverZone(geometry: OutlineGeometry, mode: ShellMode): HitZone {
   if (mode === "open") {
     return { kind: "path", path: shellOutline(geometry, mode) };
   }
-  const { left, right, bottom } = outlineParts(geometry, mode);
+  const { left, right, bottom, neckRight } = outlineParts(geometry, mode);
+  const end = mode === "dot" ? neckRight : right + hoverMargin;
   const rect = {
     x: left - hoverMargin,
     y: 0,
-    width: right - left + 2 * hoverMargin,
+    width: end - (left - hoverMargin),
     height: bottom + hoverMargin,
   };
   return { kind: "rect", rect };

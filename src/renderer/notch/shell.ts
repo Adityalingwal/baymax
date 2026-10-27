@@ -7,6 +7,7 @@ type CardFields = Pick<TaskCard, "taskId" | "state" | "folded">;
 
 // Everything but the pointer that may hold the shell open.
 export type ShellReasons = {
+  needsAccess: boolean; // the Accessibility hint in the top bar must stay visible
   typing: boolean;
   voice: boolean;
   notice: string | null;
@@ -18,9 +19,12 @@ export type PointerState = { hovered: boolean; waitForExit: boolean };
 const isFolded = (card: CardFields) => cardForm(card) === "folded";
 
 export function shellMode(input: ShellReasons & PointerState): ShellMode {
-  const { typing, voice, notice, tasks, hovered, waitForExit } = input;
+  const { needsAccess, typing, voice, notice, tasks } = input;
   const unfolded = tasks.some((card) => !isFolded(card));
-  if (typing || voice || notice !== null || unfolded) return "open";
+  if (needsAccess || typing || voice || notice !== null || unfolded) {
+    return "open";
+  }
+  const { hovered, waitForExit } = input;
   if (hovered && !waitForExit) return "open";
   return tasks.some(isFolded) ? "dot" : "idle";
 }

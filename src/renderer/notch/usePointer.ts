@@ -58,8 +58,11 @@ function evaluate(tracker: Tracker): void {
   if (point === null) return;
   const inShape = tracker.hitTest(view.capture, point.x, point.y);
   setCapture(tracker, inShape);
+  // The wait ends only once the pointer is out of the collapsed hover zone, or a still pointer would reopen it.
   if (view.waitForExit) {
-    if (!inShape) tracker.dispatch({ kind: "outside-collapsed" });
+    if (!inHover(tracker, point.x, point.y)) {
+      tracker.dispatch({ kind: "outside-collapsed" });
+    }
     return;
   }
   if (inHover(tracker, point.x, point.y)) {

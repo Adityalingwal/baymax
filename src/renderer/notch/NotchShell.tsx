@@ -15,6 +15,7 @@ import type { WindowGeometry } from "./useWindowShape";
 type NotchShellProps = {
   state: DisplayState;
   hold: HoldState;
+  needsAccess: boolean;
   actions: CardActions;
   children: ReactNode;
 };
@@ -95,12 +96,13 @@ const contentShown =
 const contentHidden = "opacity-0 transition-none";
 
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
-  const { state, hold, actions, children, frame } = props;
+  const { state, hold, needsAccess, actions, children, frame } = props;
   const voice = useVoice(hold);
   const { typing, ...focusEvents } = useTyping();
   const content = useContentHeight();
   const geometry = { ...frame, contentHeight: content.height };
-  const reasons = { typing, voice, notice: state.notice, tasks: state.tasks };
+  const { notice, tasks } = state;
+  const reasons = { needsAccess, typing, voice, notice, tasks };
   const mode = usePointer(geometry, reasons);
   const open = mode === "open";
   return (

@@ -33,6 +33,7 @@ const folded = card("folded", "done", true);
 const foldedIncomplete = card("folded-2", "incomplete", true);
 
 const quiet: ShellReasons & PointerState = {
+  needsAccess: false,
   typing: false,
   voice: false,
   notice: null,
@@ -51,6 +52,11 @@ const modeRows: ModeRow[] = [
   { name: "nothing to show is idle", input: {}, expected: "idle" },
   { name: "hover opens", input: { hovered: true }, expected: "open" },
   { name: "typing opens", input: { typing: true }, expected: "open" },
+  {
+    name: "a missing Accessibility permission opens",
+    input: { needsAccess: true },
+    expected: "open",
+  },
   { name: "voice opens", input: { voice: true }, expected: "open" },
   {
     name: "a notice opens",

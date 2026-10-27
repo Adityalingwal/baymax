@@ -83,7 +83,12 @@ export function App() {
   const actions: CardActions = demo ? demoCardActions : window.baymax;
 
   return (
-    <NotchShell state={state} hold={hold} actions={actions}>
+    <NotchShell
+      state={state}
+      hold={hold}
+      needsAccess={accessibility === false}
+      actions={actions}
+    >
       <TopBar
         hold={hold}
         holdKeyLabel={holdKeyLabel}
