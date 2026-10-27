@@ -79,7 +79,16 @@ describe("runTask worker requests", () => {
     await run.ended();
     const worker = run.requests.slice(0, 4);
     const [first] = worker;
-    expect(first.tools?.map((tool) => tool.name)).toEqual(["search", "read"]);
+    const strictTool = (name: string, field: string) => ({
+      name,
+      strict: true,
+      input_schema: { required: [field], additionalProperties: false },
+    });
+    expect(first.tools).toHaveLength(2);
+    expect(first.tools).toMatchObject([
+      strictTool("search", "query"),
+      strictTool("read", "url"),
+    ]);
     expect(first.tool_choice).toBeUndefined();
     expect(first.cache_control).toEqual({ type: "ephemeral" });
     expect(first.thinking).toEqual({ type: "between_tools" });
