@@ -106,7 +106,7 @@ cards      <--IPC--  whole display state                       <--- task events
 | Intake check | Claude Sonnet 5.5 (Haiku 5.5 if the first spoken line is too slow) |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
-| Web | One `web` tool owned by Baymax: a search provider (Exa or Tavily, called with plain `fetch`) and plain page reads |
+| Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and plain page reads |
 | Agent runtime | Our own loop on the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), in the engine |
 | Storage | Memory only |
 | Keys | Our own keys from `.env` ([Processes and the port](#processes-and-the-port)) |
@@ -174,7 +174,7 @@ It checks support and completion, not truth.
 
 - Searches and page reads need no approval; the task's limits and cancel hold them in check.
 - A page is read plainly with HTML-to-text. A JavaScript-only page or a PDF counts as no usable text, and the worker moves on.
-- **Safety.** Only http and https. Only public destinations: the address the HTTP client actually connects to is checked at connection time (its own DNS lookup, IPv4 and IPv6), on every redirect and every retry, so localhost, `.local`, private and link-local ranges are refused even when a public-looking name resolves to them. If that cannot be built and verified in V1, the reader route is narrowed rather than the gap called harmless. x.com and linkedin.com are refused. A URL that carries credentials is refused, and no cookies or credentials are forwarded. TLS is verified. Download size and time are capped before parsing. A hosted reader is used only if it keeps the same rules.
+- **Safety.** Only http and https. Only public destinations: the address the HTTP client actually connects to is checked at connection time (its own DNS lookup, IPv4 and IPv6), on every redirect and every retry, so localhost, `.local`, private and link-local ranges are refused even when a public-looking name resolves to them. A NAT64 address (`64:ff9b::/96`, which macOS returns for IPv4-only sites on a NAT64 network) is judged by the IPv4 address it carries. If that cannot be built and verified in V1, the reader route is narrowed rather than the gap called harmless. x.com, linkedin.com and reddit.com are refused. A URL that carries credentials is refused, and no cookies or credentials are forwarded. TLS is verified. Download size and time are capped before parsing. A hosted reader is used only if it keeps the same rules.
 - **Page text is untrusted** for both the worker and the judge. The worker cannot act outside, but an injected page could still skew an answer or steer later searches and fetches, so page text never changes the instructions or the tool list. Offline tests cover injected instructions, private addresses (including a name that resolves to one) and redirects.
 - X, Reddit and LinkedIn appear only as links and snippets from a normal search, and Baymax says it did not read the full thread.
 
@@ -250,7 +250,7 @@ Run before the code that depends on them:
 
 1. The Anthropic SDK's retry and timeout defaults and its error causes for a dropped connection.
 2. What Electron 40's main process does on an uncaught exception and an unhandled rejection.
-3. The search provider (Exa or Tavily) on the demo pair and one current-fact question, in the web tool's first PR.
+3. The search provider on the demo pair and one current-fact question, in the web tool's first PR. Done in ticket #15: Exa was picked over Tavily.
 4. The notch window spike on the demo Mac, before the window is built.
 
 Which Deepgram models the key reaches is not a separate check: the first voice PR's first real call shows it.
@@ -266,21 +266,24 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/index.ts` | Main process entry: hotkey wiring, IPC |
 | `src/preload.ts` | Bridge between main and renderer (`window.baymax`) |
 | `src/renderer.ts`, `src/renderer/` | The screen (React): text box, cards, mic recording, playback |
+| `src/renderer/microphone.ts` | Mic recording of the held clip |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
-| `src/main/hold.ts` | Hold state from key events; pure |
+| `src/main/hold.ts` | Hold state and the accept or discard outcome from key events and the time; pure |
 | `src/main/platform.ts` | Platform flags and labels |
+| `src/main/recording.ts` | One utterance: recording commands, the clip, the transcript; discarded clips and late transcripts dropped |
 | `src/main/window.ts` | The Baymax window: creation, navigation and pop-ups blocked |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
 | `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime and the fixed lines, through one update path |
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |
-| `src/engine/plugs/research/` (planned) | The research plug: the web tool, its prompts and its done condition |
+| `src/engine/plugs/research/` | The research plug: the web tool (safe page reads, pages kept by source id), its prompts and its done condition |
 | `src/engine/plugs/index.ts` (planned) | The one list of plugs, as explicit re-exports |
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
-| `src/providers/` | Process-neutral provider code: the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/` | Process-neutral provider code: the search call and its outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/deepgram.ts` | Deepgram pre-recorded transcription (speech follows) |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.
 - `src/engine/` imports nothing from `src/main/`, `src/renderer/` or `electron`. `src/main/` imports the engine only through `src/engine/index.ts`. The renderer never imports `src/shared/engine.ts` or the engine.
