@@ -137,6 +137,11 @@ const actionRows: ActionRow[] = [
     ],
   },
   {
+    name: "setMouseCapture",
+    act: () => api.setMouseCapture({ captured: true }),
+    expected: [ipcChannels.setMouseCapture, { captured: true }],
+  },
+  {
     name: "openAccessibilitySettings",
     act: () => api.openAccessibilitySettings(),
     expected: [ipcChannels.openAccessibilitySettings],
@@ -196,6 +201,13 @@ const subscriptionRows: SubscriptionRow[] = [
     channel: ipcChannels.stopPlayback,
     payload: { lineId: "l1" },
     replay: [],
+  },
+  {
+    name: "onWindowShape",
+    subscribe: (callback) => api.onWindowShape(callback),
+    channel: ipcChannels.windowShape,
+    payload: { notched: true, notchWidth: 139, notchHeight: 25 },
+    replay: [[ipcChannels.getWindowShape]],
   },
 ];
 
