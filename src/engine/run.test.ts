@@ -173,19 +173,60 @@ const parent: ParentResult = {
   },
 };
 
+const partialSentence = (ended: string) =>
+  `The earlier task ended ${ended}, so its findings are partial and may not have been checked. Build on them, say near the top of the card text that this answer builds on a partial earlier result, and treat its points as unconfirmed until a page you read supports them.`;
+
+const emptySentence = (ended: string) =>
+  `The earlier task ended ${ended} before it found anything usable, so there is no earlier answer to build on. If this request depends on the earlier answer, do not search: use status "needsUser" and ask the user one question that would let you start. Only if the request is clear on its own, research it from the start and say near the top of the card text that the earlier task found nothing.`;
+
+type FirstMessageRow = {
+  name: string;
+  parent: ParentResult | null;
+  sentence: string | null;
+};
+
+const firstMessageRows: FirstMessageRow[] = [
+  { name: "no parent", parent: null, sentence: null },
+  { name: "a done parent", parent, sentence: null },
+  ...(["incomplete", "cancelled"] as const).flatMap((outcome) => [
+    {
+      name: `an ${outcome} parent with findings`,
+      parent: { ...parent, outcome },
+      sentence: partialSentence(outcome),
+    },
+    {
+      name: `an ${outcome} parent without findings`,
+      parent: { ...parent, outcome, findings: null },
+      sentence: emptySentence(outcome),
+    },
+  ]),
+];
+
 describe("runTask first message", () => {
-  it.each([
-    { name: "no parent", parent: null, shown: false },
-    { name: "a parent", parent, shown: true },
-  ])("shows the parent block only with $name", async (row) => {
-    const run = await startRun([{ ok: false, failure: "error", detail: "x" }]);
-    run.port.send(runTask({ parent: row.parent }));
-    await run.ended();
-    const text = firstText(run.requests[0]);
-    expect(text.includes("<parent_result>")).toBe(row.shown);
-    if (!row.shown) return;
-    expect(text).toContain("https://hermes.example/docs");
-    expect(text).toContain("its memory");
-    expect(text).toContain("read a page again before you cite it");
-  });
+  it.each(firstMessageRows)(
+    "shows the parent block and its note for $name",
+    async (row) => {
+      const run = await startRun([
+        { ok: false, failure: "error", detail: "x" },
+      ]);
+      run.port.send(runTask({ parent: row.parent }));
+      await run.ended();
+      const text = firstText(run.requests[0]);
+      expect(text.includes("<parent_result>")).toBe(row.parent !== null);
+      if (row.parent === null) return;
+      if (row.sentence === null) {
+        expect(text).not.toContain("so its findings are partial");
+        expect(text).not.toContain("before it found anything usable");
+      } else {
+        expect(text).toContain(row.sentence);
+      }
+      if (row.parent.findings === null) {
+        expect(text).toContain("No findings.");
+        return;
+      }
+      expect(text).toContain("https://hermes.example/docs");
+      expect(text).toContain("its memory");
+      expect(text).toContain("read a page again before you cite it");
+    },
+  );
 });
