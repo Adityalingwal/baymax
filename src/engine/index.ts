@@ -2,7 +2,7 @@ import { createModelCall } from "../providers/anthropic";
 import type { ModelCall } from "../providers/anthropic";
 import { searchWeb } from "../providers/search";
 import type { SearchFn } from "../providers/search";
-import type { TaskId } from "../shared/cards";
+import type { Findings, TaskId } from "../shared/cards";
 import type {
   EngineCommand,
   EngineEvent,
@@ -13,7 +13,7 @@ import { guardLog, writeDevLog } from "./core/dev-log";
 import type { DevLog } from "./core/dev-log";
 import type { DispatchDeps } from "./core/dispatch";
 import { cancelHold, closeHolds, createHolds, startHold } from "./core/holds";
-import type { Holds } from "./core/holds";
+import type { FoundSoFar, Holds } from "./core/holds";
 import { runIntake } from "./core/intake";
 import type { IntakeResult } from "./core/intake";
 import type { IntakeCommand } from "./core/intake-prompt";
@@ -57,7 +57,8 @@ function startIntake(engine: Engine, command: IntakeCommand): void {
       const job = { taskId, role: "intake" as const, budget, signal };
       return eventFor(taskId, await runIntake(engine.deps, job, command));
     },
-    onThrow: { type: "failure", taskId, kind: "error" },
+    found: () => null,
+    onThrow: () => ({ type: "failure", taskId, kind: "error" }),
   });
 }
 
@@ -71,9 +72,11 @@ function endOf(event: EngineEvent | null): string {
 }
 
 // One fresh budget per run, shared by the worker and the judge; the hold sends the one terminal event.
+// The run keeps found current from its start, so a cancel or a throw still carries what it found.
 function startRun(engine: Engine, command: RunTaskCommand): void {
   const { taskId } = command;
   const { deps, holds } = engine;
+  const found: FoundSoFar = { current: () => null };
   const run = (signal: AbortSignal) =>
     runResearch({
       deps,
@@ -81,6 +84,7 @@ function startRun(engine: Engine, command: RunTaskCommand): void {
       command,
       access: engine.access,
       today: engine.today(),
+      found,
       progress: (event) => {
         if (!signal.aborted) holds.side.emit(event);
       },
@@ -96,11 +100,12 @@ function startRun(engine: Engine, command: RunTaskCommand): void {
         deps.log({ event: "taskEnd", taskId, how });
       }
     },
-    onThrow: {
+    found: () => found.current(),
+    onThrow: (findings: Findings | null) => ({
       type: "incomplete",
       taskId,
-      incomplete: { kind: "error", cause: "error", findings: null },
-    },
+      incomplete: { kind: "error", cause: "error", findings },
+    }),
   });
 }
 

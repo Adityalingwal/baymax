@@ -33,7 +33,7 @@ function neutralize(cardText: string): string {
 }
 
 // Read URLs are serialized URLs, so an angle-bracket destination holds them, parentheses included.
-const linkable = (url: string) => !/[<>\s]/.test(url);
+export const linkable = (url: string) => !/[<>\s]/.test(url);
 
 // A marker for a page that was not read is dropped, so no card shows a citation it cannot open.
 function rewriteMarkers(cardText: string, pages: ReadPage[]): string {
@@ -67,7 +67,7 @@ function failedRule(
   return ids.every((id) => readIds.has(id)) ? null : "unreadCitation";
 }
 
-export function checkAnswer(answer: Answer, pages: ReadPage[]): CodeCheck {
+function built(answer: Answer, pages: ReadPage[]) {
   const cardText = neutralize(answer.cardText.trim());
   const markerIds = [...cardText.matchAll(markerPattern)].map((m) => m[1]);
   const ids = new Set(citedIds(answer, markerIds));
@@ -77,6 +77,16 @@ export function checkAnswer(answer: Answer, pages: ReadPage[]): CodeCheck {
     sources: cited.map(({ id, url, title }) => ({ id, url, title })),
     openPoints: answer.openPoints,
   };
+  return { markerIds, cited, findings };
+}
+
+// The card as the user may see it, built in code whether or not the answer passes: links only to cited read pages.
+export function answerFindings(answer: Answer, pages: ReadPage[]): Findings {
+  return built(answer, pages).findings;
+}
+
+export function checkAnswer(answer: Answer, pages: ReadPage[]): CodeCheck {
+  const { markerIds, cited, findings } = built(answer, pages);
   const rule = failedRule(answer, markerIds, pages);
   return rule === null
     ? { passed: true, findings, cited }

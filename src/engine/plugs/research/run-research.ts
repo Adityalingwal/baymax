@@ -1,29 +1,27 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import type { SearchFn } from "../../../providers/search";
 import type { Findings, TaskId } from "../../../shared/cards";
 import type {
   EngineCommand,
   EngineEvent,
-  Incomplete,
   ProgressStep,
 } from "../../../shared/engine";
 import type { DispatchDeps } from "../../core/dispatch";
-import { runJudge } from "../../core/judge";
-import type { JudgeOutcome } from "../../core/judge";
+import type { FoundSoFar } from "../../core/holds";
 import type { TaskBudget } from "../../core/limits";
 import type { LoopEnding } from "../../core/tool-batch";
 import { runWorkerLoop } from "../../core/worker-loop";
-import { parseAnswer, answerSchema } from "./answer";
-import type { Answer } from "./answer";
-import type { CodeCheck } from "./answer-check";
-import { checkAnswer } from "./answer-check";
+import { answerSchema } from "./answer";
 import type { Connect, LookupAll } from "./connection";
-import { judgeInstructions, judgeMessage } from "./judge-prompt";
+import { foundFindings } from "./found";
 import { researchTools } from "./research-tools";
+import { checkRound, incomplete } from "./run-checks";
+import type { CheckRun, Fault, RoundEnd } from "./run-checks";
 import { createToolRunner } from "./tool-runner";
 import { createWebTool } from "./web-tool";
-import type { WebTool } from "./web-tool";
 import {
   firstWorkerMessage,
+  retryMessage,
   thinkingFields,
   workerInstructions,
   workerThinking,
@@ -44,6 +42,7 @@ type ResearchRun = {
   command: RunTaskCommand;
   access: WebAccess;
   today: string;
+  found: FoundSoFar; // set at the start, so the hold can read it on a cancel or a throw
   progress: (event: EngineEvent) => void; // the caller drops it once the task is cancelled
 };
 
@@ -55,137 +54,122 @@ const workerPrompt = {
   ...thinkingFields(workerThinking),
 };
 
-function incomplete(taskId: TaskId, value: Incomplete): EngineEvent {
-  return { type: "incomplete", taskId, incomplete: value };
-}
-
-function endingEvent(taskId: TaskId, ending: LoopEnding): EngineEvent {
-  return ending.kind === "limitHit"
-    ? incomplete(taskId, { kind: "limitHit", findings: null })
-    : incomplete(taskId, {
-        kind: "error",
-        cause: ending.cause,
-        findings: null,
-      });
-}
-
-function logCheck(
-  run: ResearchRun,
-  stage: "code" | "judge",
-  failed: string | null,
-): void {
-  run.deps.log({
-    event: "doneCheck",
-    taskId: run.task.taskId,
-    stage,
-    passed: failed === null,
-    failed,
-  });
-}
-
-function unchecked(taskId: TaskId, part: string, findings: Findings) {
-  return incomplete(taskId, {
-    kind: "unchecked",
-    uncheckedPart: part,
-    findings,
-  });
-}
-
-type Verdict = Exclude<JudgeOutcome, { kind: "aborted" }>;
-type Passed = Extract<CodeCheck, { passed: true }>;
-
-function judgeFailure(verdict: Verdict): string | null {
-  switch (verdict.kind) {
-    case "pass":
-      return null;
-    case "fail":
-      return verdict.failed;
-    case "broken":
-      return `broken:${verdict.reason}`;
-    case "limitHit":
-      return "limitHit";
-  }
-}
-
-function verdictEvent(
+// A short ending carries what was found when the run stopped.
+function endingEvent(
   taskId: TaskId,
-  verdict: Verdict,
-  check: Passed,
-  answer: Answer,
+  ending: LoopEnding,
+  findings: Findings | null,
 ): EngineEvent {
-  switch (verdict.kind) {
-    case "limitHit":
-      return incomplete(taskId, { kind: "limitHit", findings: null });
-    case "broken":
-      return unchecked(taskId, "the whole answer", check.findings);
-    case "fail":
-      return unchecked(taskId, verdict.uncheckedPart, check.findings);
-    case "pass": {
-      const spokenLine = answer.spokenLine.trim();
-      return { type: "result", taskId, spokenLine, findings: check.findings };
-    }
-  }
+  return ending.kind === "limitHit"
+    ? incomplete(taskId, { kind: "limitHit", findings })
+    : incomplete(taskId, { kind: "error", cause: ending.cause, findings });
 }
 
-// The code check first; the judge only for an answer that passed it.
-async function checkedEvent(
-  run: ResearchRun,
-  answer: Answer,
-  web: WebTool,
-): Promise<EngineEvent | null> {
-  const { taskId } = run.task;
-  const check = checkAnswer(answer, web.pages());
-  logCheck(run, "code", check.passed ? null : check.rule);
-  if (!check.passed) {
-    return unchecked(taskId, check.uncheckedPart, check.findings);
+// A second failed check ends unchecked with its part; an answer that never parsed names the whole answer, when anything was found.
+function failedTwice(
+  taskId: TaskId,
+  fault: Fault,
+  found: Findings | null,
+): EngineEvent {
+  if (fault.findings !== null) {
+    const { part: uncheckedPart, findings } = fault;
+    return incomplete(taskId, { kind: "unchecked", uncheckedPart, findings });
   }
-  const verdict = await runJudge(
-    run.deps,
-    { ...run.task, role: "judge" },
-    {
-      system: judgeInstructions,
-      user: judgeMessage({
-        brief: run.command.brief,
-        answer,
-        pages: check.cited,
-      }),
-    },
-  );
-  if (verdict.kind === "aborted") return null;
-  logCheck(run, "judge", judgeFailure(verdict));
-  return verdictEvent(taskId, verdict, check, answer);
-}
-
-// One task's research: returns its one terminal event, or null once cancelled; progress goes out on the way.
-export async function runResearch(
-  run: ResearchRun,
-): Promise<EngineEvent | null> {
-  const { taskId } = run.task;
-  const web = createWebTool(run.access);
-  const job = { ...run.task, role: "worker" as const };
-  const progress = (step: ProgressStep, sourcesRead: number) =>
-    run.progress({ type: "progress", taskId, step, sourcesRead });
-  const loop = await runWorkerLoop({
-    deps: run.deps,
-    job,
-    prompt: workerPrompt,
-    firstMessage: firstWorkerMessage({
-      today: run.today,
-      brief: run.command.brief,
-      parent: run.command.parent,
-    }),
-    runTools: createToolRunner({ web, deps: run.deps, job, progress }),
-  });
-  if (loop.kind === "aborted" || run.task.signal.aborted) return null;
-  if (loop.kind === "end") return endingEvent(taskId, loop.ending);
-  const answer = parseAnswer(loop.text);
-  if (answer === null) {
-    run.deps.log({ event: "answerMalformed", taskId });
+  if (found === null) {
     return incomplete(taskId, {
       kind: "error",
       cause: "error",
       findings: null,
     });
   }
-  return checkedEvent(run, answer, web);
+  return incomplete(taskId, {
+    kind: "unchecked",
+    uncheckedPart: "the whole answer",
+    findings: found,
+  });
+}
+
+type Round = {
+  run: ResearchRun;
+  checks: CheckRun;
+  history: Anthropic.MessageParam[];
+  runTools: ReturnType<typeof createToolRunner>;
+};
+
+// One worker round in the shared conversation, then its answer's checks.
+async function workerRound(round: Round): Promise<RoundEnd> {
+  const { run, checks } = round;
+  const outcome = await runWorkerLoop(
+    {
+      deps: run.deps,
+      job: { ...run.task, role: "worker" },
+      prompt: workerPrompt,
+      runTools: round.runTools,
+    },
+    round.history,
+  );
+  if (outcome.kind === "aborted" || run.task.signal.aborted) {
+    return { kind: "aborted" };
+  }
+  if (outcome.kind === "end") {
+    const event = endingEvent(run.task.taskId, outcome.ending, checks.found());
+    return { kind: "event", event };
+  }
+  return checkRound(checks, outcome);
+}
+
+function logRetry(run: ResearchRun, fault: Fault): void {
+  run.deps.log({
+    event: "retryRound",
+    taskId: run.task.taskId,
+    stage: fault.stage,
+    rule: fault.rule,
+  });
+}
+
+function startRound(run: ResearchRun): Round {
+  const { taskId } = run.task;
+  const web = createWebTool(run.access);
+  let built: Findings | null = null;
+  const found = () => foundFindings(built, web.pages());
+  run.found.current = found;
+  const job = { ...run.task, role: "worker" as const };
+  const progress = (step: ProgressStep, sourcesRead: number) =>
+    run.progress({ type: "progress", taskId, step, sourcesRead });
+  const first = firstWorkerMessage({
+    today: run.today,
+    brief: run.command.brief,
+    parent: run.command.parent,
+  });
+  return {
+    run,
+    checks: {
+      deps: run.deps,
+      task: run.task,
+      brief: run.command.brief,
+      pages: web.pages,
+      found,
+      built: (findings) => (built = findings),
+    },
+    history: [{ role: "user", content: first }],
+    runTools: createToolRunner({ web, deps: run.deps, job, progress }),
+  };
+}
+
+const eventOf = (end: Exclude<RoundEnd, { kind: "fault" }>) =>
+  end.kind === "event" ? end.event : null;
+
+// One task's research: returns its one terminal event, or null once cancelled; progress goes out on the way.
+// A failed check gets one more round in the same conversation, and never a third.
+export async function runResearch(
+  run: ResearchRun,
+): Promise<EngineEvent | null> {
+  const round = startRound(run);
+  const first = await workerRound(round);
+  if (first.kind !== "fault") return eventOf(first);
+  logRetry(run, first.fault);
+  round.history.push({ role: "user", content: retryMessage(first.fault.part) });
+  const second = await workerRound(round);
+  if (second.kind !== "fault") return eventOf(second);
+  return failedTwice(run.task.taskId, second.fault, round.checks.found());
 }
