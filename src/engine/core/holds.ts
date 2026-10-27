@@ -8,6 +8,7 @@ type Hold = {
   controller: AbortController;
   settled: Promise<void>;
   cancelling: boolean; // a cancelled event is already promised for this hold
+  finished: boolean; // the work has ended; its terminal event is sent or dropped
 };
 
 export type Holds = {
@@ -40,8 +41,10 @@ async function settleHold(
     holds.log({ event: "commandError", taskId, message: messageOf(error) });
     event = work.onThrow;
   }
-  if (holds.held.get(taskId) === hold) holds.held.delete(taskId);
+  hold.finished = true;
+  // Sent while the hold is still held, so a cancel from a listener of this event finds it finished.
   if (event !== null && !hold.controller.signal.aborted) holds.side.emit(event);
+  if (holds.held.get(taskId) === hold) holds.held.delete(taskId);
 }
 
 export function startHold(holds: Holds, taskId: TaskId, work: HeldWork): void {
@@ -53,6 +56,7 @@ export function startHold(holds: Holds, taskId: TaskId, work: HeldWork): void {
     controller: new AbortController(),
     settled: Promise.resolve(),
     cancelling: false,
+    finished: false,
   };
   holds.held.set(taskId, hold);
   hold.settled = settleHold(holds, taskId, hold, work);
@@ -67,6 +71,10 @@ export function cancelHold(holds: Holds, taskId: TaskId): void {
     return;
   }
   if (hold.cancelling) return;
+  if (hold.finished) {
+    holds.log({ event: "cancelAfterEnd", taskId });
+    return;
+  }
   hold.cancelling = true;
   hold.controller.abort();
   hold.settled.then(

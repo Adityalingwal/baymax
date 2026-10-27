@@ -8,6 +8,7 @@ import {
   runTask,
   startRun,
   toolUseReply,
+  verdictReply,
   workerAnswer,
 } from "./run.harness";
 
@@ -86,6 +87,31 @@ describe("runTask cancel from a listener", () => {
     ]);
     expect(run.queries).toEqual([]);
     expect(run.network.targets).toEqual([]);
+  });
+});
+
+describe("runTask cancel at the end", () => {
+  it("sends no cancelled after the result when a result listener cancels", async () => {
+    const run = await startRun([
+      toolUseReply([{ read: pageUrl("one") }]),
+      workerAnswer({
+        cardText: "A loop [s1].",
+        claims: [{ claim: "A loop", sourceIds: ["s1"] }],
+      }),
+      verdictReply(),
+    ]);
+    run.port.onMessage((event) => {
+      if (event.type === "result") run.port.send(cancel);
+    });
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events.filter((event) => event.type !== "progress")).toEqual([
+      expect.objectContaining({ type: "result" }),
+    ]);
+    expect(run.entries).toContainEqual({
+      event: "cancelAfterEnd",
+      taskId: "task-1",
+    });
   });
 });
 
