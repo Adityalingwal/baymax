@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelOutcome } from "../providers/anthropic";
 import type { Findings } from "../shared/cards";
+import type { Incomplete } from "../shared/engine";
+import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
@@ -92,6 +94,93 @@ describe("runTask what was found", () => {
         taskId: "task-1",
         incomplete: { kind: "limitHit", findings: row.found },
       },
+    ]);
+  });
+});
+
+const listOne: Findings = {
+  cardText: `- ${link("s1", "one")} Page one`,
+  sources: [one],
+  openPoints: [],
+};
+const unreadCard: Findings = {
+  cardText: `A loop ${link("s1", "one")} and memory .`,
+  sources: [one],
+  openPoints: ["How it stores memory"],
+};
+const answerText = (text: string, cut = false): ModelOutcome => ({
+  ok: true,
+  message: fakeMessage(text, { stopReason: cut ? "max_tokens" : "end_turn" }),
+});
+const notJson = () => answerText("{ not json");
+const cutOff = () => answerText(JSON.stringify({ cardText: "A long" }), true);
+
+// Handled here so it only rejects where the engine awaits it.
+function thrown(): Promise<ModelOutcome> {
+  const call = Promise.reject(new Error("boom"));
+  call.catch(() => undefined);
+  return call;
+}
+
+type EndRow = { name: string; steps: () => FakeStep[]; ending: Incomplete };
+
+const wholeAnswer = (findings: Findings): Incomplete => ({
+  kind: "unchecked",
+  uncheckedPart: "the whole answer",
+  findings,
+});
+
+const endRows: EndRow[] = [
+  {
+    name: "two malformed answers after a read",
+    steps: () => [
+      toolUseReply([{ read: pageUrl("one") }]),
+      notJson(),
+      notJson(),
+    ],
+    ending: wholeAnswer(listOne),
+  },
+  {
+    name: "two cut-off answers after a read",
+    steps: () => [toolUseReply([{ read: pageUrl("one") }]), cutOff(), cutOff()],
+    ending: wholeAnswer(listOne),
+  },
+  {
+    name: "a failed answer, then a malformed one",
+    steps: () => [
+      toolUseReply([{ read: pageUrl("one") }]),
+      workerAnswer({
+        cardText: "A loop [s1] and memory [s7].",
+        claims: claimOne,
+      }),
+      notJson(),
+    ],
+    ending: wholeAnswer(unreadCard),
+  },
+  {
+    name: "a thrown run after a read",
+    steps: () => [toolUseReply([{ read: pageUrl("one") }]), thrown()],
+    ending: { kind: "error", cause: "error", findings: listOne },
+  },
+  {
+    name: "a search that is down after a read",
+    steps: () => [
+      toolUseReply([{ read: pageUrl("one") }]),
+      toolUseReply([{ search: "hermes" }]),
+    ],
+    ending: { kind: "error", cause: "searchDown", findings: listOne },
+  },
+];
+
+describe("runTask other short endings", () => {
+  it.each(endRows)("ends $name with what was found", async (row) => {
+    const run = await startRun(row.steps(), [
+      { ok: false, cause: "keyRejected" },
+    ]);
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events.filter((event) => event.type !== "progress")).toEqual([
+      { type: "incomplete", taskId: "task-1", incomplete: row.ending },
     ]);
   });
 });

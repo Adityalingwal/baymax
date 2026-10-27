@@ -140,7 +140,8 @@ describe("runTask cancel at each stage", () => {
         cancelled,
       ]);
       expect(events[events.length - 1]).toEqual(cancelled);
-      expect(await run.settle()).toHaveLength(events.length);
+      const count = events.length;
+      expect(await run.settle()).toHaveLength(count);
       expect(sent()).toEqual(atCancel);
     },
   );
