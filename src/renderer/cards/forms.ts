@@ -74,3 +74,7 @@ export function sourceGroups(sources: Source[]): SourceGroup[] {
   }
   return groups;
 }
+
+export function sourcesCount(count: number): string {
+  return count === 1 ? "1 source" : `${count} sources`;
+}
