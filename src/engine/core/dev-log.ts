@@ -5,3 +5,7 @@ export type DevLogEntry = { event: string } & Record<
 >;
 
 export type DevLog = (entry: DevLogEntry) => void;
+
+export const writeDevLog: DevLog = (entry) => {
+  console.info("[engine]", JSON.stringify(entry));
+};
