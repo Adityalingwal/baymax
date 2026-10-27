@@ -198,6 +198,7 @@ It checks support and completion, not truth.
 
 - Each task has limits on model calls, searches, active time and dollars ([Starting values](#starting-values)). Active time counts the time the task's calls, tools or retry waits run, not the time it waits for the user. At a limit the task ends incomplete, limit hit, and shows what it found.
 - Every paid call (intake, worker, judge, the retry round, paid web calls) goes through one dispatch function that checks the limits before sending, sets an output-token ceiling per role, and writes usage and dollar cost to the dev log for the team. The user never sees cost. Without a reservation ledger the dollar limit is a conservative estimate, not an exact guarantee.
+- In V1 a task's limits count its run (worker, judge, retry round). Its intake calls, at most two of about a cent each, are checked against limits of their own and logged under the task id, because the engine keeps nothing between commands.
 - Retries use the Anthropic SDK's own retry with a small `maxRetries` and an explicit timeout on every call. That it may resend a request after a timeout is an accepted V1 cost.
 
 ### Failures the user hears
@@ -241,6 +242,7 @@ It checks support and completion, not truth.
 | Tasks waiting while one runs | 3 |
 | Cancelled card stays | about 3 s |
 | Output-token ceilings | intake 1,024, worker 2,048 per step, judge 1,024 |
+| Model call retries and timeouts | the SDK's own retry, 1 per call; timeout per attempt: intake 15 s, worker 60 s, judge 30 s; whole call: twice the attempt timeout plus 5 s, capped by the task's remaining active time |
 
 ### Checks
 
