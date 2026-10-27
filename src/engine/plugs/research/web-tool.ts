@@ -23,7 +23,7 @@ const defaultLimits: ReadLimits = {
 
 const aborted: ReadOutcome = { ok: false, cause: "aborted" };
 
-// One shared read per URL: it is cancelled only when every caller waiting on it has aborted.
+// One shared read per URL: it is cancelled only when every caller waiting on it has aborted, and the last one to leave waits until it has stopped.
 type SharedRead = { join: (signal: AbortSignal) => Promise<ReadOutcome> };
 
 function shareRead(
@@ -35,15 +35,17 @@ function shareRead(
   const join = (signal: AbortSignal) =>
     new Promise<ReadOutcome>((resolve) => {
       waiting += 1;
+      let left = false;
       const onAbort = () => {
         waiting -= 1;
-        if (waiting === 0) controller.abort();
-        resolve(aborted);
+        left = true;
+        if (waiting > 0) resolve(aborted);
+        else controller.abort();
       };
       signal.addEventListener("abort", onAbort, { once: true });
       const settle = (result: ReadOutcome) => {
         signal.removeEventListener("abort", onAbort);
-        resolve(result);
+        resolve(left ? aborted : result);
       };
       outcome.then(settle, () => settle({ ok: false, cause: "unreachable" }));
     });
