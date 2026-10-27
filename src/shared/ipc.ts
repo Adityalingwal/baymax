@@ -30,6 +30,13 @@ export const ipcChannels = {
 
 export type HoldState = "idle" | "listening";
 
+// The notch size is estimated from the display width, not detected.
+export type WindowShape = {
+  notched: boolean;
+  notchWidth: number;
+  notchHeight: number;
+};
+
 export type StartupInfo = {
   accessibility: boolean | null;
   holdKeyLabel: string;
