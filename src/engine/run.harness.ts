@@ -218,3 +218,11 @@ export async function startRun(
 export async function closeRuns(): Promise<void> {
   await Promise.all(networks.splice(0).map((network) => network.close()));
 }
+
+// Polls until the condition holds, so a test can cancel at a chosen step.
+export async function until(condition: () => boolean): Promise<void> {
+  for (let wait = 0; wait < 1500 && !condition(); wait += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  if (!condition()) throw new Error("the awaited step never came");
+}
