@@ -2,7 +2,7 @@ export const taskLimits = {
   modelCalls: 15,
   searches: 8,
   activeMs: 120_000,
-  dollars: 0.15,
+  dollars: 0.5,
 } as const;
 
 export const roles = {

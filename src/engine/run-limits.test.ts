@@ -96,7 +96,7 @@ const limitRows: LimitRow[] = [
     name: "dollars",
     steps: () => {
       const costly = readTwo();
-      if (costly.ok) costly.message.usage.input_tokens = 70_000;
+      if (costly.ok) costly.message.usage.input_tokens = 248_000;
       return [readOne(), costly, readOne()];
     },
     searches: [],
@@ -133,7 +133,7 @@ describe("runTask limits", () => {
 
 describe("runTask full prompt", () => {
   it("ends limitHit on dollars before a worker call whose history has grown too long", async () => {
-    const reads = Array.from({ length: 26 }, () => ({ read: pageUrl("long") }));
+    const reads = Array.from({ length: 90 }, () => ({ read: pageUrl("long") }));
     const run = await startRun([toolUseReply(reads), readOne()]);
     const text = "Long words about the Hermes agent for the prompt. ".repeat(
       200,
