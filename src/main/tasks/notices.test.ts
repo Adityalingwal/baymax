@@ -1,71 +1,188 @@
 import { describe, expect, it } from "vitest";
+import type { Harness } from "./harness";
 import { counts, createHarness } from "./harness";
+import { fixedLines } from "./lines";
 
-const notCaught = "I didn't catch that, say it again.";
-const voiceLine =
-  "Voice isn't working right now. You can type your question instead.";
-const restarting = "Baymax hit a problem and is restarting.";
+const notCaught = fixedLines.wordsNotCaught;
+const micBlocked = fixedLines.micBlocked;
+const noMicrophone = fixedLines.noMicrophone;
+const voiceLine = fixedLines.voiceUnavailable;
+const restarting = fixedLines.restarting;
 
-describe("notices", () => {
-  it("shows and says a notice every time it is asked", () => {
-    const h = createHarness();
-    h.state.showNotice("wordsNotCaught");
-    h.state.showNotice("wordsNotCaught");
-    expect(h.last().notice).toBe(notCaught);
-    expect(h.published).toHaveLength(2);
-    expect(h.said).toEqual([
-      { taskId: null, text: notCaught, kind: "notice" },
-      { taskId: null, text: notCaught, kind: "notice" },
-    ]);
-  });
+type Step = (h: Harness) => void;
 
-  it("lets nothing replace restarting", () => {
+const steps = {
+  none: () => undefined,
+  wordsNotCaught: (h) => h.state.showNotice("wordsNotCaught"),
+  micBlocked: (h) => h.state.showNotice("micBlocked"),
+  noMicrophone: (h) => h.state.showNotice("noMicrophone"),
+  restarting: (h) => h.state.showNotice("restarting"),
+  voiceDown: (h) => h.state.setVoiceAvailable(false),
+  voiceUp: (h) => h.state.setVoiceAvailable(true),
+  restartingVoiceDown: (h) => {
+    h.state.setVoiceAvailable(false);
+    h.state.showNotice("restarting");
+  },
+} satisfies Record<string, Step>;
+
+type StepName = keyof typeof steps;
+type PriorityRow = {
+  current: StepName;
+  incoming: StepName;
+  shown: string | null;
+  said: boolean;
+};
+
+const priorityRows: PriorityRow[] = [
+  { current: "none", incoming: "wordsNotCaught", shown: notCaught, said: true },
+  { current: "none", incoming: "micBlocked", shown: micBlocked, said: true },
+  {
+    current: "none",
+    incoming: "noMicrophone",
+    shown: noMicrophone,
+    said: true,
+  },
+  { current: "none", incoming: "voiceDown", shown: voiceLine, said: true },
+  { current: "none", incoming: "restarting", shown: restarting, said: true },
+  {
+    current: "wordsNotCaught",
+    incoming: "micBlocked",
+    shown: micBlocked,
+    said: true,
+  },
+  {
+    current: "micBlocked",
+    incoming: "noMicrophone",
+    shown: noMicrophone,
+    said: true,
+  },
+  {
+    current: "noMicrophone",
+    incoming: "wordsNotCaught",
+    shown: notCaught,
+    said: true,
+  },
+  {
+    current: "wordsNotCaught",
+    incoming: "wordsNotCaught",
+    shown: notCaught,
+    said: true,
+  },
+  {
+    current: "micBlocked",
+    incoming: "voiceDown",
+    shown: voiceLine,
+    said: true,
+  },
+  {
+    current: "voiceDown",
+    incoming: "wordsNotCaught",
+    shown: voiceLine,
+    said: false,
+  },
+  {
+    current: "voiceDown",
+    incoming: "micBlocked",
+    shown: voiceLine,
+    said: false,
+  },
+  {
+    current: "voiceDown",
+    incoming: "noMicrophone",
+    shown: voiceLine,
+    said: false,
+  },
+  { current: "voiceDown", incoming: "voiceUp", shown: null, said: false },
+  {
+    current: "voiceDown",
+    incoming: "restarting",
+    shown: restarting,
+    said: true,
+  },
+  {
+    current: "restarting",
+    incoming: "wordsNotCaught",
+    shown: restarting,
+    said: false,
+  },
+  {
+    current: "restarting",
+    incoming: "voiceDown",
+    shown: restarting,
+    said: false,
+  },
+  {
+    current: "restarting",
+    incoming: "restarting",
+    shown: restarting,
+    said: false,
+  },
+  {
+    current: "restartingVoiceDown",
+    incoming: "voiceUp",
+    shown: restarting,
+    said: false,
+  },
+];
+
+describe("notice priority", () => {
+  it.each(priorityRows)(
+    "$current then $incoming shows $shown",
+    ({ current, incoming, shown, said }) => {
+      const h = createHarness();
+      steps[current](h);
+      const before = h.said.length;
+      steps[incoming](h);
+      expect(h.state.displayState().notice).toBe(shown);
+      const expected =
+        said && shown !== null
+          ? [{ taskId: null, text: shown, kind: "notice" }]
+          : [];
+      expect(h.said.slice(before)).toEqual(expected);
+    },
+  );
+
+  it("lets nothing replace restarting and publishes only the voice change", () => {
     const h = createHarness();
     h.state.showNotice("restarting");
     const before = counts(h);
     h.state.showNotice("wordsNotCaught");
     h.state.showNotice("restarting");
     h.state.setVoiceAvailable(false);
-    expect(h.last().notice).toBe(restarting);
+    expect(h.last()).toMatchObject({
+      notice: restarting,
+      voiceAvailable: false,
+    });
     expect(counts(h)).toEqual([before[0] + 1, before[1], before[2]]);
   });
 
-  it("shows the voice line unsaid while voice is unavailable", () => {
+  it("shows and says the voice line while voice is unavailable", () => {
     const h = createHarness();
     h.state.setVoiceAvailable(false);
     expect(h.last()).toMatchObject({
       notice: voiceLine,
       voiceAvailable: false,
     });
-    expect(h.said).toEqual([]);
+    expect(h.said).toEqual([{ taskId: null, text: voiceLine, kind: "notice" }]);
     h.state.setVoiceAvailable(true);
     expect(h.last()).toMatchObject({ notice: null, voiceAvailable: true });
   });
 });
 
+const askRows: { current: StepName; shown: string | null }[] = [
+  { current: "wordsNotCaught", shown: null },
+  { current: "micBlocked", shown: null },
+  { current: "noMicrophone", shown: null },
+  { current: "voiceDown", shown: voiceLine },
+  { current: "restarting", shown: restarting },
+];
+
 describe("notices and ask", () => {
-  it("clears words not caught on ask", () => {
+  it.each(askRows)("ask after $current shows $shown", ({ current, shown }) => {
     const h = createHarness();
-    h.state.showNotice("wordsNotCaught");
+    steps[current](h);
     h.state.ask("hi", null, null);
-    expect(h.last().notice).toBeNull();
-  });
-
-  it("brings the voice line back when ask clears words not caught", () => {
-    const h = createHarness();
-    h.state.setVoiceAvailable(false);
-    h.state.showNotice("wordsNotCaught");
-    expect(h.last().notice).toBe(notCaught);
-    h.state.ask("hi", null, null);
-    expect(h.last().notice).toBe(voiceLine);
-  });
-
-  it("keeps another notice when voice comes back", () => {
-    const h = createHarness();
-    h.state.setVoiceAvailable(false);
-    h.state.showNotice("wordsNotCaught");
-    h.state.setVoiceAvailable(true);
-    expect(h.last()).toMatchObject({ notice: notCaught, voiceAvailable: true });
+    expect(h.last().notice).toBe(shown);
   });
 });
 

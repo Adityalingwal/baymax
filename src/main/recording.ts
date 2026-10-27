@@ -40,6 +40,9 @@ type RecordingState = {
 
 type RecordedClip = Extract<Clip, { outcome: "recorded" }>;
 
+// A clip that never comes (a lost start or stop) must not keep its outcome forever.
+const outcomeLimit = 16;
+
 function notCaught(
   utteranceId: UtteranceId,
   cause: NotCaughtCause,
@@ -82,6 +85,10 @@ function endHold(
   const recording = state.recording;
   if (recording === null) return;
   state.outcomes.set(recording.utteranceId, { seq: recording.seq, outcome });
+  if (state.outcomes.size > outcomeLimit) {
+    const oldest = state.outcomes.keys().next();
+    if (oldest.done !== true) state.outcomes.delete(oldest.value);
+  }
   deps.sendRecording({ type: "stop", utteranceId: recording.utteranceId });
   state.recording = null;
 }

@@ -14,6 +14,7 @@ import {
   hold,
   say,
   sendCancel,
+  silence,
 } from "./record";
 
 const QUEUE_LIMIT = 3;
@@ -206,6 +207,8 @@ export function cancelTask(change: Change, taskId: TaskId): boolean {
         endCancelled(change, record, null, null);
         return true;
       }
+      // Before the send, so a throwing send cannot skip it.
+      silence(change, taskId);
       sendCancel(change, record);
       record.card.state = "cancelling";
       record.card.canRetry = false;

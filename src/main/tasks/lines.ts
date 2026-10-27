@@ -10,6 +10,10 @@ export const fixedLines = {
   queueFull: "I already have three waiting. Cancel one or ask again later.",
   outsideResearch: "I can't do that yet in this version.",
   wordsNotCaught: "I didn't catch that, say it again.",
+  micBlocked:
+    "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question.",
+  noMicrophone:
+    "I can't find a microphone. Connect one, or type your question.",
   voiceUnavailable:
     "Voice isn't working right now. You can type your question instead.",
   restarting: "Baymax hit a problem and is restarting.",

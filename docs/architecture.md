@@ -133,7 +133,7 @@ cards      <--IPC--  whole display state                       <--- task events
 ### Voice
 
 - **Listening.** The renderer records the microphone (`getUserMedia`) while Option is held and hands the clip to main over typed IPC at key release; it also plays speech (Web Audio), because Chrome's echo canceller only removes audio Chrome itself plays (Electron issue #47043). Main sends the clip once to Deepgram's pre-recorded transcription. A hold longer than the cap is ended by code as a key-up, and counts as a question.
-- **Hold filter.** Recording is requested at key-down so the first word is not lost; because IPC, the mic permission and the recorder start are asynchronous, that is a measured target, not a guarantee. At release the hold tracker accepts or discards the hold: a hold under about 0.3 s, or one during which any other key was pressed (Option + arrow jumps a word in a terminal), is discarded silently, with no card and no transcription call. Main passes the time with each key event, so the tracker stays pure; any key-down still silences speech at once. The renderer always hands over the clip; main drops a discarded one. If the transcript fails or comes back empty, Baymax says "I didn't catch that, say it again."; a late transcript for an old utterance is dropped. If the renderer dies or reloads while recording or playing, main drops that clip and the playing line and clears the hold state. A voice failure never stops research that is running.
+- **Hold filter.** Recording is requested at key-down so the first word is not lost; because IPC, the mic permission and the recorder start are asynchronous, that is a measured target, not a guarantee. At release the hold tracker accepts or discards the hold: a hold under about 0.3 s, or one during which any other key was pressed (Option + arrow jumps a word in a terminal), is discarded silently, with no card and no transcription call. Main passes the time with each key event, so the tracker stays pure; any key-down still silences speech at once. The renderer always hands over the clip; main drops a discarded one. If the transcript fails or comes back empty, Baymax says "I didn't catch that, say it again."; a blocked or missing microphone gets its own line, and Deepgram being unreachable shows voice unavailable instead ([failure lines](#failures-the-user-hears)). A late transcript for an old utterance is dropped. If the renderer dies or reloads while recording or playing, main drops that clip, any transcript still in flight from before, and the playing line; a key still held stays held, so nothing is spoken until it is released. A voice failure never stops research that is running.
 - **Why single calls.** V1 reads nothing before key release and does not continue a cut line, so a live stream (reconnects, end-of-turn signals, keep-alive) adds about a day for little gain. The cost is about one second more before the transcript and no live words on screen while speaking.
 - **Speaking.** Baymax speaks in four places only, and everything spoken is also on the screen: the clarifying question, the start line ("Okay, looking at how Hermes works."), a one- or two-line answer with the rest on the card, and a failure line. A queued task folds into the start line ("Okay, I'll look at that after the current one.").
 - **One playback owner.** All speech goes through one `speak(line, kind)` function in main. Each line carries its task id; one line plays at a time and a new line waits for it; the fixed "Let me check." is dropped if the start line is ready first; a line for a cancelled or replaced task is dropped. A key press, mute or cancel clears the pending lines as well as the one playing. Nothing is spoken while the key is held, and pressing the key while Baymax speaks silences it at once.
@@ -209,6 +209,8 @@ It checks support and completion, not truth.
 | Failure | Line |
 | --- | --- |
 | Words not caught | "I didn't catch that, say it again." |
+| Microphone blocked | "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question." |
+| No microphone | "I can't find a microphone. Connect one, or type your question." |
 | Voice unavailable | "Voice isn't working right now. You can type your question instead." |
 | Models unreachable | "I can't reach my models right now. Try again in a few minutes." |
 | Search not working | "Search isn't working right now. Try again in a few minutes." |
@@ -275,13 +277,14 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/platform.ts` | Platform flags and labels |
 | `src/main/recording.ts` | One utterance: recording commands, the clip, the transcript; discarded clips and late transcripts dropped |
 | `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, voice-down reported |
+| `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line timing |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
 | `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
 | `src/main/env-file.ts` | Reads `.env` from the app path into the environment once; a name the shell already set keeps its value |
 | `src/main/restart.ts` | The restart path: the restarting line, work stopped, one relaunch after a short delay, and the loop guard |
-| `src/main/wiring.ts` | Connects main's state to the engine port and the renderer actions; a state throw goes to the restart path |
-| `src/main/renderer-actions.ts` | The renderer -> main actions: sender and payload checks, then one state call each |
+| `src/main/wiring.ts` | Connects main's state to voice, the engine port and the renderer actions; a state throw goes to the restart path |
+| `src/main/renderer-actions.ts` | The renderer -> main actions: sender and payload checks, then one state or voice call each |
 | `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime and the fixed lines, through one update path |
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |

@@ -111,6 +111,11 @@ const validPayloads: [string, unknown][] = [
   [ipcChannels.setCardFolded, { taskId: "t1", folded: true }],
   [ipcChannels.openSource, { taskId: "t1", url: source }],
   [ipcChannels.setMuted, { muted: true }],
+  [
+    ipcChannels.sendClip,
+    { utteranceId: "u1", outcome: "failed", reason: "error" },
+  ],
+  [ipcChannels.playbackFinished, { lineId: "l1", outcome: "ended" }],
 ];
 
 const answer = (reply: unknown) => ({ taskId: "t1", questionId: "q1", reply });
@@ -133,6 +138,19 @@ const malformedPayloads: [string, unknown][] = [
   [ipcChannels.setCardFolded, { taskId: "t1", folded: "yes" }],
   [ipcChannels.openSource, { taskId: "t1" }],
   [ipcChannels.setMuted, { muted: "true" }],
+  [ipcChannels.sendClip, { outcome: "failed", reason: "error" }],
+  [ipcChannels.sendClip, { utteranceId: "u1", outcome: "failed", reason: "x" }],
+  [
+    ipcChannels.sendClip,
+    { utteranceId: "u1", outcome: "recorded", audio: [1, 2], mimeType: "a" },
+  ],
+  [
+    ipcChannels.sendClip,
+    { utteranceId: "u1", outcome: "recorded", audio: new ArrayBuffer(2) },
+  ],
+  [ipcChannels.sendClip, { utteranceId: "u1", outcome: "lost" }],
+  [ipcChannels.playbackFinished, { lineId: "l1", outcome: "paused" }],
+  [ipcChannels.playbackFinished, { outcome: "ended" }],
 ];
 
 const dropRows = [

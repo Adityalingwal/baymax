@@ -4,7 +4,9 @@ import type { HoldState } from "../shared/ipc";
 import type { CardActions } from "./actions";
 import { TaskCard } from "./cards/TaskCard";
 import { applyDemoAction, demoDisplayState, type DemoAction } from "./demo";
+import { startMicrophone } from "./microphone";
 import { NotchShell } from "./notch/NotchShell";
+import { startPlayback } from "./playback";
 import { TextBox } from "./TextBox";
 import { TopBar } from "./TopBar";
 
@@ -81,6 +83,15 @@ export function App() {
   const demoCardActions = useMemo(() => demoActions(dispatch), [dispatch]);
   const state = demo ? demoState : display;
   const actions: CardActions = demo ? demoCardActions : window.baymax;
+
+  useEffect(() => {
+    const stopMicrophone = startMicrophone(window.baymax);
+    const stopPlayback = startPlayback(window.baymax);
+    return () => {
+      stopMicrophone();
+      stopPlayback();
+    };
+  }, []);
 
   return (
     <NotchShell

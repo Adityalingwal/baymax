@@ -12,6 +12,7 @@ import type {
 import type { AnswerQuestion } from "../../shared/ipc";
 import { recentExchanges } from "./display";
 import { failureLine, fixedLines } from "./lines";
+import { clearOneOffNotice } from "./notices";
 import type { Change, Input, TaskRecord } from "./record";
 import {
   addRecord,
@@ -22,6 +23,7 @@ import {
   holdsIntake,
   say,
   setTimer,
+  silence,
 } from "./record";
 
 const LET_ME_CHECK_MS = 1500;
@@ -40,9 +42,7 @@ export function ask(
   const trimmed = words.trim();
   if (trimmed === "") return dropped(change, "empty words");
   const { model } = change;
-  if (model.notice === fixedLines.wordsNotCaught) {
-    model.notice = model.voiceAvailable ? null : fixedLines.voiceUnavailable;
-  }
+  clearOneOffNotice(model);
   const taskId = newTaskId();
   const record = addRecord(model, taskId, trimmed);
   hold(change, record, {
@@ -119,6 +119,7 @@ function clarify(
 // Words that answer the waiting question are not a task, so their card goes at once.
 function removeThinkingCard(change: Change, record: TaskRecord): void {
   change.model.records.delete(record.card.taskId);
+  silence(change, record.card.taskId);
 }
 
 function validReply(
