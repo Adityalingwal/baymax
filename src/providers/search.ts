@@ -25,13 +25,13 @@ function failureFromStatus(status: number): SearchFailure | null {
   return "badResponse";
 }
 
+// The combined signal keeps the reason of whichever source fired first.
 function failureFromSignals(
-  caller: AbortSignal,
+  combined: AbortSignal,
   deadline: AbortSignal,
 ): SearchFailure | null {
-  if (caller.aborted) return "aborted";
-  if (deadline.aborted) return "timeout";
-  return null;
+  if (!combined.aborted) return null;
+  return combined.reason === deadline.reason ? "timeout" : "aborted";
 }
 
 function hitFrom(result: unknown): SearchHit | null {
@@ -43,7 +43,8 @@ function hitFrom(result: unknown): SearchHit | null {
     : [];
   return {
     url,
-    title: typeof title === "string" && title.trim() !== "" ? title : url,
+    title:
+      typeof title === "string" && title.trim() !== "" ? title.trim() : url,
     snippet: parts
       .join(" … ")
       .replace(/\s+/g, " ")
@@ -60,7 +61,7 @@ function hitsFrom(body: unknown): SearchHit[] | null {
   return hits.every((hit): hit is SearchHit => hit !== null) ? hits : null;
 }
 
-// Exa's lite search with one highlight per hit: its cheapest call that returns a snippet.
+// Exa's lite search with up to 500 characters of highlights per hit: its cheapest call that returns a snippet.
 export async function searchWeb(params: {
   query: string;
   key: string;
@@ -72,6 +73,7 @@ export async function searchWeb(params: {
   const { query, key, signal } = params;
   if (signal.aborted) return { ok: false, cause: "aborted" };
   const deadline = AbortSignal.timeout(params.timeoutMs ?? 10_000);
+  const combined = AbortSignal.any([signal, deadline]);
   const request: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": key },
@@ -83,7 +85,7 @@ export async function searchWeb(params: {
     }),
     // A custom key header survives a cross-origin redirect, so never follow one.
     redirect: "error",
-    signal: AbortSignal.any([signal, deadline]),
+    signal: combined,
   };
   try {
     const response = await params.fetch(exaSearchUrl, request);
@@ -93,11 +95,12 @@ export async function searchWeb(params: {
       return { ok: false, cause: failure };
     }
     const hits = hitsFrom(await response.json());
-    return hits === null
+    // A body that echoes the key must not carry it into the model's text.
+    return hits === null || JSON.stringify(hits).includes(key)
       ? { ok: false, cause: "badResponse" }
       : { ok: true, hits };
   } catch (error) {
-    const cause = failureFromSignals(signal, deadline);
+    const cause = failureFromSignals(combined, deadline);
     if (cause !== null) return { ok: false, cause };
     return {
       ok: false,

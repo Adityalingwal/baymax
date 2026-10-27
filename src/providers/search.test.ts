@@ -134,6 +134,10 @@ const badBodyRows: [string, Reply][] = [
   ["results that are not a list", json({ results: "none" })],
   ["a hit without a url", json({ results: [{ title: "No url" }] })],
   ["a null body", json(null)],
+  [
+    "a hit that echoes the key",
+    json({ results: [{ url: "https://x.example/", title: `key ${key}` }] }),
+  ],
 ];
 
 describe("searchWeb refuses a wrongly shaped body", () => {
@@ -167,5 +171,38 @@ describe("searchWeb failures without a response", () => {
     const { outcome, sent } = await search(json(goodBody), AbortSignal.abort());
     expect(outcome).toEqual({ ok: false, cause: "aborted" });
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("searchWeb picks the signal that fired first", () => {
+  it("keeps timeout when the caller aborts after the deadline", async () => {
+    const controller = new AbortController();
+    const reply: Reply = (init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          controller.abort();
+          setTimeout(() => reject(init.signal?.reason), 10);
+        });
+      });
+    const { outcome } = await search(reply, controller.signal, 50);
+    expect(outcome).toEqual({ ok: false, cause: "timeout" });
+  });
+
+  it("maps a caller abort while the body is read to aborted", async () => {
+    const controller = new AbortController();
+    const reply: Reply = async (init) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(stream) {
+          stream.enqueue(new TextEncoder().encode('{"results":'));
+          init.signal?.addEventListener("abort", () => {
+            stream.error(init.signal?.reason);
+          });
+          setTimeout(() => controller.abort(), 20);
+        },
+      });
+      return new Response(body);
+    };
+    const { outcome } = await search(reply, controller.signal);
+    expect(outcome).toEqual({ ok: false, cause: "aborted" });
   });
 });
