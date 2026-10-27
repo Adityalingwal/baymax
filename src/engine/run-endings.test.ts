@@ -122,6 +122,20 @@ describe("runTask other endings", () => {
     ]);
   });
 
+  it("ends limitHit before a tool batch once the active time is used up", async () => {
+    const times = [0, 130_000];
+    const now = () => times.shift() ?? 130_000;
+    const run = await startRun(
+      [toolUseReply([{ search: "hermes" }])],
+      [hits(pageUrl("one"))],
+      now,
+    );
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events).toEqual([limitHit]);
+    expect(run.queries).toEqual([]);
+  });
+
   it("ends limitHit when the next worker call would cross a limit", async () => {
     const costly = toolUseReply([{ search: "hermes" }]);
     if (costly.ok) costly.message.usage.input_tokens = 70_000;

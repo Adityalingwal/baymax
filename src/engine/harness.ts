@@ -120,9 +120,9 @@ export function startTestEngine(steps: FakeStep[], fakes: EngineFakes = {}) {
   const keys = { anthropicKey: "test-key", searchKey: "" };
   const port = startEngine(keys, {
     today: () => "2026-10-27",
+    now: () => clock,
     ...fakes,
     model,
-    now: () => clock,
     log,
   });
   port.onMessage((event) => {

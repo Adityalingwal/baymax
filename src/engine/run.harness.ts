@@ -181,6 +181,7 @@ const networks: FakeNetwork[] = [];
 export async function startRun(
   steps: FakeStep[],
   searches: FakeSearchStep[] = [],
+  now?: () => number,
 ) {
   const network = await startPages();
   networks.push(network);
@@ -189,6 +190,7 @@ export async function startRun(
     search: searcher.search,
     lookup: network.lookup,
     connect: network.connect,
+    ...(now === undefined ? {} : { now }),
   });
   const terminal = (event: EngineEvent) =>
     ["result", "incomplete", "cancelled"].includes(event.type);
