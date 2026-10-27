@@ -268,13 +268,15 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/renderer.ts`, `src/renderer/` | The screen (React): text box, cards, mic recording, playback |
 | `src/renderer/microphone.ts` | Mic recording of the held clip |
 | `src/renderer/playback.ts` | Playback of spoken lines (Web Audio) |
+| `src/renderer/notch/` | The shell that unfolds from the notch: its modes, outline, pointer and click capture, and the dot that reopens the last folded answer |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
 | `src/main/hold.ts` | Hold state and the accept or discard outcome from key events and the time; pure |
 | `src/main/platform.ts` | Platform flags and labels |
 | `src/main/recording.ts` | One utterance: recording commands, the clip, the transcript; discarded clips and late transcripts dropped |
 | `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, voice-down reported |
-| `src/main/window.ts` | The Baymax window: creation, navigation and pop-ups blocked |
+| `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
+| `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
 | `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime and the fixed lines, through one update path |
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
