@@ -21,27 +21,28 @@ export type CodeCheck =
       findings: Findings;
     };
 
-// A marker is [s1] not escaped; only code turns markers into links.
-const markerPattern = /(?<!\\)\[(s\d+)\]/g;
+// One pass over model text: an escape pair stays as written, a marker such as [s1] is kept for code,
+// and every other bracket or autolink start is escaped, so no link, image or reference can form.
+const cardToken = /\\[\s\S]|\[(s\d+)\]|[[\]]|<[a-zA-Z][a-zA-Z0-9+.-]*:/g;
 
-// The model writes no links: every link form it could write is escaped to plain text instead of parsed.
-function neutralize(cardText: string): string {
-  return cardText
-    .replaceAll("](", "]\\(")
-    .replace(/<([a-z][a-z0-9+.-]*:)/gi, "\\<$1")
-    .replace(/^( {0,3})\[([^\]]*)\]:/gm, "$1\\[$2]:");
+function markersIn(cardText: string): string[] {
+  return [...cardText.matchAll(cardToken)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
 }
 
 // Read URLs are serialized URLs, so an angle-bracket destination holds them, parentheses included.
 export const linkable = (url: string) => !/[<>\s]/.test(url);
 
-// A marker for a page that was not read is dropped, so no card shows a citation it cannot open.
-function rewriteMarkers(cardText: string, pages: ReadPage[]): string {
+// Only code writes links: a marker for a read page becomes one, a marker for a page not read is dropped.
+function rewriteCard(cardText: string, pages: ReadPage[]): string {
   const byId = new Map(pages.map((page) => [page.id, page.url]));
-  return cardText.replace(markerPattern, (whole, id: string) => {
+  return cardText.replace(cardToken, (token, id: string | undefined) => {
+    if (token.startsWith("\\")) return token;
+    if (id === undefined) return `\\${token}`;
     const url = byId.get(id);
     if (url === undefined) return "";
-    return linkable(url) ? `[${id}](<${url}>)` : whole;
+    return linkable(url) ? `[${id}](<${url}>)` : `\\[${id}\\]`;
   });
 }
 
@@ -68,12 +69,12 @@ function failedRule(
 }
 
 function built(answer: Answer, pages: ReadPage[]) {
-  const cardText = neutralize(answer.cardText.trim());
-  const markerIds = [...cardText.matchAll(markerPattern)].map((m) => m[1]);
+  const cardText = answer.cardText.trim();
+  const markerIds = markersIn(cardText);
   const ids = new Set(citedIds(answer, markerIds));
   const cited = pages.filter((page) => ids.has(page.id));
   const findings: Findings = {
-    cardText: rewriteMarkers(cardText, pages),
+    cardText: rewriteCard(cardText, pages),
     sources: cited.map(({ id, url, title }) => ({ id, url, title })),
     openPoints: answer.openPoints,
   };

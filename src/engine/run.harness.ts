@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ModelOutcome } from "../providers/anthropic";
 import type { SearchFn, SearchOutcome } from "../providers/search";
+import type { Findings } from "../shared/cards";
 import type {
   EngineCommand,
   EngineEvent,
@@ -225,4 +226,15 @@ export async function until(condition: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 2));
   }
   if (!condition()) throw new Error("the awaited step never came");
+}
+
+// Every unescaped "[" in a card must open a code-built marker link to one of its sources; anything else is a stray link.
+export function strayLinks(findings: Findings): string[] {
+  const links = findings.sources.map(({ id, url }) => `[${id}](<${url}>)`);
+  const { cardText } = findings;
+  return [...cardText.matchAll(/\\[\s\S]|\[/g)].flatMap((match) => {
+    if (match[0] !== "[") return [];
+    const rest = cardText.slice(match.index);
+    return links.some((link) => rest.startsWith(link)) ? [] : [rest];
+  });
 }

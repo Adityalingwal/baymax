@@ -10,6 +10,7 @@ import {
   pageUrl,
   runTask,
   startRun,
+  strayLinks,
   toolUseReply,
   workerAnswer,
 } from "./run.harness";
@@ -197,15 +198,6 @@ const escapedTitles = [
   "\\<https://evil.example/c\\> & \\!\\[x\\]\\(y\\) \\*a\\* \\_b\\_ \\`c\\` \\# d \\| e \\~ f \\\\",
 ];
 
-// Every unescaped "](" must open a link to one of the sources, in angle brackets.
-function linksOutside(findings: Findings): string[] {
-  const urls = findings.sources.map((source) => source.url);
-  return [...findings.cardText.matchAll(/(?<!\\)\]\(/g)].flatMap((match) => {
-    const rest = findings.cardText.slice((match.index ?? 0) + 2);
-    return urls.some((url) => rest.startsWith(`<${url}>)`)) ? [] : [rest];
-  });
-}
-
 describe("runTask page list", () => {
   it("escapes page titles so only the code's links remain", async () => {
     const run = await startRun([
@@ -231,7 +223,7 @@ describe("runTask page list", () => {
       const url = findings.sources[index].url;
       expect(lines).toContain(`- [s${index + 1}](<${url}>) ${escaped}`);
     }
-    expect(linksOutside(findings)).toEqual([]);
+    expect(strayLinks(findings)).toEqual([]);
     // An autolink would be "<scheme:" not escaped and not the code's own "](<" destination.
     expect(findings.cardText).not.toMatch(/(?<![\\(])<[a-z][a-z0-9+.-]*:/i);
   });
