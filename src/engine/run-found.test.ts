@@ -20,7 +20,7 @@ afterEach(closeRuns);
 
 // A call whose reported usage leaves no room for the next one, so the run ends limitHit there.
 function costly(step: ModelOutcome): ModelOutcome {
-  if (step.ok) step.message.usage.input_tokens = 70_000;
+  if (step.ok) step.message.usage.input_tokens = 248_000;
   return step;
 }
 

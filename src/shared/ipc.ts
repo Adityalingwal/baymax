@@ -26,9 +26,19 @@ export const ipcChannels = {
   speech: "speech",
   stopPlayback: "stop-playback",
   playbackFinished: "playback-finished",
+  windowShape: "window-shape",
+  getWindowShape: "get-window-shape",
+  setMouseCapture: "set-mouse-capture",
 } as const;
 
 export type HoldState = "idle" | "listening";
+
+// The notch size is estimated from the display width, not detected.
+export type WindowShape = {
+  notched: boolean;
+  notchWidth: number;
+  notchHeight: number;
+};
 
 export type StartupInfo = {
   accessibility: boolean | null;
@@ -78,6 +88,8 @@ export type PlaybackFinished = {
   lineId: LineId;
   outcome: "ended" | "stopped" | "failed";
 };
+// Captured: clicks land on the panel; released: they pass through to the app below.
+export type SetMouseCapture = { captured: boolean };
 
 // Payload of each renderer -> main channel, so main's handlers use the same types.
 export type RendererToMain = {
@@ -91,6 +103,7 @@ export type RendererToMain = {
   [ipcChannels.setMuted]: SetMuted;
   [ipcChannels.sendClip]: Clip;
   [ipcChannels.playbackFinished]: PlaybackFinished;
+  [ipcChannels.setMouseCapture]: SetMouseCapture;
 };
 
 // Payload of each main -> renderer channel.
@@ -100,6 +113,7 @@ export type MainToRenderer = {
   [ipcChannels.recording]: RecordingCommand;
   [ipcChannels.speech]: SpeechLine;
   [ipcChannels.stopPlayback]: StopPlayback;
+  [ipcChannels.windowShape]: WindowShape;
 };
 
 export type BaymaxApi = {
@@ -120,4 +134,6 @@ export type BaymaxApi = {
   onSpeech: (callback: (line: SpeechLine) => void) => () => void;
   onStopPlayback: (callback: (payload: StopPlayback) => void) => () => void;
   reportPlaybackFinished: (payload: PlaybackFinished) => void;
+  onWindowShape: (callback: (shape: WindowShape) => void) => () => void;
+  setMouseCapture: (payload: SetMouseCapture) => void;
 };

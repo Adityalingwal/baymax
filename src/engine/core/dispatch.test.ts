@@ -57,7 +57,7 @@ const limitRows: LimitRow[] = [
   },
   {
     name: "dollars when the estimate passes the limit",
-    budget: { ...createTaskBudget(), dollars: 0.145 },
+    budget: { ...createTaskBudget(), dollars: 0.495 },
     limit: "dollars",
   },
 ];
