@@ -266,8 +266,10 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/renderer.ts`, `src/renderer/` | The screen (React): text box, cards, mic recording, playback |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
-| `src/main/hold.ts` | Hold state from key events; pure |
+| `src/main/hold.ts` | Hold state and the accept or discard outcome from key events and the time; pure |
 | `src/main/platform.ts` | Platform flags and labels |
+| `src/main/recording.ts` | One utterance: recording commands, the clip, the transcript; discarded clips and late transcripts dropped |
+| `src/renderer/microphone.ts` | Mic recording of the held clip |
 | `src/main/window.ts` | The Baymax window: creation, navigation and pop-ups blocked |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
 | `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime and the fixed lines, through one update path |
@@ -278,7 +280,8 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
-| `src/providers/` (planned) | Process-neutral provider code: the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/` | Process-neutral provider code: the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/deepgram.ts` | Deepgram pre-recorded transcription (speech follows) |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.
 - `src/engine/` imports nothing from `src/main/`, `src/renderer/` or `electron`. `src/main/` imports the engine only through `src/engine/index.ts`. The renderer never imports `src/shared/engine.ts` or the engine.
