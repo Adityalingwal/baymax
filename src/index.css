@@ -9,6 +9,11 @@
   }
 }
 
+/* Native scrollbars follow the dark shell instead of the light system default. */
+:root {
+  color-scheme: dark;
+}
+
 /* The window is transparent; only the notch shell paints. */
 html,
 body,

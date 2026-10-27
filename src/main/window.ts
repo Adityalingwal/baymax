@@ -39,6 +39,7 @@ function createPanel(bounds: Electron.Rectangle): BrowserWindow {
     enableLargerThanScreen: true,
     // The panel is never made active, so without this every first click would only activate it.
     acceptFirstMouse: true,
+    hiddenInMissionControl: true,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
