@@ -219,7 +219,7 @@ describe("runTask judge", () => {
     const costly: ModelOutcome = {
       ok: true,
       message: fakeMessage(JSON.stringify(goodAnswer), {
-        usage: { input_tokens: 70_000 },
+        usage: { input_tokens: 248_000 },
       }),
     };
     const event = await finalEvent(readTwo(costly));

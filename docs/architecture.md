@@ -236,7 +236,7 @@ It checks support and completion, not truth.
 | Searches per task | about 8 |
 | Active time per task | about 2 minutes |
 | Model calls per task | about 15 |
-| Dollars per task | about 15 cents |
+| Dollars per task | about 50 cents |
 | Done check retry rounds | 1 |
 | Shortest hold that counts as a question | about 0.3 s |
 | Tasks waiting while one runs | 3 |
@@ -349,7 +349,7 @@ Kept from the 26 Oct design freeze so V1 can grow into it. Each part says what i
 | Depth | Workers | Model calls | Searches | Active time | Dollar limit | Cost target |
 | --- | --- | --- | --- | --- | --- | --- |
 | Quick | 1 | about 4 to 5 | 2 | 1 minute | about 2 cents | about 1 cent |
-| Normal | up to 3 | about 15 | 8 | 5 minutes | about 15 cents | set at build |
+| Normal | up to 3 | about 15 | 8 | 5 minutes | about 50 cents | set at build |
 | Deep | up to 5 | about 60 | 30 | 20 minutes | about 75 cents | about 50 cents |
 
 ### Talker and streaming voice

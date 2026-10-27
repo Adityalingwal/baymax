@@ -138,7 +138,7 @@ describe("runTask other endings", () => {
 
   it("ends limitHit when the next worker call would cross a limit", async () => {
     const costly = toolUseReply([{ search: "hermes" }]);
-    if (costly.ok) costly.message.usage.input_tokens = 70_000;
+    if (costly.ok) costly.message.usage.input_tokens = 248_000;
     const { run, last } = await runOf([costly], [hits(pageUrl("one"))]);
     expect(last).toEqual([limitHit]);
     expect(run.requests).toHaveLength(1);
