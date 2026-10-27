@@ -248,7 +248,7 @@ Run before the code that depends on them:
 
 1. The Anthropic SDK's retry and timeout defaults and its error causes for a dropped connection.
 2. What Electron 40's main process does on an uncaught exception and an unhandled rejection.
-3. The search provider (Exa or Tavily) on the demo pair and one current-fact question, in the web tool's first PR.
+3. The search provider on the demo pair and one current-fact question, in the web tool's first PR. Done in ticket #15: Exa was picked over Tavily.
 4. The notch window spike on the demo Mac, before the window is built.
 
 Which Deepgram models the key reaches is not a separate check: the first voice PR's first real call shows it.
