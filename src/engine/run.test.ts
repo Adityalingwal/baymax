@@ -58,7 +58,7 @@ describe("runTask happy path", () => {
         taskId: "task-1",
         spokenLine: goodAnswer.spokenLine,
         findings: {
-          cardText: `## How it works\n\nHermes runs a loop [s1](${pageUrl("one")}) with tools [s2](${pageUrl("two")}).`,
+          cardText: `## How it works\n\nHermes runs a loop [s1](<${pageUrl("one")}>) with tools [s2](<${pageUrl("two")}>).`,
           sources: [
             { id: "s1", url: pageUrl("one"), title: "Page one" },
             { id: "s2", url: pageUrl("two"), title: "Page two" },

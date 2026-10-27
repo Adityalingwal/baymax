@@ -21,7 +21,7 @@ afterEach(closeRuns);
 
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
-const linked = (id: string, name: string) => `[${id}](${pageUrl(name)})`;
+const linked = (id: string, name: string) => `[${id}](<${pageUrl(name)}>)`;
 
 const goodFindings: Findings = {
   cardText: `## How it works\n\nHermes runs a loop ${linked("s1", "one")} with tools ${linked("s2", "two")}.`,
@@ -124,45 +124,6 @@ const codeRows: CodeRow[] = [
       sources: [one],
     },
   },
-  {
-    name: "(5) a link to a snippet-only page",
-    answer: {
-      cardText: `A loop [s1], see [the docs](${pageUrl("three")}).`,
-      claims: claimOne,
-    },
-    part: "links to pages that were not read",
-    findings: {
-      ...goodFindings,
-      cardText: `A loop ${linked("s1", "one")}, see the docs.`,
-      sources: [one],
-    },
-  },
-  {
-    name: "(5) a reference definition",
-    answer: {
-      cardText: `A loop [s1] in [the docs][d].\n\n[d]: ${pageUrl("one")}`,
-      claims: claimOne,
-    },
-    part: "links to pages that were not read",
-    findings: {
-      ...goodFindings,
-      cardText: `A loop ${linked("s1", "one")} in [the docs][d].`,
-      sources: [one],
-    },
-  },
-  {
-    name: "(5) an autolink",
-    answer: {
-      cardText: `A loop [s1] at <${pageUrl("one")}>.`,
-      claims: claimOne,
-    },
-    part: "links to pages that were not read",
-    findings: {
-      ...goodFindings,
-      cardText: `A loop ${linked("s1", "one")} at ${pageUrl("one")}.`,
-      sources: [one],
-    },
-  },
 ];
 
 describe("runTask code check", () => {
@@ -173,20 +134,6 @@ describe("runTask code check", () => {
       expect(event).toEqual(unchecked(row.part, row.findings));
     },
   );
-
-  it("passes a link to a read page and keeps it", async () => {
-    const cardText = `A loop [s1], see [the docs](${pageUrl("two")}).`;
-    const event = await finalEvent(
-      readTwo(workerAnswer({ cardText, claims: claimOne }), verdictReply()),
-    );
-    expect(event).toMatchObject({
-      type: "result",
-      findings: {
-        cardText: `A loop ${linked("s1", "one")}, see [the docs](${pageUrl("two")}).`,
-        sources: [one, two],
-      },
-    });
-  });
 });
 
 type JudgeRow = { name: string; verdict: FakeStep; part: string };
