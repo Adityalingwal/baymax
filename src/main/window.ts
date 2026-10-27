@@ -5,8 +5,8 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 export function createMainWindow(): BrowserWindow {
   const browserWindow = new BrowserWindow({
-    width: 360,
-    height: 200,
+    width: 480,
+    height: 720,
     title: "Baymax",
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
