@@ -238,7 +238,7 @@ It checks support and completion, not truth.
 | Searches per task | about 8 |
 | Active time per task | about 2 minutes |
 | Model calls per task | about 15 |
-| Dollars per task | about 15 cents |
+| Dollars per task | about 50 cents |
 | Done check retry rounds | 1 |
 | Shortest hold that counts as a question | about 0.3 s |
 | Tasks waiting while one runs | 3 |
@@ -270,6 +270,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/renderer.ts`, `src/renderer/` | The screen (React): text box, cards, mic recording, playback |
 | `src/renderer/microphone.ts` | Mic recording of the held clip |
 | `src/renderer/playback.ts` | Playback of spoken lines (Web Audio) |
+| `src/renderer/notch/` | The shell that unfolds from the notch: its modes, outline, pointer and click capture, and the dot that reopens the last folded answer |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
 | `src/main/hold.ts` | Hold state and the accept or discard outcome from key events and the time; pure |
@@ -277,7 +278,8 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/recording.ts` | One utterance: recording commands, the clip, the transcript; discarded clips and late transcripts dropped |
 | `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, voice-down reported |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line timing |
-| `src/main/window.ts` | The Baymax window: creation, navigation and pop-ups blocked |
+| `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
+| `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
 | `src/main/env-file.ts` | Reads `.env` from the app path into the environment once; a name the shell already set keeps its value |
 | `src/main/restart.ts` | The restart path: the restarting line, work stopped, one relaunch after a short delay, and the loop guard |
@@ -350,7 +352,7 @@ Kept from the 26 Oct design freeze so V1 can grow into it. Each part says what i
 | Depth | Workers | Model calls | Searches | Active time | Dollar limit | Cost target |
 | --- | --- | --- | --- | --- | --- | --- |
 | Quick | 1 | about 4 to 5 | 2 | 1 minute | about 2 cents | about 1 cent |
-| Normal | up to 3 | about 15 | 8 | 5 minutes | about 15 cents | set at build |
+| Normal | up to 3 | about 15 | 8 | 5 minutes | about 50 cents | set at build |
 | Deep | up to 5 | about 60 | 30 | 20 minutes | about 75 cents | about 50 cents |
 
 ### Talker and streaming voice
