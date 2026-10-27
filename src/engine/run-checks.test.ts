@@ -107,7 +107,7 @@ const codeRows: CodeRow[] = [
     part: "citations to pages that were not read",
     findings: {
       ...goodFindings,
-      cardText: `A loop ${linked("s1", "one")} and memory [s7].`,
+      cardText: `A loop ${linked("s1", "one")} and memory .`,
       sources: [one],
     },
   },

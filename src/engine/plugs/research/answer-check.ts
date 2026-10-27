@@ -35,11 +35,13 @@ function neutralize(cardText: string): string {
 // Read URLs are serialized URLs, so an angle-bracket destination holds them, parentheses included.
 const linkable = (url: string) => !/[<>\s]/.test(url);
 
+// A marker for a page that was not read is dropped, so no card shows a citation it cannot open.
 function rewriteMarkers(cardText: string, pages: ReadPage[]): string {
   const byId = new Map(pages.map((page) => [page.id, page.url]));
   return cardText.replace(markerPattern, (whole, id: string) => {
     const url = byId.get(id);
-    return url === undefined || !linkable(url) ? whole : `[${id}](<${url}>)`;
+    if (url === undefined) return "";
+    return linkable(url) ? `[${id}](<${url}>)` : whole;
   });
 }
 
