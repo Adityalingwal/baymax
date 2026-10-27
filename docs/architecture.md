@@ -106,7 +106,7 @@ cards      <--IPC--  whole display state                       <--- task events
 | Intake check | Claude Sonnet 5.5 (Haiku 5.5 if the first spoken line is too slow) |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
-| Web | One `web` tool owned by Baymax: a search provider (Exa or Tavily, called with plain `fetch`) and plain page reads |
+| Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and plain page reads |
 | Agent runtime | Our own loop on the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), in the engine |
 | Storage | Memory only |
 | Keys | Our own keys from `.env` ([Processes and the port](#processes-and-the-port)) |
@@ -248,7 +248,7 @@ Run before the code that depends on them:
 
 1. The Anthropic SDK's retry and timeout defaults and its error causes for a dropped connection.
 2. What Electron 40's main process does on an uncaught exception and an unhandled rejection.
-3. The search provider (Exa or Tavily) on the demo pair and one current-fact question, in the web tool's first PR.
+3. The search provider on the demo pair and one current-fact question, in the web tool's first PR. Done in ticket #15: Exa was picked over Tavily.
 4. The notch window spike on the demo Mac, before the window is built.
 
 Which Deepgram models the key reaches is not a separate check: the first voice PR's first real call shows it.

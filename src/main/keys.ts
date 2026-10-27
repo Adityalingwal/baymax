@@ -1,23 +1,12 @@
 import type { EngineStartOptions } from "../shared/engine";
 
-export type SearchKeyName = "EXA_API_KEY" | "TAVILY_API_KEY";
 export type LoadedKeys = {
   engine: EngineStartOptions;
   deepgramKey: string;
   missing: string[];
 };
 
-const keyNames = [
-  "DEEPGRAM_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "EXA_API_KEY",
-  "TAVILY_API_KEY",
-] as const;
-
-export function loadKeys(
-  env: Record<string, string | undefined>,
-  searchKeyName: SearchKeyName,
-): LoadedKeys {
+export function loadKeys(env: Record<string, string | undefined>): LoadedKeys {
   const missing: string[] = [];
   const read = (name: string): string => {
     const value = (env[name] ?? "").trim();
@@ -26,8 +15,11 @@ export function loadKeys(
   };
   const deepgramKey = read("DEEPGRAM_API_KEY");
   const anthropicKey = read("ANTHROPIC_API_KEY");
-  const searchKey = read(searchKeyName);
-  // No key may reach a window or a child process, which inherit the environment.
-  for (const name of keyNames) delete env[name];
+  const searchKey = read("EXA_API_KEY");
+  // No key may reach a window or a child process, which inherit the environment;
+  // the suffix also catches stale keys such as an old TAVILY_API_KEY line.
+  for (const name of Object.keys(env)) {
+    if (name.endsWith("_API_KEY")) delete env[name];
+  }
   return { engine: { anthropicKey, searchKey }, deepgramKey, missing };
 }
