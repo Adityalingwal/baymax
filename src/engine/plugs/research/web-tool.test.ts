@@ -160,6 +160,29 @@ describe("createWebTool aborts", () => {
   });
 });
 
+describe("createWebTool drain", () => {
+  // The reader stops waiting on a lookup when aborted (a lookup takes no signal), so the read stops a few turns after the abort, never in the same turn.
+  it("answers the last aborted caller only once the read itself has stopped", async () => {
+    const web = createWebTool({
+      search: async () => noResults,
+      lookup: () => new Promise<string[]>(() => undefined),
+      connect: network.connect,
+      limits: { timeoutMs: 5_000, minChars: 20 },
+    });
+    const caller = new AbortController();
+    let settled: unknown = "pending";
+    const read = web.read("http://example.test/one", caller.signal);
+    read.then(
+      (outcome) => (settled = outcome),
+      () => undefined,
+    );
+    caller.abort();
+    await Promise.resolve();
+    expect(settled).toBe("pending");
+    expect(await read).toEqual({ ok: false, cause: "aborted" });
+  });
+});
+
 describe("createWebTool search", () => {
   it("passes search through unchanged", async () => {
     const outcome: SearchOutcome = { ok: false, cause: "quota" };

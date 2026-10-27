@@ -280,7 +280,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |
 | `src/engine/plugs/research/` | The research plug: the web tool (safe page reads, pages kept by source id), its prompts and its done condition |
-| `src/engine/plugs/index.ts` (planned) | The one list of plugs, as explicit re-exports |
+| `src/engine/plugs/index.ts` | The one list of plugs, as explicit re-exports |
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |

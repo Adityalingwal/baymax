@@ -1,5 +1,7 @@
 import { createModelCall } from "../providers/anthropic";
 import type { ModelCall } from "../providers/anthropic";
+import { searchWeb } from "../providers/search";
+import type { SearchFn } from "../providers/search";
 import type { TaskId } from "../shared/cards";
 import type {
   EngineCommand,
@@ -7,28 +9,34 @@ import type {
   EnginePort,
   EngineStartOptions,
 } from "../shared/engine";
-import { guardLog, messageOf, writeDevLog } from "./core/dev-log";
+import { guardLog, writeDevLog } from "./core/dev-log";
 import type { DevLog } from "./core/dev-log";
 import type { DispatchDeps } from "./core/dispatch";
+import { cancelHold, closeHolds, createHolds, startHold } from "./core/holds";
+import type { Holds } from "./core/holds";
 import { runIntake } from "./core/intake";
 import type { IntakeResult } from "./core/intake";
 import type { IntakeCommand } from "./core/intake-prompt";
 import { createTaskBudget } from "./core/limits";
 import { createPort } from "./core/port";
-import type { PortSide } from "./core/port";
+import { runResearch } from "./plugs";
+import type { RunTaskCommand, WebAccess } from "./plugs";
 
 export type EngineFakes = {
   model?: ModelCall; // replaces the real Anthropic call (src/providers/anthropic.ts)
   now?: () => number; // milliseconds; replaces performance.now
   log?: DevLog; // replaces the dev log
+  search?: SearchFn; // replaces the real search call (src/providers/search.ts)
+  lookup?: WebAccess["lookup"]; // replaces DNS for page reads
+  connect?: WebAccess["connect"]; // replaces sockets for page reads
+  today?: () => string; // ISO date, such as 2026-10-27
 };
-
-type Hold = { controller: AbortController; settled: Promise<void> };
 
 type Engine = {
   deps: DispatchDeps;
-  holds: Map<TaskId, Hold>;
-  side: PortSide;
+  holds: Holds;
+  access: WebAccess;
+  today: () => string;
 };
 
 function eventFor(taskId: TaskId, result: IntakeResult): EngineEvent | null {
@@ -41,58 +49,59 @@ function eventFor(taskId: TaskId, result: IntakeResult): EngineEvent | null {
   return null;
 }
 
-// Catches everything, so the hold's settled promise never rejects.
-async function runCommand(
-  engine: Engine,
-  command: IntakeCommand,
-  controller: AbortController,
-): Promise<void> {
-  const { taskId } = command;
-  let event: EngineEvent | null;
-  try {
-    const budget = createTaskBudget();
-    const job = {
-      taskId,
-      role: "intake" as const,
-      budget,
-      signal: controller.signal,
-    };
-    event = eventFor(taskId, await runIntake(engine.deps, job, command));
-  } catch (error) {
-    engine.deps.log({
-      event: "commandError",
-      taskId,
-      message: messageOf(error),
-    });
-    event = { type: "failure", taskId, kind: "error" };
-  }
-  engine.holds.delete(taskId);
-  if (event !== null && !controller.signal.aborted) engine.side.emit(event);
-}
-
 function startIntake(engine: Engine, command: IntakeCommand): void {
-  if (engine.holds.has(command.taskId)) {
-    engine.deps.log({ event: "duplicateTask", taskId: command.taskId });
-    return;
-  }
-  const controller = new AbortController();
-  const hold: Hold = { controller, settled: Promise.resolve() };
-  engine.holds.set(command.taskId, hold);
-  hold.settled = runCommand(engine, command, controller);
+  const { taskId } = command;
+  startHold(engine.holds, taskId, {
+    start: async (signal) => {
+      const budget = createTaskBudget();
+      const job = { taskId, role: "intake" as const, budget, signal };
+      return eventFor(taskId, await runIntake(engine.deps, job, command));
+    },
+    onThrow: { type: "failure", taskId, kind: "error" },
+  });
 }
 
-function cancelTask(engine: Engine, taskId: TaskId): void {
-  const cancelled: EngineEvent = { type: "cancelled", taskId, findings: null };
-  const held = engine.holds.get(taskId);
-  if (held === undefined) {
-    engine.side.emitLater(cancelled);
-    return;
-  }
-  held.controller.abort();
-  held.settled.then(
-    () => engine.side.emit(cancelled),
-    () => undefined,
-  );
+function endOf(event: EngineEvent | null): string {
+  if (event === null) return "cancelled";
+  if (event.type !== "incomplete") return event.type;
+  const { incomplete } = event;
+  return incomplete.kind === "error"
+    ? `error:${incomplete.cause}`
+    : incomplete.kind;
+}
+
+// One fresh budget per run, shared by the worker and the judge; the hold sends the one terminal event.
+function startRun(engine: Engine, command: RunTaskCommand): void {
+  const { taskId } = command;
+  const { deps, holds } = engine;
+  const run = (signal: AbortSignal) =>
+    runResearch({
+      deps,
+      task: { taskId, budget: createTaskBudget(), signal },
+      command,
+      access: engine.access,
+      today: engine.today(),
+      progress: (event) => {
+        if (!signal.aborted) holds.side.emit(event);
+      },
+    });
+  startHold(holds, taskId, {
+    start: async (signal) => {
+      let how = "thrown";
+      try {
+        const event = await run(signal);
+        how = endOf(signal.aborted ? null : event);
+        return event;
+      } finally {
+        deps.log({ event: "taskEnd", taskId, how });
+      }
+    },
+    onThrow: {
+      type: "incomplete",
+      taskId,
+      incomplete: { kind: "error", cause: "error", findings: null },
+    },
+  });
 }
 
 function receive(engine: Engine, command: EngineCommand): void {
@@ -102,14 +111,10 @@ function receive(engine: Engine, command: EngineCommand): void {
       startIntake(engine, command);
       return;
     case "cancel":
-      cancelTask(engine, command.taskId);
+      cancelHold(engine.holds, command.taskId);
       return;
     case "runTask":
-      engine.side.emitLater({
-        type: "incomplete",
-        taskId: command.taskId,
-        incomplete: { kind: "error", cause: "error", findings: null },
-      });
+      startRun(engine, command);
       return;
     default: {
       const unknownCommand: never = command;
@@ -130,16 +135,21 @@ export function startEngine(
     now: fakes.now ?? (() => performance.now()),
     log,
   };
-  const holds = new Map<TaskId, Hold>();
   const side = createPort({
     log,
-    // receive runs only on a later send, after engine below exists.
+    // receive and close run only on a later call, after engine below exists.
     receive: (command) => receive(engine, command),
-    close: () => {
-      for (const hold of holds.values()) hold.controller.abort();
-      holds.clear();
-    },
+    close: () => closeHolds(engine.holds),
   });
-  const engine: Engine = { deps, holds, side };
+  const search: SearchFn =
+    fakes.search ??
+    ((query, signal) =>
+      searchWeb({ query, key: options.searchKey, fetch, signal }));
+  const engine: Engine = {
+    deps,
+    holds: createHolds(log, side),
+    access: { search, lookup: fakes.lookup, connect: fakes.connect },
+    today: fakes.today ?? (() => new Date().toISOString().slice(0, 10)),
+  };
   return side.port;
 }

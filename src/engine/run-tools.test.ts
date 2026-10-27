@@ -1,0 +1,159 @@
+import { afterEach, describe, expect, it } from "vitest";
+import type { ModelRequest } from "../providers/anthropic";
+import type { SearchOutcome } from "../providers/search";
+import {
+  brief,
+  closeRuns,
+  hits,
+  pageUrl,
+  runTask,
+  startRun,
+  toolUseReply,
+  verdictReply,
+  workerAnswer,
+} from "./run.harness";
+
+afterEach(closeRuns);
+
+const oneCited = {
+  cardText: "Hermes runs a loop [s1].",
+  claims: [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }],
+};
+
+function textOf(content: unknown): string {
+  return typeof content === "string" ? content : JSON.stringify(content);
+}
+
+const toolUseIds = (request: ModelRequest): unknown[] => {
+  const turn = request.messages[1].content;
+  return Array.isArray(turn)
+    ? turn.flatMap((block) => (block.type === "tool_use" ? [block.id] : []))
+    : [];
+};
+
+describe("runTask parallel tool calls", () => {
+  it("sends every result of one turn in one user message, in call order", async () => {
+    const lateSearch = new Promise<SearchOutcome>((resolve) =>
+      setTimeout(() => resolve(hits(pageUrl("two"))), 50),
+    );
+    const run = await startRun(
+      [
+        toolUseReply([
+          { search: "hermes" },
+          { read: pageUrl("one") },
+          { read: pageUrl("missing") },
+        ]),
+        toolUseReply([{ read: pageUrl("two") }]),
+        workerAnswer(oneCited),
+        verdictReply(),
+      ],
+      [lateSearch],
+    );
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events[events.length - 1]).toMatchObject({ type: "result" });
+    const second = run.requests[1];
+    expect(second.messages).toHaveLength(3);
+    const results = second.messages[2];
+    expect(results.role).toBe("user");
+    expect(results.content).toEqual(
+      toolUseIds(second).map((id) =>
+        expect.objectContaining({ type: "tool_result", tool_use_id: id }),
+      ),
+    );
+    const [search, read, failed] = Array.isArray(results.content)
+      ? results.content
+      : [];
+    expect(textOf(search)).toContain("<search_results>");
+    expect(textOf(read)).toContain('<page source_id=\\"s1\\"');
+    expect(failed).toMatchObject({ is_error: true });
+    expect(search).not.toHaveProperty("is_error");
+    expect(run.requests[2].messages.slice(0, 3)).toEqual(second.messages);
+  });
+});
+
+describe("runTask injected page text", () => {
+  it("reaches the worker and the judge escaped inside one page block", async () => {
+    const run = await startRun([
+      toolUseReply([{ read: pageUrl("injected") }]),
+      workerAnswer(oneCited),
+      verdictReply(),
+    ]);
+    run.port.send(runTask());
+    await run.ended();
+    const results = run.requests[1].messages[2].content;
+    const block =
+      Array.isArray(results) && results[0].type === "tool_result"
+        ? results[0].content
+        : null;
+    if (typeof block !== "string") throw new Error("no tool result text");
+    const judgeText = textOf(run.requests[2].messages[0].content);
+    for (const text of [block, judgeText]) {
+      expect(text.match(/<page /g)).toHaveLength(1);
+      expect(text.match(/<\/page>/g)).toHaveLength(1);
+      expect(text).toContain("&lt;/page&gt;&lt;page source_id=");
+    }
+  });
+});
+
+const loggedEnds = [
+  {
+    event: "toolCall",
+    taskId: "task-1",
+    tool: "search",
+    outcome: "ok",
+    ms: 0,
+  },
+  {
+    event: "toolCall",
+    taskId: "task-1",
+    tool: "read",
+    outcome: "ok",
+    ms: 0,
+  },
+  {
+    event: "doneCheck",
+    taskId: "task-1",
+    stage: "code",
+    passed: true,
+    failed: null,
+  },
+  {
+    event: "doneCheck",
+    taskId: "task-1",
+    stage: "judge",
+    passed: true,
+    failed: null,
+  },
+  { event: "taskEnd", taskId: "task-1", how: "result" },
+];
+
+describe("runTask dev log", () => {
+  it("logs tool calls, checks and the end without queries, URLs, pages or words", async () => {
+    const run = await startRun(
+      [
+        toolUseReply([{ search: "hermes secret query" }]),
+        toolUseReply([{ read: pageUrl("one") }]),
+        workerAnswer(oneCited),
+        verdictReply(),
+      ],
+      [hits(pageUrl("one"))],
+    );
+    run.port.send(runTask());
+    await run.ended();
+    const kept = run.entries.filter((entry) =>
+      ["toolCall", "doneCheck", "taskEnd"].includes(entry.event),
+    );
+    expect(kept).toEqual(loggedEnds);
+    const logged = JSON.stringify(run.entries);
+    for (const secret of [
+      "hermes secret query",
+      "example.test",
+      "Plain words",
+      brief.userWords,
+      brief.goal,
+    ]) {
+      expect(logged).not.toContain(secret);
+    }
+  });
+});

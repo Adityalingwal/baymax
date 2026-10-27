@@ -1,6 +1,7 @@
 import type { FailureKind, IntakeOutcome } from "../../shared/engine";
 import { dispatch } from "./dispatch";
 import type { DispatchDeps, DispatchJob, DispatchOutcome } from "./dispatch";
+import { failureKindOf } from "./model-failure";
 import { buildUserMessage, intakeInstructions } from "./intake-prompt";
 import type { IntakeCommand } from "./intake-prompt";
 import {
@@ -20,18 +21,8 @@ function failureResult(outcome: DispatchFailure): IntakeResult {
   if (outcome.reason === "limitHit") {
     return { kind: "failure", failure: "error" };
   }
-  switch (outcome.failure) {
-    case "aborted":
-      return { kind: "aborted" };
-    case "keyRejected":
-      return { kind: "failure", failure: "keyRejected" };
-    case "noCredit":
-      return { kind: "failure", failure: "noCredit" };
-    case "unreachable":
-      return { kind: "failure", failure: "modelsUnreachable" };
-    case "error":
-      return { kind: "failure", failure: "error" };
-  }
+  const failure = failureKindOf(outcome.failure);
+  return failure === null ? { kind: "aborted" } : { kind: "failure", failure };
 }
 
 export async function runIntake(
