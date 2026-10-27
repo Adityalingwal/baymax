@@ -4,7 +4,7 @@ import type {
   IntakeOutcome,
   ParentResult,
 } from "../../shared/engine";
-import { fixedLines, stepText } from "./lines";
+import { fixedLines, partialParentLine, stepText } from "./lines";
 import type { Admission, Change, Model, TaskRecord } from "./record";
 import {
   dropped,
@@ -53,22 +53,34 @@ function parentResult(change: Change, record: TaskRecord): ParentResult | null {
   return null;
 }
 
+// Returns the fixed partial-parent line when it replaced the model's start line, else null.
 function startTask(
   change: Change,
   record: TaskRecord,
   admission: Admission,
-): void {
-  const { taskId } = record.card;
-  record.card.state = "running";
-  record.card.line = admission.startLine;
+): string | null {
+  const { card } = record;
+  const parent = parentResult(change, record);
+  const parentId = card.parentTaskId;
+  const parentSayBack =
+    parentId === null
+      ? null
+      : (change.model.records.get(parentId)?.card.sayBack ?? null);
+  const partial =
+    parent === null ? null : partialParentLine(parent, parentSayBack);
+  if (parent === null) card.parentTaskId = null;
+  record.builtOnPartial = partial !== null && parent?.findings !== null;
+  card.state = "running";
+  card.line = partial ?? admission.startLine;
   hold(change, record, {
     type: "runTask",
-    taskId,
+    taskId: card.taskId,
     goalVersion: 1,
     depth: "normal",
     brief: admission.brief,
-    parent: parentResult(change, record),
+    parent,
   });
+  return partial;
 }
 
 // A parent created after the follow-up would let two thinking tasks name each other.
@@ -102,8 +114,8 @@ export function admit(
   card.question = null;
   card.canRetry = false;
   if (!slotBusy(model) && canStart(model, record)) {
-    startTask(change, record, admission);
-    say(change, card.taskId, admission.startLine, "startLine");
+    const line = startTask(change, record, admission) ?? admission.startLine;
+    say(change, card.taskId, line, "startLine");
   } else if (model.queue.length < QUEUE_LIMIT) {
     card.state = "queued";
     card.line = fixedLines.queued;
@@ -125,7 +137,8 @@ export function startNext(change: Change): void {
     if (record === undefined || admission === null) continue;
     if (!canStart(model, record)) continue;
     model.queue = model.queue.filter((id) => id !== taskId);
-    startTask(change, record, admission);
+    const partial = startTask(change, record, admission);
+    if (partial !== null) say(change, taskId, partial, "startLine");
     return;
   }
 }
