@@ -253,3 +253,24 @@ describe("dispatch failures", () => {
     },
   );
 });
+
+describe("dispatch after cancel", () => {
+  it("sends nothing, counts nothing and logs nothing", async () => {
+    const { deps, sent, entries } = setup({
+      ok: true,
+      message: fakeMessage("{}"),
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const budget = createTaskBudget();
+    const job = jobFor("intake", budget, controller.signal);
+    expect(await dispatch(deps, job, request)).toEqual({
+      ok: false,
+      reason: "failed",
+      failure: "aborted",
+    });
+    expect(sent).toHaveLength(0);
+    expect(entries).toHaveLength(0);
+    expect(budget).toEqual(createTaskBudget());
+  });
+});

@@ -3,6 +3,7 @@ import type {
   EngineEvent,
   EnginePort,
 } from "../../shared/engine";
+import { messageOf } from "./dev-log";
 import type { DevLog } from "./dev-log";
 
 type Listener = (event: EngineEvent) => void;
@@ -19,9 +20,6 @@ export type PortDeps = {
   receive: (command: EngineCommand) => void;
   close: () => void;
 };
-
-const messageOf = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
 
 // Only JSON crosses the port, as it will when the engine moves to its own process.
 function jsonCopy<T>(value: T): T {
@@ -63,10 +61,14 @@ export function createPort(deps: PortDeps): PortSide {
 
   const send = (command: EngineCommand): void => {
     if (state.closed) return;
+    // V2 receives commands over a process boundary, so nothing about their shape is trusted.
+    const isObject = typeof command === "object" && command !== null;
+    const taskId =
+      isObject && typeof command.taskId === "string" ? command.taskId : null;
     try {
+      if (!isObject) throw new Error("command is not an object");
       deps.receive(jsonCopy(command));
     } catch (error) {
-      const taskId = typeof command.taskId === "string" ? command.taskId : null;
       deps.log({ event: "commandError", taskId, message: messageOf(error) });
     }
   };

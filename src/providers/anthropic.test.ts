@@ -1,7 +1,6 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createModelCall } from "./anthropic";
 import type { ModelFailure, ModelOutcome } from "./anthropic";
 
@@ -50,7 +49,11 @@ const startServer = async (respond: Respond) => {
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
+  const address = server.address();
+  if (typeof address !== "object" || address === null) {
+    throw new Error("the test server has no port");
+  }
+  const { port } = address;
   const stop = async () => {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -246,5 +249,23 @@ describe("createModelCall", () => {
     expect(JSON.stringify(otherHeaders)).not.toContain("test-key");
     expect(only.url).not.toContain("test-key");
     expect(only.body).not.toContain("test-key");
+  });
+});
+
+describe("createModelCall logging", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("prints nothing from the SDK even with ANTHROPIC_LOG=debug", async () => {
+    vi.stubEnv("ANTHROPIC_LOG", "debug");
+    const methods = ["log", "info", "debug", "warn", "error"] as const;
+    const spies = methods.map((method) =>
+      vi.spyOn(console, method).mockImplementation(() => undefined),
+    );
+    const { outcome } = await runRow(rows[0]);
+    expect(outcome.ok).toBe(true);
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
   });
 });

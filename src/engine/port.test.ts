@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ModelOutcome } from "../providers/anthropic";
 import type { EngineEvent } from "../shared/engine";
+import { startEngine } from "./index";
 import { question, questionReply, startTestEngine } from "./harness";
 
 const words = "how does Hermes agent work inside?";
@@ -130,5 +131,59 @@ describe("startEngine port lifecycle", () => {
       taskId: "task-1",
     });
     engine.port.close();
+  });
+});
+
+describe("startEngine robustness", () => {
+  it("drops the answer of an intake in flight at close", async () => {
+    let answer: (outcome: ModelOutcome) => void = () => undefined;
+    const pending = new Promise<ModelOutcome>((resolve) => (answer = resolve));
+    const engine = startTestEngine([pending]);
+    engine.port.send(question(words));
+    await engine.settle();
+    engine.port.close();
+    answer(questionReply(task));
+    expect(await engine.settle()).toEqual([]);
+    expect(engine.requests).toHaveLength(1);
+  });
+
+  it("never throws on a malformed command and logs it", async () => {
+    const engine = startTestEngine([]);
+    const send = engine.port.send;
+    expect(() => Reflect.apply(send, undefined, [undefined])).not.toThrow();
+    Reflect.apply(send, undefined, [{ type: "steer", taskId: "task-1" }]);
+    expect(await engine.settle()).toEqual([]);
+    expect(engine.entries).toEqual([
+      {
+        event: "commandError",
+        taskId: null,
+        message: "command is not an object",
+      },
+      { event: "unknownCommand", taskId: null },
+    ]);
+  });
+});
+
+describe("startEngine dev log", () => {
+  it("still answers when the dev log throws", async () => {
+    const events: EngineEvent[] = [];
+    const port = startEngine(
+      { anthropicKey: "test-key", searchKey: "" },
+      {
+        model: async () => ({ ok: false, failure: "error", detail: "boom" }),
+        log: () => {
+          throw new Error("log broke");
+        },
+      },
+    );
+    port.onMessage((event) => events.push(event));
+    port.send(question(words));
+    port.send(question(words, { taskId: "task-2" }));
+    port.send(cancel("task-2"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(events).toEqual([
+      { type: "failure", taskId: "task-1", kind: "error" },
+      cancelled("task-2"),
+    ]);
   });
 });

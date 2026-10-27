@@ -7,7 +7,7 @@ import type {
   EnginePort,
   EngineStartOptions,
 } from "../shared/engine";
-import { writeDevLog } from "./core/dev-log";
+import { guardLog, messageOf, writeDevLog } from "./core/dev-log";
 import type { DevLog } from "./core/dev-log";
 import type { DispatchDeps } from "./core/dispatch";
 import { runIntake } from "./core/intake";
@@ -59,8 +59,11 @@ async function runCommand(
     };
     event = eventFor(taskId, await runIntake(engine.deps, job, command));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    engine.deps.log({ event: "commandError", taskId, message });
+    engine.deps.log({
+      event: "commandError",
+      taskId,
+      message: messageOf(error),
+    });
     event = { type: "failure", taskId, kind: "error" };
   }
   engine.holds.delete(taskId);
@@ -110,6 +113,7 @@ function receive(engine: Engine, command: EngineCommand): void {
       return;
     default: {
       const unknownCommand: never = command;
+      engine.deps.log({ event: "unknownCommand", taskId: null });
       return unknownCommand;
     }
   }
@@ -119,7 +123,7 @@ export function startEngine(
   options: EngineStartOptions,
   fakes: EngineFakes = {},
 ): EnginePort {
-  const log = fakes.log ?? writeDevLog;
+  const log = guardLog(fakes.log ?? writeDevLog);
   const call = fakes.model ?? createModelCall({ apiKey: options.anthropicKey });
   const deps: DispatchDeps = {
     call,
@@ -129,6 +133,7 @@ export function startEngine(
   const holds = new Map<TaskId, Hold>();
   const side = createPort({
     log,
+    // receive runs only on a later send, after engine below exists.
     receive: (command) => receive(engine, command),
     close: () => {
       for (const hold of holds.values()) hold.controller.abort();

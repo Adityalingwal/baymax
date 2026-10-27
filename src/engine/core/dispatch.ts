@@ -56,13 +56,14 @@ function callTimes(role: Role, budget: TaskBudget) {
   };
 }
 
+type CallRecord = { outcome: ModelOutcome; ms: number; dollars: number | null };
+
 function logCall(
   deps: DispatchDeps,
   job: DispatchJob,
-  outcome: ModelOutcome,
-  ms: number,
-  dollars: number | null,
+  record: CallRecord,
 ): void {
+  const { outcome, ms, dollars } = record;
   const usage = outcome.ok ? outcome.message.usage : null;
   deps.log({
     event: "modelCall",
@@ -86,6 +87,9 @@ export async function dispatch(
   job: DispatchJob,
   request: DispatchRequest,
 ): Promise<DispatchOutcome> {
+  // A cancelled job sends nothing and spends nothing.
+  if (job.signal.aborted)
+    return { ok: false, reason: "failed", failure: "aborted" };
   const limit = limitReached(job, request);
   if (limit !== null) {
     deps.log({ event: "limitHit", taskId: job.taskId, role: job.role, limit });
@@ -102,7 +106,7 @@ export async function dispatch(
   job.budget.modelCalls += 1;
   job.budget.activeMs += ms;
   job.budget.dollars += dollars ?? 0;
-  logCall(deps, job, outcome, ms, dollars);
+  logCall(deps, job, { outcome, ms, dollars });
   return outcome.ok
     ? { ok: true, message: outcome.message }
     : { ok: false, reason: "failed", failure: outcome.failure };

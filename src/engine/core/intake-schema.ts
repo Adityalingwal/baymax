@@ -92,7 +92,7 @@ const questionShape: Record<string, FieldKind> = {
   reply: "objectOrNull",
 };
 
-export type IntakeCheck =
+type IntakeCheck =
   { ok: true; outcome: IntakeOutcome } | { ok: false; reason: string };
 
 const malformed = (reason: string): IntakeCheck => ({ ok: false, reason });
@@ -212,19 +212,25 @@ function clarifyRoute(fields: Fields, command: IntakeCommand): IntakeCheck {
   return { ok: true, outcome: { route: "clarify", sayBack, question } };
 }
 
-function readFields(message: Anthropic.Message): Fields | string {
+type FieldsRead = { ok: true; fields: Fields } | { ok: false; reason: string };
+
+function readFields(message: Anthropic.Message): FieldsRead {
   if (message.stop_reason !== "end_turn") {
-    return `stopReason:${String(message.stop_reason)}`;
+    return { ok: false, reason: `stopReason:${String(message.stop_reason)}` };
   }
   const blocks = message.content.filter((block) => block.type === "text");
-  if (blocks.length !== 1 || blocks[0].type !== "text") return "textBlocks";
+  if (blocks.length !== 1 || blocks[0].type !== "text") {
+    return { ok: false, reason: "textBlocks" };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(blocks[0].text);
   } catch {
-    return "invalidJson";
+    return { ok: false, reason: "invalidJson" };
   }
-  return isFields(parsed) ? parsed : "notAnObject";
+  return isFields(parsed)
+    ? { ok: true, fields: parsed }
+    : { ok: false, reason: "notAnObject" };
 }
 
 // Turns the model's JSON into an outcome; anything off the expected shape is malformed.
@@ -232,8 +238,9 @@ export function checkIntakeReply(
   message: Anthropic.Message,
   command: IntakeCommand,
 ): IntakeCheck {
-  const fields = readFields(message);
-  if (typeof fields === "string") return malformed(fields);
+  const read = readFields(message);
+  if (!read.ok) return malformed(read.reason);
+  const { fields } = read;
   if (!hasShape(fields, command)) return malformed("wrongShape");
   switch (fields.route) {
     case "newTask":

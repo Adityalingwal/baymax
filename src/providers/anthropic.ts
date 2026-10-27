@@ -95,6 +95,7 @@ export function createModelCall(params: {
     apiKey: params.apiKey,
     fetch: params.fetch,
     maxRetries: 1,
+    logLevel: "off", // ANTHROPIC_LOG=debug would print request bodies, user words included
   });
   return async (request, options) => {
     const deadline = new AbortController();

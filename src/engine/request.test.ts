@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ModelOutcome } from "../providers/anthropic";
+import type { ModelOutcome, ModelRequest } from "../providers/anthropic";
 import type { EngineCommand } from "../shared/engine";
 import {
   answerReply,
@@ -29,9 +29,14 @@ const clarifyingAnswer: EngineCommand = {
   recent: [],
 };
 
-const routeEnum = (request: unknown) =>
-  JSON.parse(JSON.stringify(request)).output_config.format.schema.properties
-    .route.enum;
+const routeEnum = (request: ModelRequest): unknown => {
+  const properties = request.output_config?.format?.schema.properties;
+  if (typeof properties !== "object" || properties === null) return null;
+  if (!("route" in properties)) return null;
+  const route = properties.route;
+  if (typeof route !== "object" || route === null) return null;
+  return "enum" in route ? route.enum : null;
+};
 
 describe("startEngine intake request", () => {
   it("uses the intake role and the fixed request shape", async () => {
