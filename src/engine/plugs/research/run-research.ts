@@ -38,7 +38,7 @@ export type WebAccess = {
   connect?: Connect;
 };
 
-export type ResearchRun = {
+type ResearchRun = {
   deps: DispatchDeps;
   task: { taskId: TaskId; budget: TaskBudget; signal: AbortSignal };
   command: RunTaskCommand;

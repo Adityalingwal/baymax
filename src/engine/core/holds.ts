@@ -17,7 +17,7 @@ export type Holds = {
 };
 
 // The work of one held task: it returns its one terminal event, or null when it has nothing to say.
-export type HeldWork = {
+type HeldWork = {
   start: (signal: AbortSignal) => Promise<EngineEvent | null>;
   onThrow: EngineEvent;
 };

@@ -16,7 +16,7 @@ export type ToolTurn =
   | { kind: "aborted" };
 
 // A step decided before any await (such as a limit) comes back as a plain value, so the batch stops before starting the next tool.
-export type StartTool<Call> = (
+type StartTool<Call> = (
   call: Call,
   signal: AbortSignal,
 ) => ToolStep | Promise<ToolStep>;

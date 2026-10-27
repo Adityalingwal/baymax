@@ -20,7 +20,7 @@ import type { IntakeCommand } from "./core/intake-prompt";
 import { createTaskBudget } from "./core/limits";
 import { createPort } from "./core/port";
 import { runResearch } from "./plugs";
-import type { WebAccess } from "./plugs";
+import type { RunTaskCommand, WebAccess } from "./plugs";
 
 export type EngineFakes = {
   model?: ModelCall; // replaces the real Anthropic call (src/providers/anthropic.ts)
@@ -38,8 +38,6 @@ type Engine = {
   access: WebAccess;
   today: () => string;
 };
-
-type RunTaskCommand = Extract<EngineCommand, { type: "runTask" }>;
 
 function eventFor(taskId: TaskId, result: IntakeResult): EngineEvent | null {
   if (result.kind === "intake") {

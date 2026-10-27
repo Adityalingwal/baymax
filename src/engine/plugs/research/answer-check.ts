@@ -11,7 +11,7 @@ const rules = {
   badLink: "links to pages that were not read",
 } as const;
 
-export type CheckRule = keyof typeof rules;
+type CheckRule = keyof typeof rules;
 
 export type CodeCheck =
   | { passed: true; findings: Findings; cited: ReadPage[] }

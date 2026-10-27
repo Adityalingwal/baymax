@@ -6,7 +6,7 @@ import { failureKindOf } from "./model-failure";
 import type { LoopEnding, ToolTurn } from "./tool-batch";
 
 // The fixed prompt start (system and tools) plus the fields that stay the same on every step of a run.
-export type WorkerPrompt = {
+type WorkerPrompt = {
   system: string;
   tools: Anthropic.Tool[];
   schema: Record<string, unknown>;
@@ -14,12 +14,12 @@ export type WorkerPrompt = {
   effort: Anthropic.OutputConfig["effort"];
 };
 
-export type LoopOutcome =
+type LoopOutcome =
   | { kind: "answer"; text: string }
   | { kind: "end"; ending: LoopEnding }
   | { kind: "aborted" };
 
-export type WorkerLoop = {
+type WorkerLoop = {
   deps: DispatchDeps;
   job: DispatchJob;
   prompt: WorkerPrompt;

@@ -10,7 +10,7 @@ import { parseCalls } from "./research-tools";
 import type { ResearchCall } from "./research-tools";
 import type { WebTool } from "./web-tool";
 
-export type ToolRunner = {
+type ToolRunner = {
   web: WebTool;
   deps: DispatchDeps;
   job: DispatchJob;

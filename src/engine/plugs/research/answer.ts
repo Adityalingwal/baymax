@@ -1,5 +1,5 @@
 // The worker's one output: the spoken line, the card text and the claims that tie it to read pages.
-export type Claim = { claim: string; sourceIds: string[] };
+type Claim = { claim: string; sourceIds: string[] };
 export type Answer = {
   spokenLine: string;
   cardText: string;
