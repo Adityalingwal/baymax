@@ -148,6 +148,13 @@ describe("runTask judge request", () => {
     expect(judge.thinking).toEqual({ type: "between_tools" });
     expect(judge.output_config?.effort).toBe("low");
     expect(judge.system).not.toBe(run.requests[0].system);
+    for (const definition of [
+      "goalMet: the card meets the brief's goal, result shape and constraints.",
+      "claimsBacked: every important factual claim in the card is represented in claims and supported by the read pages named in that claim's sourceIds.",
+      "spokenLineBacked: every assertion in spokenLine is supported by cardText itself. Support in a page alone does not count.",
+    ]) {
+      expect(judge.system).toContain(definition);
+    }
     expect(text).toContain(brief.goal);
     expect(text).toContain(goodAnswer.spokenLine);
     expect(text).toContain("Hermes runs a loop [s1]");
