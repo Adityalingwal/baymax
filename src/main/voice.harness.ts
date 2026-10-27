@@ -75,8 +75,7 @@ export function createHarness(options: Options = {}) {
 
 export type Harness = ReturnType<typeof createHarness>;
 
-const flush = () =>
-  new Promise<void>((resolve) => setTimeout(resolve, 0));
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 // One hold: key down, then key up with the outcome; returns the minted utterance id.
 export function hold(h: Harness, outcome: HoldOutcome = "accept"): UtteranceId {

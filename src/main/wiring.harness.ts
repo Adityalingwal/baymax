@@ -1,6 +1,8 @@
+import type { Synthesis, Transcription } from "../providers/deepgram";
 import type { DisplayState, TaskId } from "../shared/cards";
 import type { EngineCommand, EngineEvent, EnginePort } from "../shared/engine";
 import { ipcChannels } from "../shared/ipc";
+import type { RecordingCommand, SpeechLine } from "../shared/ipc";
 import type { RendererListener, RendererSender } from "./renderer-actions";
 import { createClock, findings, intake, newTask } from "./tasks/harness";
 import { wireMain } from "./wiring";
@@ -8,7 +10,39 @@ import { wireMain } from "./wiring";
 type Options = {
   sendFails?: (command: EngineCommand) => boolean;
   idFails?: boolean;
+  deepgramKeyPresent?: boolean;
 };
+
+type Pending<T> = { input: string; resolve: (result: T) => void };
+
+// Deepgram and the renderer sends faked; each call waits until a test settles it.
+function fakeVoice(deepgramKeyPresent: boolean) {
+  const seen = {
+    recordings: [] as RecordingCommand[],
+    speeches: [] as SpeechLine[],
+    transcriptions: [] as Pending<Transcription>[],
+    syntheses: [] as Pending<Synthesis>[],
+    voiceLogs: [] as string[],
+  };
+  const deps = {
+    sendRecording: (command: RecordingCommand) => seen.recordings.push(command),
+    sendSpeech: (line: SpeechLine) => seen.speeches.push(line),
+    sendStop: () => undefined,
+    transcribe: (audio: ArrayBuffer, mimeType: string) =>
+      new Promise<Transcription>((resolve) => {
+        const bytes = [...new Uint8Array(audio)].join(",");
+        seen.transcriptions.push({ input: `${mimeType} ${bytes}`, resolve });
+      }),
+    synthesize: (text: string) =>
+      new Promise<Synthesis>((resolve) =>
+        seen.syntheses.push({ input: text, resolve }),
+      ),
+    now: () => 0,
+    log: (message: string) => seen.voiceLogs.push(message),
+    deepgramKeyPresent,
+  };
+  return { seen, deps };
+}
 
 function fakePort(sendFails: (command: EngineCommand) => boolean) {
   const sent: EngineCommand[] = [];
@@ -72,6 +106,7 @@ export function wire(options: Options = {}) {
   const port = fakePort(options.sendFails ?? (() => false));
   const ipc = fakeIpc();
   const own = fakeSender();
+  const voice = fakeVoice(options.deepgramKeyPresent ?? true);
   const seen = {
     published: [] as DisplayState[],
     opened: [] as string[],
@@ -84,8 +119,6 @@ export function wire(options: Options = {}) {
     ipc: ipc.ipc,
     isOwnSender: (sender) => sender === own.sender,
     publish: (display) => seen.published.push(display),
-    say: () => undefined,
-    silence: () => undefined,
     openUrl: (url) => {
       seen.opened.push(url);
       return Promise.resolve();
@@ -98,12 +131,13 @@ export function wire(options: Options = {}) {
       return `t${ids}`;
     },
     fail: (error) => seen.failures.push(error),
+    voice: voice.deps,
   });
   const send = (channel: string, payload?: unknown, sender = own.sender) =>
     ipc.call(channel, payload, sender);
   const card = (taskId: TaskId) =>
     seen.published.at(-1)?.tasks.find((shown) => shown.taskId === taskId);
-  return { ...seen, wiring, port, ipc, own, send, card };
+  return { ...seen, ...voice.seen, wiring, port, ipc, own, send, card };
 }
 
 export type Wired = ReturnType<typeof wire>;

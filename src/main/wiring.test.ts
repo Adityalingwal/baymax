@@ -93,11 +93,11 @@ describe("wireMain replay, failures and close", () => {
   it("close removes every listener, unsubscribes and closes the port once", () => {
     const w = wire();
     submit(w);
-    expect(w.ipc.count()).toBe(9);
+    expect(w.ipc.count()).toBe(11);
     expect(w.port.listeners()).toBe(1);
     w.wiring.close();
     expect(w.ipc.count()).toBe(0);
-    expect(w.ipc.removals()).toBe(9);
+    expect(w.ipc.removals()).toBe(11);
     expect(w.port.listeners()).toBe(0);
     expect(w.port.closes()).toBe(1);
     const published = w.published.length;
@@ -106,7 +106,7 @@ describe("wireMain replay, failures and close", () => {
     expect(w.published).toHaveLength(published);
     expect(w.port.sent).toHaveLength(1);
     w.wiring.close();
-    expect(w.ipc.removals()).toBe(9);
+    expect(w.ipc.removals()).toBe(11);
     expect(w.port.closes()).toBe(1);
   });
 });

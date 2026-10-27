@@ -12,8 +12,9 @@ import { createRestart } from "./main/restart";
 import { createMainWindow } from "./main/window";
 import { wireMain } from "./main/wiring";
 import type { Wiring } from "./main/wiring";
+import { synthesizeSpeech, transcribeClip } from "./providers/deepgram";
 import { ipcChannels } from "./shared/ipc";
-import type { HoldState, StartupInfo } from "./shared/ipc";
+import type { HoldState, MainToRenderer, StartupInfo } from "./shared/ipc";
 
 const startedAt = Date.now();
 let mainWindow: BrowserWindow | null = null;
@@ -70,11 +71,18 @@ function getAccessibilityStatus(): boolean | null {
   return systemPreferences.isTrustedAccessibilityClient(false);
 }
 
+function sendToWindow<C extends keyof MainToRenderer>(
+  channel: C,
+  payload: MainToRenderer[C],
+): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
+
 function sendHoldState(state: HoldState): void {
   holdState = state;
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(ipcChannels.holdState, state);
-  }
+  sendToWindow(ipcChannels.holdState, state);
 }
 
 // Keys are read and removed from process.env here, before any window opens.
@@ -89,18 +97,12 @@ async function startEngineAndWiring(): Promise<Wiring> {
   if (keys.missing.length > 0) {
     console.info("[Keys] Missing:", keys.missing.join(", "));
   }
+  const deepgram = { key: keys.deepgramKey, fetch };
   return wireMain({
     port: startEngine(keys.engine),
     ipc: ipcMain,
     isOwnSender: (sender) => sender === mainWindow?.webContents,
-    publish: (display) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(ipcChannels.displayState, display);
-      }
-    },
-    // The line text holds the user's words, so the log carries only its kind.
-    say: (line) => console.info("[main]", `say ${line.kind} ${line.taskId}`),
-    silence: (taskId) => console.info("[main]", `silence ${taskId}`),
+    publish: (display) => sendToWindow(ipcChannels.displayState, display),
     openUrl: (url) => shell.openExternal(url),
     timers: {
       setTimer: (ms, fire) => {
@@ -111,6 +113,17 @@ async function startEngineAndWiring(): Promise<Wiring> {
     log: (message) => console.info("[main]", message),
     newTaskId: () => randomUUID(),
     fail: (error) => restart(error, "state failure in a listener"),
+    voice: {
+      sendRecording: (command) => sendToWindow(ipcChannels.recording, command),
+      sendSpeech: (line) => sendToWindow(ipcChannels.speech, line),
+      sendStop: (payload) => sendToWindow(ipcChannels.stopPlayback, payload),
+      transcribe: (audio, mimeType) =>
+        transcribeClip(deepgram, audio, mimeType),
+      synthesize: (text, signal) => synthesizeSpeech(deepgram, text, signal),
+      now: () => performance.now(),
+      log: (message) => console.info("[Voice]", message),
+      deepgramKeyPresent: keys.deepgramKey !== "",
+    },
   });
 }
 
@@ -154,9 +167,19 @@ async function startApp(): Promise<void> {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+  // A reload or a crashed page loses its recording and playback; the first load may fire before this listener.
+  mainWindow.webContents.on("render-process-gone", () =>
+    started.voice.rendererReset(),
+  );
+  mainWindow.webContents.on("did-start-loading", () =>
+    started.voice.rendererReset(),
+  );
 
   if (!isMac || accessibilityAtStartup) {
-    startHoldKey((state) => sendHoldState(state));
+    startHoldKey((state, outcome) => {
+      sendHoldState(state);
+      started.voice.holdChanged(state, outcome);
+    });
   } else {
     console.log(
       "[Hotkey] Waiting for Accessibility permission; listener not started",

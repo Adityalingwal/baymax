@@ -1,7 +1,8 @@
 import type { ClarifyingReply, DisplayState } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
-import type { RendererToMain } from "../shared/ipc";
+import type { Clip, RendererToMain } from "../shared/ipc";
 import type { MainState } from "./tasks/state";
+import type { Voice } from "./voice";
 
 // Structural, so the actions run in tests without Electron; ipcMain and webContents satisfy them.
 export type RendererSender = {
@@ -12,6 +13,12 @@ export type RendererListener = (event: RendererEvent, payload: unknown) => void;
 export type RendererIpc = {
   on: (channel: string, listener: RendererListener) => unknown;
   removeListener: (channel: string, listener: RendererListener) => unknown;
+};
+
+// What the actions call: main's state, and voice for the clip, playback and mute.
+export type ActionTargets = {
+  state: MainState;
+  voice: Pick<Voice, "clipArrived" | "playbackFinished" | "setMuted">;
 };
 
 export type ActionDeps = {
@@ -86,16 +93,51 @@ const readOpenSource: Reader<typeof ipcChannels.openSource> = (f) =>
 const readMuted: Reader<typeof ipcChannels.setMuted> = (f) =>
   typeof f.muted === "boolean" ? { muted: f.muted } : null;
 
-type Listen = (state: MainState, deps: ActionDeps) => RendererListener;
+// Electron's clone of binary data may arrive as a view such as a Buffer, so a view is copied into its own ArrayBuffer.
+function readAudio(value: unknown): ArrayBuffer | null {
+  if (value instanceof ArrayBuffer) return value;
+  if (!ArrayBuffer.isView(value)) return null;
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+  return copy.buffer;
+}
+
+const clipFailures = ["permissionDenied", "noMicrophone", "error"] as const;
+
+const readClip: Reader<typeof ipcChannels.sendClip> = (f): Clip | null => {
+  const utteranceId = f.utteranceId;
+  if (typeof utteranceId !== "string") return null;
+  if (f.outcome === "recorded") {
+    const audio = readAudio(f.audio);
+    return audio !== null && typeof f.mimeType === "string"
+      ? { utteranceId, outcome: "recorded", audio, mimeType: f.mimeType }
+      : null;
+  }
+  const reason = clipFailures.find((known) => known === f.reason);
+  return f.outcome === "failed" && reason !== undefined
+    ? { utteranceId, outcome: "failed", reason }
+    : null;
+};
+
+const playbackOutcomes = ["ended", "stopped", "failed"] as const;
+
+const readPlayback: Reader<typeof ipcChannels.playbackFinished> = (f) => {
+  const outcome = playbackOutcomes.find((known) => known === f.outcome);
+  return typeof f.lineId === "string" && outcome !== undefined
+    ? { lineId: f.lineId, outcome }
+    : null;
+};
+
+type Listen = (targets: ActionTargets, deps: ActionDeps) => RendererListener;
 type Action = { channel: string; listen: Listen };
 
 // A message from another sender or with a malformed payload is dropped, never thrown into main.
 function action<C extends Channel>(
   channel: C,
   read: Reader<C>,
-  run: (state: MainState, payload: RendererToMain[C]) => void,
+  run: (targets: ActionTargets, payload: RendererToMain[C]) => void,
 ): Action {
-  const listen: Listen = (state, deps) => (event, payload) => {
+  const listen: Listen = (targets, deps) => (event, payload) => {
     if (!deps.isOwnSender(event.sender)) {
       deps.log(`${channel} dropped: not from the Baymax window`);
       return;
@@ -106,62 +148,70 @@ function action<C extends Channel>(
       deps.log(`${channel} dropped: malformed payload`);
       return;
     }
-    forwardFailure(deps.fail, () => run(state, value));
+    forwardFailure(deps.fail, () => run(targets, value));
   };
   return { channel, listen };
 }
 
 const replayDisplay: Action = {
   channel: ipcChannels.getDisplayState,
-  listen: (state, deps) => (event) => {
-    if (!deps.isOwnSender(event.sender)) {
-      deps.log(
-        `${ipcChannels.getDisplayState} dropped: not from the Baymax window`,
+  listen:
+    ({ state }, deps) =>
+    (event) => {
+      if (!deps.isOwnSender(event.sender)) {
+        deps.log(
+          `${ipcChannels.getDisplayState} dropped: not from the Baymax window`,
+        );
+        return;
+      }
+      forwardFailure(deps.fail, () =>
+        event.sender.send(ipcChannels.displayState, state.displayState()),
       );
-      return;
-    }
-    forwardFailure(deps.fail, () =>
-      event.sender.send(ipcChannels.displayState, state.displayState()),
-    );
-  },
+    },
 };
 
 const actions: Action[] = [
   replayDisplay,
-  action(ipcChannels.submitQuestion, readSubmit, (state, { text }) =>
+  action(ipcChannels.submitQuestion, readSubmit, ({ state }, { text }) =>
     state.ask(text, null, state.waitingQuestion()),
   ),
-  action(ipcChannels.answerQuestion, readAnswer, (state, payload) =>
+  action(ipcChannels.answerQuestion, readAnswer, ({ state }, payload) =>
     state.answerQuestion(payload),
   ),
-  action(ipcChannels.cancelTask, readTaskAction, (state, { taskId }) =>
+  action(ipcChannels.cancelTask, readTaskAction, ({ state }, { taskId }) =>
     state.cancelTask(taskId),
   ),
-  action(ipcChannels.retryTask, readTaskAction, (state, { taskId }) =>
+  action(ipcChannels.retryTask, readTaskAction, ({ state }, { taskId }) =>
     state.retryTask(taskId),
   ),
-  action(ipcChannels.closeCard, readTaskAction, (state, { taskId }) =>
+  action(ipcChannels.closeCard, readTaskAction, ({ state }, { taskId }) =>
     state.closeCard(taskId),
   ),
-  action(ipcChannels.setCardFolded, readFold, (state, payload) =>
+  action(ipcChannels.setCardFolded, readFold, ({ state }, payload) =>
     state.setCardFolded(payload),
   ),
-  action(ipcChannels.openSource, readOpenSource, (state, payload) =>
+  action(ipcChannels.openSource, readOpenSource, ({ state }, payload) =>
     state.openSource(payload),
   ),
-  action(ipcChannels.setMuted, readMuted, (state, { muted }) =>
-    state.setMuted(muted),
+  action(ipcChannels.setMuted, readMuted, ({ voice }, { muted }) =>
+    voice.setMuted(muted),
+  ),
+  action(ipcChannels.sendClip, readClip, ({ voice }, clip) =>
+    voice.clipArrived(clip),
+  ),
+  action(ipcChannels.playbackFinished, readPlayback, ({ voice }, payload) =>
+    voice.playbackFinished(payload),
   ),
 ];
 
 // Returns a function that removes every listener it registered.
 export function registerRendererActions(
   ipc: RendererIpc,
-  state: MainState,
+  targets: ActionTargets,
   deps: ActionDeps,
 ): () => void {
   const registered = actions.map(({ channel, listen }) => {
-    const listener = listen(state, deps);
+    const listener = listen(targets, deps);
     ipc.on(channel, listener);
     return { channel, listener };
   });
