@@ -75,6 +75,8 @@ async function search(
   signal: AbortSignal,
 ): Promise<ToolStep> {
   report(runner, signal, { tool: "search", query: call.query });
+  // A progress listener may cancel synchronously, so nothing is sent after that.
+  if (signal.aborted) return { kind: "aborted" };
   const started = runner.deps.now();
   const outcome = await runner.web.search(call.query, signal);
   logTool(runner, "search", outcome.ok ? "ok" : outcome.cause, started);
@@ -91,6 +93,7 @@ async function read(
 ): Promise<ToolStep> {
   const step: ProgressStep = { tool: "read", url: call.url };
   report(runner, signal, step);
+  if (signal.aborted) return { kind: "aborted" };
   const started = runner.deps.now();
   const outcome = await runner.web.read(call.url, signal);
   logTool(runner, "read", outcome.ok ? "ok" : outcome.cause, started);

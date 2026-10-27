@@ -67,6 +67,28 @@ describe("runTask cancel", () => {
   });
 });
 
+describe("runTask cancel from a listener", () => {
+  it.each([
+    { name: "search", call: { search: "hermes" } },
+    { name: "read", call: { read: pageUrl("one") } },
+  ])("sends no $name once a progress listener cancels", async (row) => {
+    const run = await startRun(
+      [toolUseReply([row.call])],
+      [hits(pageUrl("one"))],
+    );
+    run.port.onMessage((event) => {
+      if (event.type === "progress") run.port.send(cancel);
+    });
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events.filter((event) => event.type !== "progress")).toEqual([
+      cancelled,
+    ]);
+    expect(run.queries).toEqual([]);
+    expect(run.network.targets).toEqual([]);
+  });
+});
+
 describe("runTask holds", () => {
   it("ignores and logs a second runTask for a held task", async () => {
     const run = await startRun(["waitForAbort"]);
