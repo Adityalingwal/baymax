@@ -18,13 +18,17 @@ import type { HoldState, StartupInfo } from "./shared/ipc";
 const startedAt = Date.now();
 let mainWindow: BrowserWindow | null = null;
 let wiring: Wiring | null = null;
+let workStopped = false;
 // Current state is kept here so a renderer that mounts (or reloads) mid-hold can ask for it.
 let holdState: HoldState = "idle";
 
 // Registered before anything else runs, so a failure during start-up is covered too.
 const restart = createRestart({
   showNotice: () => wiring?.state.showNotice("restarting"),
-  stopWork: () => wiring?.close(),
+  stopWork: () => {
+    workStopped = true;
+    wiring?.close();
+  },
   relaunch: (args) => app.relaunch({ args }),
   exit: (code) => app.exit(code),
   setTimer: (ms, fire) => {
@@ -134,7 +138,13 @@ function registerHoldHandlers(accessibilityAtStartup: boolean | null): void {
 }
 
 async function startApp(): Promise<void> {
-  wiring = await startEngineAndWiring();
+  const started = await startEngineAndWiring();
+  // A failure during the env read has already stopped work, so nothing more starts before the relaunch.
+  if (workStopped) {
+    started.close();
+    return;
+  }
+  wiring = started;
   // One snapshot for both the hook guard and the renderer hint, so they never disagree.
   const accessibilityAtStartup = getAccessibilityStatus();
   registerHoldHandlers(accessibilityAtStartup);
