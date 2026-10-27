@@ -187,3 +187,28 @@ describe("startEngine dev log", () => {
     ]);
   });
 });
+
+describe("startEngine command from a listener", () => {
+  it("runs a task sent from a listener of that task's intake event", async () => {
+    const engine = startTestEngine([questionReply(task), "waitForAbort"]);
+    engine.port.onMessage((event) => {
+      if (event.type !== "intake") return;
+      engine.port.send({
+        type: "runTask",
+        taskId: event.taskId,
+        goalVersion: 1,
+        depth: "normal",
+        brief: { ...task.brief, userWords: words },
+        parent: null,
+      });
+    });
+    engine.port.send(question(words));
+    await engine.settle(1);
+    expect(engine.requests).toHaveLength(2);
+    expect(engine.entries).not.toContainEqual({
+      event: "duplicateTask",
+      taskId: "task-1",
+    });
+    engine.port.close();
+  });
+});
