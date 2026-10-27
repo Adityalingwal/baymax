@@ -4,6 +4,7 @@ import type { HoldState } from "../shared/ipc";
 import type { CardActions } from "./actions";
 import { TaskCard } from "./cards/TaskCard";
 import { applyDemoAction, demoDisplayState, type DemoAction } from "./demo";
+import { NotchShell } from "./notch/NotchShell";
 import { TextBox } from "./TextBox";
 import { TopBar } from "./TopBar";
 
@@ -82,7 +83,7 @@ export function App() {
   const actions: CardActions = demo ? demoCardActions : window.baymax;
 
   return (
-    <main className="flex h-screen flex-col bg-[#0B0B0C] text-zinc-100">
+    <NotchShell state={state} hold={hold} actions={actions}>
       <TopBar
         hold={hold}
         holdKeyLabel={holdKeyLabel}
@@ -94,12 +95,12 @@ export function App() {
           window.baymax.openAccessibilitySettings()
         }
       />
-      <section className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3">
+      <section className="flex min-h-0 shrink flex-col gap-2 overflow-y-auto px-3">
         {state.tasks.map((card) => (
           <TaskCard key={card.taskId} card={card} actions={actions} />
         ))}
       </section>
       <TextBox submitQuestion={actions.submitQuestion} />
-    </main>
+    </NotchShell>
   );
 }
