@@ -1,74 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Transcription } from "../providers/deepgram";
 import type { UtteranceId } from "../shared/cards";
-import type { Clip, RecordingCommand } from "../shared/ipc";
-import type { HoldOutcome } from "./hold";
-import { createRecording } from "./recording";
-import type { Heard, NotCaughtCause } from "./recording";
-
-type Deferred = {
-  resolve: (result: Transcription) => void;
-  reject: (error: unknown) => void;
-};
-
-function createHarness() {
-  const sent: RecordingCommand[] = [];
-  const heard: Heard[] = [];
-  const pending: Deferred[] = [];
-  const transcribe = vi.fn(
-    () =>
-      new Promise<Transcription>((resolve, reject) => {
-        pending.push({ resolve, reject });
-      }),
-  );
-  const flow = createRecording({
-    sendRecording: (command) => sent.push(command),
-    transcribe,
-    onHeard: (result) => heard.push(result),
-  });
-  const starts = () => sent.filter((command) => command.type === "start");
-  return { flow, sent, heard, pending, transcribe, starts };
-}
-
-type Harness = ReturnType<typeof createHarness>;
-
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-function hold(h: Harness, outcome: HoldOutcome): UtteranceId {
-  h.flow.holdStarted();
-  const utteranceId = h.starts()[h.starts().length - 1].utteranceId;
-  h.flow.holdEnded(outcome);
-  return utteranceId;
-}
-
-function recorded(utteranceId: UtteranceId, bytes = 4): Clip {
-  const audio = new ArrayBuffer(bytes);
-  return { utteranceId, outcome: "recorded", audio, mimeType: "audio/webm" };
-}
-
-function failedClip(
-  utteranceId: UtteranceId,
-  reason: "permissionDenied" | "noMicrophone" | "error",
-): Clip {
-  return { utteranceId, outcome: "failed", reason };
-}
-
-async function resolveCall(h: Harness, index: number, result: Transcription) {
-  h.pending[index].resolve(result);
-  await flush();
-}
-
-const words = (utteranceId: UtteranceId, text: string): Heard => ({
-  kind: "words",
-  utteranceId,
-  words: text,
-});
-
-const missed = (utteranceId: UtteranceId, cause: NotCaughtCause): Heard => ({
-  kind: "notCaught",
-  utteranceId,
-  cause,
-});
+import type { Clip } from "../shared/ipc";
+import {
+  createHarness,
+  failedClip,
+  flush,
+  hold,
+  missed,
+  recorded,
+  resolveCall,
+  words,
+} from "./recording.harness";
+import type { Heard } from "./recording";
+import type { Harness } from "./recording.harness";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -183,6 +128,17 @@ const ruleRows: RuleRow[] = [
     expected: () => [],
   },
   {
+    name: "an accepted hold, then a reset, then its clip -> nothing",
+    run: async (h) => {
+      const id = hold(h, "accept");
+      h.flow.rendererReset();
+      h.flow.clipArrived(recorded(id));
+      return id;
+    },
+    calls: 0,
+    expected: () => [],
+  },
+  {
     name: "holdStarted twice -> the first is stopped and its clip dropped",
     run: async (h) => {
       h.flow.holdStarted();
@@ -226,87 +182,13 @@ describe("recording commands", () => {
   });
 });
 
-describe("late transcript", () => {
-  it("drops an older transcript that resolves after a newer question's words", async () => {
+describe("transcription input", () => {
+  it("passes the clip's audio and mime type", () => {
     const h = createHarness();
-    const a = hold(h, "accept");
-    h.flow.clipArrived(recorded(a));
-    const b = hold(h, "accept");
-    h.flow.clipArrived(recorded(b));
-    await resolveCall(h, 1, { kind: "words", words: "second" });
-    await resolveCall(h, 0, { kind: "words", words: "first" });
-    expect(h.heard).toEqual([words(b, "second")]);
-  });
-
-  it("delivers both in order when the older resolves first", async () => {
-    const h = createHarness();
-    const a = hold(h, "accept");
-    h.flow.clipArrived(recorded(a));
-    const b = hold(h, "accept");
-    h.flow.clipArrived(recorded(b));
-    await resolveCall(h, 0, { kind: "words", words: "first" });
-    await resolveCall(h, 1, { kind: "words", words: "second" });
-    expect(h.heard).toEqual([words(a, "first"), words(b, "second")]);
-  });
-
-  it("orders by hold, not by clip arrival", async () => {
-    const h = createHarness();
-    const a = hold(h, "accept");
-    const b = hold(h, "accept");
-    h.flow.clipArrived(recorded(b));
-    h.flow.clipArrived(recorded(a));
-    await resolveCall(h, 1, { kind: "words", words: "first" });
-    await resolveCall(h, 0, { kind: "words", words: "second" });
-    expect(h.heard).toEqual([words(a, "first"), words(b, "second")]);
-  });
-});
-
-describe("what never makes a question late", () => {
-  it("keeps A when a discarded tap and a not-caught B come between A and its result", async () => {
-    const h = createHarness();
-    const a = hold(h, "accept");
-    h.flow.clipArrived(recorded(a));
-    const tap = hold(h, "discard");
-    h.flow.clipArrived(recorded(tap));
-    const b = hold(h, "accept");
-    h.flow.clipArrived(recorded(b, 0));
-    await resolveCall(h, 0, { kind: "words", words: "question" });
-    expect(h.transcribe).toHaveBeenCalledTimes(1);
-    expect(h.heard).toEqual([missed(b, "empty"), words(a, "question")]);
-  });
-});
-
-describe("renderer reset", () => {
-  it("still delivers a transcription already in flight", async () => {
-    const h = createHarness();
-    const a = hold(h, "accept");
-    h.flow.clipArrived(recorded(a));
-    h.flow.rendererReset();
-    await resolveCall(h, 0, { kind: "words", words: "kept" });
-    expect(h.heard).toEqual([words(a, "kept")]);
-  });
-
-  it("keeps the sequence, so a newer question's words make an older in-flight result late", async () => {
-    const h = createHarness();
-    const a = hold(h, "accept");
-    h.flow.clipArrived(recorded(a));
-    h.flow.rendererReset();
-    const b = hold(h, "accept");
-    h.flow.clipArrived(recorded(b));
-    await resolveCall(h, 1, { kind: "words", words: "newer" });
-    await resolveCall(h, 0, { kind: "words", words: "older" });
-    expect(h.heard).toEqual([words(b, "newer")]);
-  });
-});
-
-describe("duplicate clip while transcribing", () => {
-  it("calls transcribe once", async () => {
-    const h = createHarness();
-    const a = hold(h, "accept");
-    h.flow.clipArrived(recorded(a));
-    h.flow.clipArrived(recorded(a));
-    await resolveCall(h, 0, { kind: "words", words: "once" });
-    expect(h.transcribe).toHaveBeenCalledTimes(1);
-    expect(h.heard).toEqual([words(a, "once")]);
+    const clip = recorded(hold(h, "accept"));
+    h.flow.clipArrived(clip);
+    if (clip.outcome !== "recorded")
+      throw new Error("expected a recorded clip");
+    expect(h.transcribe).toHaveBeenCalledWith(clip.audio, clip.mimeType);
   });
 });

@@ -8,7 +8,7 @@ const meta = 3675;
 const shift = 42;
 const space = 57;
 
-const { shortestMs, longestMs } = holdLimits;
+const { longestMs } = holdLimits;
 
 type Step =
   ["down", number, number] | ["up", number, number] | ["cap"] | ["reset"];
@@ -33,20 +33,20 @@ const rows: Row[] = [
     expected: ["listening", "accept"],
   },
   {
-    name: "a tap under the shortest hold is discarded",
+    name: "a 299 ms tap is discarded",
     keys: [alt],
     steps: [
       ["down", alt, 0],
-      ["up", alt, shortestMs - 1],
+      ["up", alt, 299],
     ],
     expected: ["listening", "discard"],
   },
   {
-    name: "a hold of exactly the shortest hold is accepted",
+    name: "a hold of exactly 300 ms is accepted",
     keys: [alt],
     steps: [
       ["down", alt, 1000],
-      ["up", alt, 1000 + shortestMs],
+      ["up", alt, 1300],
     ],
     expected: ["listening", "accept"],
   },

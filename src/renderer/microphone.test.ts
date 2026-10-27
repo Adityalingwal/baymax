@@ -1,99 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Clip, RecordingCommand } from "../shared/ipc";
-import { startMicrophone } from "./microphone";
-import type { MicStream, Recorder } from "./microphone";
-
-const mimeType = "audio/webm;codecs=opus";
-
-function createFakeRecorder() {
-  const chunkListeners: ((chunk: Blob) => void)[] = [];
-  const startListeners: (() => void)[] = [];
-  const stopListeners: (() => void)[] = [];
-  const errorListeners: (() => void)[] = [];
-  const recorder: Recorder = {
-    mimeType,
-    start: vi.fn(),
-    stop: vi.fn(),
-    onChunk: (listener) => chunkListeners.push(listener),
-    onStart: (listener) => startListeners.push(listener),
-    onStop: (listener) => stopListeners.push(listener),
-    onError: (listener) => errorListeners.push(listener),
-  };
-  return {
-    recorder,
-    emitChunk: (chunk: Blob) => chunkListeners.forEach((l) => l(chunk)),
-    emitStart: () => startListeners.forEach((l) => l()),
-    emitStop: () => stopListeners.forEach((l) => l()),
-    emitError: () => errorListeners.forEach((l) => l()),
-  };
-}
-
-type FakeStream = {
-  stream: MicStream;
-  stopTrack: ReturnType<typeof vi.fn>;
-  resolve: () => void;
-  reject: (error: unknown) => void;
-};
-
-function createHarness(createRecorderThrows = false) {
-  const holder: { onCommand?: (command: RecordingCommand) => void } = {};
-  const unsubscribe = vi.fn();
-  const clips: Clip[] = [];
-  const streams: FakeStream[] = [];
-  const recorders: ReturnType<typeof createFakeRecorder>[] = [];
-  const getUserMedia = vi.fn(
-    () =>
-      new Promise<MicStream>((resolve, reject) => {
-        const stopTrack = vi.fn();
-        const stream = { getTracks: () => [{ stop: stopTrack }] };
-        streams.push({
-          stream,
-          stopTrack,
-          resolve: () => resolve(stream),
-          reject,
-        });
-      }),
-  );
-  const createRecorder = vi.fn(() => {
-    if (createRecorderThrows) throw new DOMException("no", "NotSupportedError");
-    const fake = createFakeRecorder();
-    recorders.push(fake);
-    return fake.recorder;
-  });
-  const bridge = {
-    onRecording: (callback: (command: RecordingCommand) => void) => {
-      holder.onCommand = callback;
-      return unsubscribe;
-    },
-    sendClip: (clip: Clip) => clips.push(clip),
-  };
-  const cleanup = startMicrophone(bridge, {
-    getUserMedia,
-    createRecorder,
-    now: () => 0,
-  });
-  const start = (utteranceId: string) =>
-    holder.onCommand?.({ type: "start", utteranceId });
-  const stop = (utteranceId: string) =>
-    holder.onCommand?.({ type: "stop", utteranceId });
-  return { start, stop, cleanup, unsubscribe, clips, streams, recorders };
-}
-
-type Harness = ReturnType<typeof createHarness>;
-
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-async function resolveStream(h: Harness, index: number): Promise<void> {
-  h.streams[index].resolve();
-  await flush();
-}
-
-const zeroByteClip = (utteranceId: string): Clip => ({
-  utteranceId,
-  outcome: "recorded",
-  audio: new ArrayBuffer(0),
-  mimeType: "",
-});
+import {
+  createHarness,
+  flush,
+  mimeType,
+  resolveStream,
+  zeroByteClip,
+} from "./microphone.harness";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -108,10 +20,11 @@ describe("microphone records one clip per utterance", () => {
     expect(fake.recorder.start).toHaveBeenCalledTimes(1);
     fake.emitStart();
     fake.emitChunk(new Blob([new Uint8Array([1, 2, 3])]));
-    fake.emitChunk(new Blob([new Uint8Array([4, 5])]));
     h.stop("a");
     expect(fake.recorder.stop).toHaveBeenCalledTimes(1);
     expect(h.clips).toEqual([]);
+    // MediaRecorder hands over the last chunk after stop() and before its stop event.
+    fake.emitChunk(new Blob([new Uint8Array([4, 5])]));
     fake.emitStop();
     await flush();
     expect(h.clips).toHaveLength(1);
@@ -181,70 +94,6 @@ describe("microphone stream races", () => {
     await flush();
     expect(h.clips).toEqual([
       expect.objectContaining({ utteranceId: "a", outcome: "recorded" }),
-    ]);
-  });
-});
-
-type FailureRow = { name: string; error: string; reason: string };
-
-const failureRows: FailureRow[] = [
-  {
-    name: "NotAllowedError",
-    error: "NotAllowedError",
-    reason: "permissionDenied",
-  },
-  { name: "SecurityError", error: "SecurityError", reason: "permissionDenied" },
-  { name: "NotFoundError", error: "NotFoundError", reason: "noMicrophone" },
-  {
-    name: "OverconstrainedError",
-    error: "OverconstrainedError",
-    reason: "noMicrophone",
-  },
-  { name: "AbortError", error: "AbortError", reason: "error" },
-];
-
-describe("microphone stream failures", () => {
-  it.each(failureRows)(
-    "getUserMedia rejecting with $name sends failed $reason, only after the stop",
-    async ({ error, reason }) => {
-      const h = createHarness();
-      h.start("a");
-      h.streams[0].reject(new DOMException("denied", error));
-      await flush();
-      expect(h.clips).toEqual([]);
-      h.stop("a");
-      expect(h.clips).toEqual([
-        { utteranceId: "a", outcome: "failed", reason },
-      ]);
-    },
-  );
-});
-
-describe("microphone recorder failures", () => {
-  it("createRecorder throwing sends a failed error clip after the stop and stops the tracks", async () => {
-    const h = createHarness(true);
-    h.start("a");
-    await resolveStream(h, 0);
-    expect(h.streams[0].stopTrack).toHaveBeenCalled();
-    expect(h.clips).toEqual([]);
-    h.stop("a");
-    expect(h.clips).toEqual([
-      { utteranceId: "a", outcome: "failed", reason: "error" },
-    ]);
-  });
-
-  it("the recorder's error sends a failed error clip after the stop, once", async () => {
-    const h = createHarness();
-    h.start("a");
-    await resolveStream(h, 0);
-    h.recorders[0].emitError();
-    expect(h.streams[0].stopTrack).toHaveBeenCalled();
-    expect(h.clips).toEqual([]);
-    h.stop("a");
-    h.recorders[0].emitStop();
-    await flush();
-    expect(h.clips).toEqual([
-      { utteranceId: "a", outcome: "failed", reason: "error" },
     ]);
   });
 });

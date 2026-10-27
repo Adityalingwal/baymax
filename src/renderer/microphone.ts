@@ -118,14 +118,18 @@ function fail(
   utterance: Utterance,
   reason: FailReason,
   name: string,
-) {
+): void {
   console.log(`[Mic] failed: ${name}`);
   utterance.failure ??= reason;
   stopTracks(utterance.stream);
   if (utterance.stopped) sendFailure(mic, utterance);
 }
 
-function sendRecorded(mic: Mic, utterance: Utterance, audio: ArrayBuffer) {
+function sendRecorded(
+  mic: Mic,
+  utterance: Utterance,
+  audio: ArrayBuffer,
+): void {
   const { utteranceId } = utterance;
   const mimeType = utterance.recorder?.mimeType ?? "";
   console.log(`[Mic] clip ${audio.byteLength} bytes`);
@@ -140,10 +144,15 @@ function sendRecorded(mic: Mic, utterance: Utterance, audio: ArrayBuffer) {
 function recorderStopped(mic: Mic, utterance: Utterance): void {
   if (utterance.sent || mic.disposed) return;
   // A recorder that stops on its own (a lost device) must not send before main's stop.
-  if (!utterance.stopped)
-    return fail(mic, utterance, "error", "RecorderStopped");
+  if (!utterance.stopped) {
+    fail(mic, utterance, "error", "RecorderStopped");
+    return;
+  }
   stopTracks(utterance.stream);
-  if (utterance.failure !== undefined) return sendFailure(mic, utterance);
+  if (utterance.failure !== undefined) {
+    sendFailure(mic, utterance);
+    return;
+  }
   const blob = new Blob(utterance.chunks, {
     type: utterance.recorder?.mimeType,
   });
@@ -153,7 +162,11 @@ function recorderStopped(mic: Mic, utterance: Utterance): void {
     .catch((error: unknown) => fail(mic, utterance, "error", errorName(error)));
 }
 
-function startRecorder(mic: Mic, utterance: Utterance, stream: MicStream) {
+function startRecorder(
+  mic: Mic,
+  utterance: Utterance,
+  stream: MicStream,
+): void {
   try {
     const recorder = mic.deps.createRecorder(stream);
     utterance.recorder = recorder;
@@ -173,21 +186,19 @@ function startRecorder(mic: Mic, utterance: Utterance, stream: MicStream) {
 
 function streamReady(mic: Mic, utterance: Utterance, stream: MicStream): void {
   utterance.stream = stream;
-  if (mic.disposed) return stopTracks(stream);
+  if (mic.disposed) {
+    stopTracks(stream);
+    return;
+  }
   console.log(
     `[Mic] stream ready ${sinceStart(mic, utterance)} ms after start`,
   );
-  if (!utterance.stopped) return startRecorder(mic, utterance, stream);
+  if (!utterance.stopped) {
+    startRecorder(mic, utterance, stream);
+    return;
+  }
   stopTracks(stream);
-  const { utteranceId } = utterance;
-  const audio = new ArrayBuffer(0);
-  console.log("[Mic] clip 0 bytes");
-  sendOnce(mic, utterance, {
-    utteranceId,
-    outcome: "recorded",
-    audio,
-    mimeType: "",
-  });
+  sendRecorded(mic, utterance, new ArrayBuffer(0));
 }
 
 function beginUtterance(mic: Mic, utteranceId: UtteranceId): void {
@@ -200,8 +211,8 @@ function beginUtterance(mic: Mic, utteranceId: UtteranceId): void {
   };
   mic.current = utterance;
   mic.live.add(utterance);
-  mic.deps
-    .getUserMedia()
+  // Wrapped so a synchronous throw takes the same path as a rejection.
+  new Promise<MicStream>((resolve) => resolve(mic.deps.getUserMedia()))
     .then((stream) => streamReady(mic, utterance, stream))
     .catch((error: unknown) => {
       const name = errorName(error);
@@ -209,16 +220,22 @@ function beginUtterance(mic: Mic, utteranceId: UtteranceId): void {
     });
 }
 
-function stopUtterance(mic: Mic, utterance: Utterance): void {
-  utterance.stopped = true;
-  if (mic.current === utterance) mic.current = null;
-  if (utterance.failure !== undefined) return sendFailure(mic, utterance);
-  if (utterance.recorder === undefined) return;
+function stopRecorder(mic: Mic, utterance: Utterance): void {
   try {
-    utterance.recorder.stop();
+    utterance.recorder?.stop();
   } catch (error) {
     fail(mic, utterance, "error", errorName(error));
   }
+}
+
+function stopUtterance(mic: Mic, utterance: Utterance): void {
+  utterance.stopped = true;
+  if (mic.current === utterance) mic.current = null;
+  if (utterance.failure !== undefined) {
+    sendFailure(mic, utterance);
+    return;
+  }
+  stopRecorder(mic, utterance);
 }
 
 function receiveCommand(mic: Mic, command: RecordingCommand): void {
@@ -236,20 +253,16 @@ function disposeAll(mic: Mic): void {
   mic.current = null;
   for (const utterance of mic.live) {
     stopTracks(utterance.stream);
-    if (utterance.recorder !== undefined && !utterance.stopped) {
+    if (!utterance.stopped) {
       utterance.stopped = true;
-      try {
-        utterance.recorder.stop();
-      } catch (error) {
-        console.log(`[Mic] failed: ${errorName(error)}`);
-      }
+      stopRecorder(mic, utterance);
     }
   }
   mic.live.clear();
 }
 
 export function startMicrophone(
-  bridge: Pick<BaymaxApi, "onRecording" | "sendClip">,
+  bridge: Bridge,
   deps: MicDeps = browserDeps,
 ): () => void {
   const mic: Mic = {

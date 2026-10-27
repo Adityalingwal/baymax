@@ -13,7 +13,7 @@ export type NotCaughtCause =
   | "noCredit"
   | "error";
 
-// What one accepted utterance produced; #27 turns it into a question or the not-caught line.
+// What one accepted utterance produced: a question's words, or why nothing was caught.
 export type Heard =
   | { kind: "words"; utteranceId: UtteranceId; words: string }
   | { kind: "notCaught"; utteranceId: UtteranceId; cause: NotCaughtCause };
@@ -81,8 +81,8 @@ function endHold(
 ): void {
   const recording = state.recording;
   if (recording === null) return;
-  deps.sendRecording({ type: "stop", utteranceId: recording.utteranceId });
   state.outcomes.set(recording.utteranceId, { seq: recording.seq, outcome });
+  deps.sendRecording({ type: "stop", utteranceId: recording.utteranceId });
   state.recording = null;
 }
 

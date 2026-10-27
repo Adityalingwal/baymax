@@ -34,7 +34,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function firstItem(value: unknown): unknown {
-  return Array.isArray(value) ? (value[0] as unknown) : undefined;
+  return Array.isArray(value) ? value[0] : undefined;
 }
 
 function readTranscript(body: unknown): string | null {
@@ -61,6 +61,12 @@ async function readTranscription(response: Response): Promise<Transcription> {
   }
 }
 
+// A response or error may echo the request headers; the key never reaches the dev log.
+function withoutKey(result: Transcription, key: string): Transcription {
+  if (result.kind !== "failed" || key === "") return result;
+  return { ...result, detail: result.detail.split(key).join("[key]") };
+}
+
 export async function transcribeClip(
   access: DeepgramAccess,
   audio: ArrayBuffer,
@@ -78,7 +84,7 @@ export async function transcribeClip(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    return failed("unreachable", describeError(error));
+    return withoutKey(failed("unreachable", describeError(error)), access.key);
   }
-  return readTranscription(response);
+  return withoutKey(await readTranscription(response), access.key);
 }

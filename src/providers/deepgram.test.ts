@@ -90,6 +90,16 @@ const resultRows: ResultRow[] = [
     expected: failedWith("error"),
   },
   {
+    name: "a body that echoes the key keeps it out of the detail",
+    respond: respondWith(`{"err_msg":"bad header: Token ${key}"}`, 401),
+    expected: failedWith("keyRejected"),
+  },
+  {
+    name: "an error that echoes the key keeps it out of the detail",
+    respond: () => Promise.reject(new TypeError(`Authorization: Token ${key}`)),
+    expected: failedWith("unreachable"),
+  },
+  {
     name: "a network failure is unreachable",
     respond: () => Promise.reject(new TypeError("fetch failed")),
     expected: failedWith("unreachable"),
