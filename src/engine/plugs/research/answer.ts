@@ -1,10 +1,16 @@
 // The worker's one output: the spoken line, the card text and the claims that tie it to read pages.
 type Claim = { claim: string; sourceIds: string[] };
+
+const statuses = ["complete", "sourcesThin", "needsUser"] as const;
+type AnswerStatus = (typeof statuses)[number];
+
 export type Answer = {
   spokenLine: string;
   cardText: string;
   claims: Claim[];
   openPoints: string[];
+  status: AnswerStatus;
+  nextQuestion: string | null; // set exactly when status is needsUser
 };
 
 const text = { type: "string" };
@@ -25,8 +31,17 @@ export const answerSchema = {
       },
     },
     openPoints: textList,
+    status: { type: "string", enum: [...statuses] },
+    nextQuestion: { anyOf: [{ type: "null" }, text] },
   },
-  required: ["spokenLine", "cardText", "claims", "openPoints"],
+  required: [
+    "spokenLine",
+    "cardText",
+    "claims",
+    "openPoints",
+    "status",
+    "nextQuestion",
+  ],
   additionalProperties: false,
 };
 
@@ -60,6 +75,22 @@ function claimsFrom(value: unknown): Claim[] | null {
   return claims.every((claim) => claim !== null) ? claims : null;
 }
 
+// A next question goes with needsUser and nothing else; any other pairing is malformed.
+function statusFrom(
+  fields: Fields,
+): Pick<Answer, "status" | "nextQuestion"> | null {
+  const { status, nextQuestion } = fields;
+  const known = statuses.find((value) => value === status);
+  if (known === undefined) return null;
+  if (known !== "needsUser") {
+    return nextQuestion === null ? { status: known, nextQuestion } : null;
+  }
+  if (typeof nextQuestion !== "string" || nextQuestion.trim() === "") {
+    return null;
+  }
+  return { status: known, nextQuestion: nextQuestion.trim() };
+}
+
 // Anything off the schema is malformed; empty strings pass here and meet the code check.
 export function parseAnswer(json: string): Answer | null {
   let parsed: unknown;
@@ -68,14 +99,15 @@ export function parseAnswer(json: string): Answer | null {
   } catch {
     return null;
   }
-  const fields = fieldsWith(parsed, Object.keys(answerSchema.properties));
+  const fields = fieldsWith(parsed, answerSchema.required);
   if (fields === null) return null;
   const { spokenLine, cardText } = fields;
   const claims = claimsFrom(fields.claims);
   const openPoints = stringList(fields.openPoints);
+  const status = statusFrom(fields);
   if (typeof spokenLine !== "string" || typeof cardText !== "string") {
     return null;
   }
-  if (claims === null || openPoints === null) return null;
-  return { spokenLine, cardText, claims, openPoints };
+  if (claims === null || openPoints === null || status === null) return null;
+  return { spokenLine, cardText, claims, openPoints, ...status };
 }

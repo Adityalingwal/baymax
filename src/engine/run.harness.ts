@@ -114,6 +114,8 @@ export type AnswerFields = {
   cardText?: string;
   claims?: { claim: string; sourceIds: string[] }[];
   openPoints?: string[];
+  status?: string;
+  nextQuestion?: string | null;
 };
 
 export const goodAnswer = {
@@ -124,6 +126,8 @@ export const goodAnswer = {
     { claim: "It uses tools", sourceIds: ["s2"] },
   ],
   openPoints: ["How it stores memory"],
+  status: "complete",
+  nextQuestion: null,
 };
 
 export function workerAnswer(fields: AnswerFields = {}): ModelOutcome {

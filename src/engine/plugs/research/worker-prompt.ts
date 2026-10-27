@@ -32,6 +32,8 @@ Your final answer is one JSON object:
 - cardText: the full answer in Markdown (short headings, points). Cite each important claim with source id markers in square brackets, one id per marker, such as [s1] or [s1][s3]. Write no links or URLs yourself; the markers become links.
 - claims: the important factual claims of the card, each with the source ids of the read pages that support it.
 - openPoints: what is still open or was not found, as short phrases; an empty list when nothing is open.
+- status: "complete" when the answer does what the brief asks. "sourcesThin" when the web has too little on the question to answer it well; still write what you found, cited. "needsUser" only when an ambiguity in the brief blocks a useful answer.
+- nextQuestion: with "needsUser", one focused question for the user that would unblock the answer; otherwise null.
 
 Rules:
 - Cite only pages you read, by the source_id shown in their <page> block. Never cite a search snippet or a page you did not read.
