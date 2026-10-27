@@ -63,7 +63,8 @@ async function settleHold(
 }
 
 export function startHold(holds: Holds, taskId: TaskId, work: HeldWork): void {
-  if (holds.held.has(taskId)) {
+  // A finished hold may still be emitting its event, whose listener may send this task's next command.
+  if (holds.held.get(taskId)?.finished === false) {
     holds.log({ event: "duplicateTask", taskId });
     return;
   }

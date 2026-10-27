@@ -1,6 +1,7 @@
 import type {
   FailureKind,
   Incomplete,
+  ParentResult,
   ProgressStep,
 } from "../../shared/engine";
 
@@ -17,6 +18,7 @@ export const fixedLines = {
   voiceUnavailable:
     "Voice isn't working right now. You can type your question instead.",
   restarting: "Baymax hit a problem and is restarting.",
+  builtOnPartial: "Built on the partial findings of an earlier question.",
 } as const;
 
 const failureLines: Record<FailureKind, string> = {
@@ -34,10 +36,31 @@ export function failureLine(kind: FailureKind): string {
   return failureLines[kind];
 }
 
-export function taskShortForm(sayBack: string | null): string {
+export function taskShortForm(
+  sayBack: string | null,
+  fallback = "This task",
+): string {
   const short = (sayBack ?? "").split(",")[0].trim();
-  if (short === "") return "This task";
+  if (short === "") return fallback;
   return short[0].toUpperCase() + short.slice(1);
+}
+
+// The start line of a follow-up whose parent did not end done; null for a done parent.
+export function partialParentLine(
+  parent: ParentResult,
+  parentSayBack: string | null,
+): string | null {
+  if (parent.outcome === "done") return null;
+  const name = taskShortForm(parentSayBack, "The earlier question");
+  const found = parent.findings !== null;
+  if (parent.outcome === "incomplete") {
+    return found
+      ? `${name} ended without a full answer, so I'll build on what it found.`
+      : `${name} ended before it found anything.`;
+  }
+  return found
+    ? `${name} was cancelled, so I'll build on what it found.`
+    : `${name} was cancelled before it found anything.`;
 }
 
 const partialEndings = {

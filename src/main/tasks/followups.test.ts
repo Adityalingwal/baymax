@@ -212,6 +212,7 @@ describe("a deleted parent", () => {
     );
     expect(h.card("t2")).toBeUndefined();
     expect(parentOf(h, child)).toBeNull();
+    expect(h.card(child)?.parentTaskId).toBeNull();
   });
 });
 

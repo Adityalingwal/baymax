@@ -59,6 +59,20 @@ function findingsLines(findings: Findings | null): string[] {
   ];
 }
 
+// A parent that did not end done gets one sentence on how to use what it left.
+function partialNote(parent: ParentResult): string[] {
+  if (parent.outcome === "done") return [];
+  const ended = `The earlier task ended ${parent.outcome}`;
+  if (parent.findings !== null) {
+    return [
+      `${ended}, so its findings are partial and may not have been checked. Build on them, say near the top of the card text that this answer builds on a partial earlier result, and treat its points as unconfirmed until a page you read supports them.`,
+    ];
+  }
+  return [
+    `${ended} before it found anything usable, so there is no earlier answer to build on. If this request depends on the earlier answer, do not search: use status "needsUser" and ask the user one question that would let you start. Only if the request is clear on its own, research it from the start and say near the top of the card text that the earlier task found nothing.`,
+  ];
+}
+
 function parentBlock(parent: ParentResult): string {
   const lines = [
     `outcome: ${parent.outcome}`,
@@ -67,6 +81,7 @@ function parentBlock(parent: ParentResult): string {
   return [
     `<parent_result>\n${lines.join("\n")}\n</parent_result>`,
     "This task follows up on the result above. Its pages are not read in this task: read a page again before you cite it.",
+    ...partialNote(parent),
   ].join("\n");
 }
 

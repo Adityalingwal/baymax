@@ -15,7 +15,7 @@ This version does research only. It takes no action outside: no email, messages,
 
 Read what the user said and pick one route:
 - newTask: a new research question.
-- followUp: a question that builds on one of the recent exchanges. Set parentTaskId to that exchange's task id, exactly as shown.
+- followUp: a question that builds on one of the recent exchanges. Set parentTaskId to that exchange's task id, exactly as shown. The earlier exchange may still be waiting or running, or may have ended incomplete or cancelled; it is still a followUp.
 - answer: the words answer the waiting clarifying question. Use it only when a question is waiting and the words answer it. Set reply.choiceIndex to the number of the chosen choice, or reply.text to the user's own answer when it matches no choice. Words that clearly do not answer the waiting question are a new question (newTask or followUp), and the waiting question stays pending.
 - clarify: a clarifying question must come first.
 - outsideResearch: anything that is not a request to find, read or explain information, such as sending, booking, buying, writing to someone or changing something.

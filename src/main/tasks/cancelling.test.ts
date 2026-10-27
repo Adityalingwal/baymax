@@ -47,7 +47,12 @@ describe("a reply that ends the step while cancelling", () => {
       incomplete: { kind: "limitHit", findings: partial },
     });
     expect(h.published.length).toBe(published + 1);
-    expect(h.said.length).toBe(said);
+    expect(h.said.length).toBe(said + 1);
+    expect(h.said.at(-1)).toEqual({
+      taskId: child,
+      text: "Hermes was cancelled, so I'll build on what it found.",
+      kind: "startLine",
+    });
     expect(h.card("t1")).toMatchObject({ state: "cancelled", answer: null });
     expect(h.sent.at(-1)).toEqual(
       expect.objectContaining({

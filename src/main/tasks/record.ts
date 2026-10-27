@@ -11,7 +11,7 @@ import type {
   ParentResult,
   WorkerBrief,
 } from "../../shared/engine";
-import { incompleteLines } from "./lines";
+import { fixedLines, incompleteLines } from "./lines";
 
 export type SaidKind =
   "letMeCheck" | "startLine" | "question" | "answer" | "failure" | "notice";
@@ -27,6 +27,7 @@ export type TaskRecord = {
   spokenLine: string | null;
   hiddenQuestion: ClarifyingQuestion | null;
   letMeCheckDue: boolean;
+  builtOnPartial: boolean;
   sent: EngineCommand | null;
   failed: EngineCommand | null;
 };
@@ -100,6 +101,7 @@ export function addRecord(
     spokenLine: null,
     hiddenQuestion: null,
     letMeCheckDue: false,
+    builtOnPartial: false,
     sent: null,
     failed: null,
   };
@@ -192,7 +194,7 @@ export function endDone(
   closeTask(change, record, "done", findings);
   record.spokenLine = spokenLine;
   record.card.answer = findings;
-  record.card.line = null;
+  record.card.line = record.builtOnPartial ? fixedLines.builtOnPartial : null;
   say(change, record.card.taskId, spokenLine, "answer");
 }
 
