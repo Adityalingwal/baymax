@@ -157,3 +157,26 @@ describe("runTask dev log", () => {
     }
   });
 });
+
+// Each read in its own turn, so each counter is read after the one before it settled.
+describe("runTask counter line", () => {
+  it("tells the worker how many pages it has read, failed reads and repeats left out", async () => {
+    const run = await startRun([
+      toolUseReply([{ read: pageUrl("one") }]),
+      toolUseReply([{ read: pageUrl("missing") }]),
+      toolUseReply([{ read: pageUrl("one") }]),
+      toolUseReply([{ read: pageUrl("two") }]),
+      workerAnswer(oneCited),
+      verdictReply(),
+    ]);
+    run.port.send(runTask());
+    await run.ended();
+    const counters = run.requests.slice(1, 5).map((request) => {
+      const text = textOf(request.messages[request.messages.length - 1]);
+      const counter =
+        /Pages read: (\d+)\. Searches left: 8\. Steps left: \d+\./;
+      return counter.exec(text)?.[1];
+    });
+    expect(counters).toEqual(["1", "1", "1", "2"]);
+  });
+});

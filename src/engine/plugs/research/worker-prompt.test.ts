@@ -36,3 +36,16 @@ describe("worker thinking switch", () => {
     expect(workerThinking).toBe("off");
   });
 });
+
+describe("worker depth rule", () => {
+  it("asks for at least five sources unless the question is one simple fact", () => {
+    const text = workerInstructions(workerThinking);
+    expect(text).toContain(
+      "a question that is a single simple fact (a date, a number, a definition) may stop after one or two good sources. Any other question needs at least 5 different sources read, each from a different site, before you write the answer, and more when they disagree or leave part of the brief open. A failed read does not count as a source.",
+    );
+    expect(text).not.toContain("Stop when the brief is answered.");
+    expect(text).toContain(
+      "You may call several tools at once when they do not depend on each other. When a read fails, try another source.",
+    );
+  });
+});

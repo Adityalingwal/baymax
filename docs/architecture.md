@@ -153,7 +153,7 @@ cards      <--IPC--  whole display state                       <--- task events
 ### Worker and research
 
 - **The brief.** The intake writes it in four parts (the goal, the result shape, the tools or sources, the limits) plus the user's exact words, because a restated goal can lose a nuance ("an office laptop, not gaming"). The worker gets only the web tool and never the whole conversation. Text in a page is never an instruction to it.
-- **One profile.** The worker decides while it works how much to search: a simple question ("today's weather in Delhi") stops after one or two searches, a bigger one ("how does Hermes work inside") reads six to eight pages, within one set of [limits](#limits-and-cost). This is checked on the first integrated path with a simple current fact and a moderately detailed product question (time to a useful answer, needless searches, source support, the incomplete outcome at a limit); if the worker over-searches or is too slow, the intake's quick or normal choice comes back through the depth value.
+- **One profile.** The worker decides while it works how much to search, within one set of [limits](#limits-and-cost): a question that is a single simple fact (a date, a number, a definition, "today's weather in Delhi") may stop after one or two good sources; any other question ("how does Hermes work inside") reads at least 5 different sources, from different sites, before the answer, and more when they disagree or leave part of the brief open. A failed read does not count. This floor is a prompt rule; code enforces no minimum. Each tool result tells the worker how many pages it has read. This is checked on the first integrated path with a simple current fact and a moderately detailed product question (time to a useful answer, needless searches, source support, the incomplete outcome at a limit); if the worker over-searches or is too slow, the intake's quick or normal choice comes back through the depth value.
 - **The answer.** The worker writes the answer itself and maps each important claim to the source ids that support it; there is no separate writer. One output holds both parts: a one- or two-line spoken summary and the full card text in Markdown (headings, points, source links). There is no separate model call for the spoken line. A near match is never called a full match: with no exact match it names the closest alternatives and the unmet constraints. An ambiguity that needs the user ends the task incomplete with one focused next question on the card.
 - **Prompt cache.** The prompt start (instructions and tool list) stays fixed during a run.
 - **Context.** If the prompt fills up despite the capped page text, the task ends incomplete, limit hit, and shows what it found.
@@ -197,7 +197,7 @@ It checks support and completion, not truth.
 
 ### Limits and cost
 
-- Each task has limits on model calls, searches, active time and dollars ([Starting values](#starting-values)). Active time counts the time the task's calls, tools or retry waits run, not the time it waits for the user. At a limit the task ends incomplete, limit hit, and shows what it found.
+- Each task has limits on model calls, searches, active time and dollars ([Starting values](#starting-values)). Active time counts the time the task's calls, tools or retry waits run, not the time it waits for the user. At a limit the task ends incomplete, limit hit, and shows what it found. The model-call limit is a ceiling, not a promise that every retry round fits: worker steps and judge calls share it, and the time or dollar limit can end a task first. The dollar limit counts model calls only; Exa search and contents calls are not added to it in V1.
 - Every paid call (intake, worker, judge, the retry round, paid web calls) goes through one dispatch function that checks the limits before sending, sets an output-token ceiling per role, and writes usage and dollar cost to the dev log for the team. The user never sees cost. Without a reservation ledger the dollar limit is a conservative estimate, not an exact guarantee.
 - In V1 a task's limits count its run (worker, judge, retry round). Its intake calls, at most two of about a cent each, are checked against limits of their own and logged under the task id, because the engine keeps nothing between commands.
 - Retries use the Anthropic SDK's own retry with a small `maxRetries` and an explicit timeout on every call. That it may resend a request after a timeout is an accepted V1 cost.
@@ -238,7 +238,7 @@ It checks support and completion, not truth.
 | First spoken line, target | under about 3 s; above it, the intake moves to Haiku 5.5 |
 | Searches per task | about 8 |
 | Active time per task | about 2 minutes |
-| Model calls per task | about 15 |
+| Model calls per task | about 25 |
 | Dollars per task | about 50 cents |
 | Done check retry rounds | 1 |
 | Shortest hold that counts as a question | about 0.3 s |
