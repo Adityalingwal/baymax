@@ -149,7 +149,7 @@ cards       <--IPC--  whole display state                         <--- task even
 - **What it is.** One Claude Haiku 5.5 call in main per final transcript or typed question, started at the same moment as the intake check. It gets the user's words, the recent questions and answers, the running and waiting tasks and the waiting clarifying question, and streams a short spoken line into TTS.
 - **What it says.** A short reply it can give from what it knows ("hi", "thanks", "what is 2 + 2") is the whole answer. For research it says a line that shows it understood the question ("I'll check tomorrow's Delhi forecast; the rain chance decides the umbrella."), with no time promise and no claim of progress. It never asks its own question and never decides what a task means: the intake routes, and binds answers to a waiting question.
 - **Later lines.** The intake's clarifying question and the worker's result reach the user through the talker, in its own words, with the choices and the full answer on the card.
-- **Fallback.** If the talker has said nothing about 1.5 s after key release, code speaks "One moment." A talker failure never stops the intake.
+- **Fallback.** If the talker has no words yet about 1.5 s after key release, code speaks "One moment." It never delays the talker: it is skipped when the talker already has words, and dropped when the talker's first words come before its audio starts. A talker failure never stops the intake.
 
 ### Intake and tasks
 
@@ -305,7 +305,8 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
 | `src/main/moment.ts` | The "One moment." timers, one per release or submit: each is cancelled only by its own generation's first talker audio, discard or words-not-caught result (which also drop its queued "One moment."), or by a renderer reset or voice stop |
-| `src/main/speech-moment.ts` | "One moment." ahead of the waiting lines; its generation's talker line with no audio yet waits behind it |
+| `src/main/talker-timing.ts` | Logs each generation's talker reply steps and "One moment." audio in ms after its release |
+| `src/main/speech-moment.ts` | "One moment." ahead of the waiting lines, skipped when its generation's talker already has words and dropped when they come before its audio |
 | `src/main/talker.ts` | The talker: one Haiku 5.5 streaming call per question, and one per clarifying question or result in its own words; its words stream into speech |
 | `src/main/talker-prompt.ts` | The talker's instructions and the blocks it reads |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |

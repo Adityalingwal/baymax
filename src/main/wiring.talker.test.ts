@@ -41,6 +41,7 @@ describe("the talker through the wiring (L12, L15, L16)", () => {
   it('says "One moment." first when the talker is silent 1.5 s after the submit', async () => {
     const w = asked();
     w.advance(1500);
+    await w.playNext();
     w.talkerCalls[0].onText("It's 4.");
     w.talkerCalls[0].resolve({ ok: true, text: "It's 4." });
     await flush();

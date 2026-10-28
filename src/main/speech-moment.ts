@@ -2,50 +2,45 @@ import type { Line, SpeechContext } from "./speech-model";
 import { endPlaying, log } from "./speech-model";
 import { fixedLines } from "./tasks/lines";
 
-// A talker line of this generation that holds the slot with no audio yet goes back to wait.
-function takeBack(ctx: SpeechContext, key: string): Line | null {
-  const { state } = ctx;
-  const ours = (line: Line) => line.kind === "talk" && line.key === key;
-  const job = state.synthesizing;
-  if (job !== null && ours(job.line)) {
-    state.synthesizing = null;
-    job.abort.abort();
-    job.line.feed.changed = ctx.pump;
-    return job.line;
-  }
-  const playing = state.playing;
-  if (playing === null || !ours(playing.line)) return null;
-  if (playing.stream === null || playing.stream.seq > 0) return null;
-  endPlaying(ctx, playing.lineId);
-  playing.line.feed.changed = ctx.pump;
-  return playing.line;
+// A talker line of this generation that already has words, waiting, synthesizing or playing.
+function talkerHasWords(ctx: SpeechContext, key: string): boolean {
+  const { pending, synthesizing, playing } = ctx.state;
+  const lines = [...pending, synthesizing?.line, playing?.line];
+  return lines.some(
+    (line) =>
+      line?.kind === "talk" && line.key === key && line.feed.text !== "",
+  );
 }
 
-// A generation ended (its talker audio began, or it was discarded or not caught): its "One moment." not yet playing goes.
+// Its generation ended or its talker has words: its "One moment." with no audio yet goes.
 export function dropMoment(ctx: SpeechContext, key: string): void {
   const { state } = ctx;
   const ours = (line: Line) => line.kind === "moment" && line.key === key;
   const before = state.pending.length;
   state.pending = state.pending.filter((line) => !ours(line));
+  let dropped = state.pending.length < before;
   const job = state.synthesizing;
-  const synthesizing = job !== null && ours(job.line);
-  if (job !== null && synthesizing) {
+  if (job !== null && ours(job.line)) {
     state.synthesizing = null;
     job.abort.abort();
+    dropped = true;
   }
-  if (!synthesizing && state.pending.length === before) return;
-  log('"One moment." dropped: its generation ended');
+  const playing = state.playing;
+  if (playing !== null && ours(playing.line) && playing.stream?.seq === 0) {
+    endPlaying(ctx, playing.lineId);
+    dropped = true;
+  }
+  if (!dropped) return;
+  log('"One moment." dropped before its audio');
   ctx.pump();
 }
 
-// "One moment." plays ahead of the lines waiting, its generation's talker line right after it.
+// "One moment." plays ahead of the lines waiting, but never delays a talker that already has words.
 export function sayMoment(ctx: SpeechContext, key: string): void {
   const { state } = ctx;
   if (state.muted) return log("line dropped: muted (moment)");
-  const back = takeBack(ctx, key);
-  if (back !== null) {
-    log('the talker line waits for "One moment."');
-    state.pending.unshift(back);
+  if (talkerHasWords(ctx, key)) {
+    return log('"One moment." skipped: the talker has words');
   }
   const text = fixedLines.oneMoment;
   const feed = { text, ended: true, changed: null };

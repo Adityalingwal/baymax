@@ -86,28 +86,36 @@ describe("a talker line's backup and audio", () => {
 });
 
 describe('"One moment." and its talker line', () => {
-  it("goes ahead of its talker line still waiting for its words", () => {
+  it("goes ahead of its talker line still waiting for its words, which plays after it", async () => {
     const h = createHarness();
     const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     h.speech.sayMoment("k1");
+    await resolveCall(h, 0);
     line.push("Hello there.");
     line.end();
     expect(h.texts()).toEqual(["One moment."]);
+    finish(h, h.speeches[0].lineId);
+    expect(h.texts()).toEqual(["One moment.", "Hello there."]);
   });
 
-  it("takes back its talker line that has words but no audio yet, and plays it after", async () => {
+  it("is skipped when its talker line already has words, so it never delays them", () => {
     const h = createHarness();
     const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     line.push("Hello there.");
     line.end();
     h.speech.sayMoment("k1");
+    expect(h.calls[0].signal.aborted).toBe(false);
+    expect(h.texts()).toEqual(["Hello there."]);
+  });
+
+  it("gives way to its talker's first words while it has no audio yet", () => {
+    const h = createHarness();
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
+    h.speech.sayMoment("k1");
+    line.push("Hello there.");
+    line.end();
     expect(h.calls[0].signal.aborted).toBe(true);
-    await resolveCall(h, 1);
-    h.speech.playbackFinished({
-      lineId: h.speeches[0].lineId,
-      outcome: "ended",
-    });
-    expect(h.texts()).toEqual(["Hello there.", "One moment.", "Hello there."]);
+    expect(h.texts()).toEqual(["One moment.", "Hello there."]);
   });
 });
 
@@ -122,15 +130,16 @@ describe('"One moment." and other lines', () => {
     expect(h.texts()).toEqual(["Older reply."]);
   });
 
-  it("restarts the socket for its streaming talker line with no audio yet, which waits behind it", () => {
+  it("restarts the socket when it streams with no audio yet and its talker's first words come", () => {
     const aura = createFakeAura();
     const h = createHarness(aura);
     aura.open();
     const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
-    line.push("Hi, there");
     h.speech.sayMoment("k1");
-    expect(aura.sent).toEqual(["speak Hi,", "flush", "restart"]);
-    expect(h.texts()).toEqual(["One moment."]);
+    line.push("Hi, there");
+    line.end();
+    expect(aura.sent).toEqual(["speak One moment.", "flush", "restart"]);
+    expect(h.texts()).toEqual(["Hi, there"]);
   });
 
   it("is dropped by its generation's end while it waits or synthesizes, never once playing", async () => {

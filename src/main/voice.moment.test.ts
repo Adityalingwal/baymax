@@ -25,8 +25,8 @@ describe('"One moment." (L15)', () => {
     expect(texts(h)).toEqual([]);
     h.advance(1);
     expect(texts(h)).toEqual(["One moment."]);
-    talkerSays(h, "I'll check.", id);
     await synthesized(h, 0, audio);
+    talkerSays(h, "I'll check.", id);
     h.voice.playbackFinished({
       lineId: h.speeches[0].lineId,
       outcome: "ended",
