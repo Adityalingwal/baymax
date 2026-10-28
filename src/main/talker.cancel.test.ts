@@ -21,11 +21,31 @@ describe("the 10 s deadline", () => {
         reply: { kind: "failed", failure: "modelsUnreachable", text: "I'll" },
       },
     ]);
-    // A late completion after the deadline changes nothing.
-    h.calls[0].resolve(finished("I'll check.", [decide({ route: "chat" })]));
-    await flush();
-    expect(h.replies).toHaveLength(1);
   });
+});
+
+describe("a late result after the deadline", () => {
+  it.each([
+    ["success", finished("I'll check.", [decide({ route: "chat" })])],
+    ["failure", { ok: false, failure: "error", detail: "late" } as const],
+  ])(
+    "changes nothing when a late %s arrives after the deadline",
+    async (_name, late) => {
+      const h = createHarness({ ignoreAbort: true });
+      h.talker.talk(frontRequest());
+      h.calls[0].onText("I'll ");
+      h.advance(10_000);
+      await flush();
+      expect(h.calls[0].signal.aborted).toBe(true);
+      const spoken = [...h.lines[0].parts];
+      h.calls[0].onText("more");
+      h.calls[0].onToolStart();
+      h.calls[0].resolve(late);
+      await flush();
+      expect(h.replies).toHaveLength(1);
+      expect(h.lines[0].parts).toEqual(spoken);
+    },
+  );
 
   it("cancels the deadline when the call finishes in time", async () => {
     const h = createHarness();
@@ -50,26 +70,29 @@ describe("cancelling an attempt", () => {
     expect(h.replies).toEqual([]);
   });
 
-  it("after text: cuts the spoken line, and a late success or failure changes nothing", async () => {
-    const h = createHarness();
-    h.talker.talk(frontRequest());
-    h.calls[0].onText("I'll check");
-    h.talker.cancel("t2#1");
-    h.calls[0].onText(" more");
-    h.calls[0].resolve(finished("I'll check", [decide({ route: "chat" })]));
-    await flush();
-    h.talker.talk(frontRequest({ attemptId: "t2#2" }));
-    h.talker.cancel("t2#2");
-    h.calls[1].resolve({ ok: false, failure: "error", detail: "late" });
-    await flush();
-    expect(h.lines[0].parts).toEqual(["I'll check", "<cut>"]);
-    expect(h.replies).toEqual([]);
-    h.advance(20_000);
-    expect(h.replies).toEqual([]);
-  });
+  it.each([
+    ["success", finished("I'll check", [decide({ route: "chat" })])],
+    ["failure", { ok: false, failure: "error", detail: "late" } as const],
+  ])(
+    "after text: cuts the spoken line, and a late %s changes nothing",
+    async (_name, late) => {
+      const h = createHarness({ ignoreAbort: true });
+      h.talker.talk(frontRequest());
+      h.calls[0].onText("I'll check");
+      h.talker.cancel("t2#1");
+      expect(h.calls[0].signal.aborted).toBe(true);
+      h.calls[0].onText(" more");
+      h.calls[0].onToolStart();
+      h.calls[0].resolve(late);
+      await flush();
+      h.advance(20_000);
+      expect(h.lines[0].parts).toEqual(["I'll check", "<cut>"]);
+      expect(h.replies).toEqual([]);
+    },
+  );
 
-  it("shutdown cancels every attempt", async () => {
-    const h = createHarness();
+  it("shutdown cancels every attempt, and a late success changes nothing", async () => {
+    const h = createHarness({ ignoreAbort: true });
     h.talker.talk(frontRequest());
     h.talker.talk(frontRequest({ attemptId: "t5#1", taskId: "t5" }));
     h.talker.shutdown();

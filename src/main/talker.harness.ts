@@ -17,7 +17,10 @@ type Call = {
 };
 
 // The talker with its model call, its speech lines and its timer faked; a line is shown as its pushes and its end.
-export function createHarness(options: { noKey?: boolean } = {}) {
+// With ignoreAbort the fake call records its signal but stays pending until a test settles it, as a provider that finishes late would.
+export function createHarness(
+  options: { noKey?: boolean; ignoreAbort?: boolean } = {},
+) {
   const calls: Call[] = [];
   const lines: { taskId: TaskId | null; kind: string; parts: string[] }[] = [];
   const replies: { taskId: TaskId; attemptId: string; reply: TalkerReply }[] =
@@ -34,6 +37,7 @@ export function createHarness(options: { noKey?: boolean } = {}) {
         resolve,
       });
       // The real call ends as aborted when its signal fires.
+      if (options.ignoreAbort === true) return;
       streamOptions.signal.addEventListener("abort", () =>
         resolve({ ok: false, failure: "aborted", detail: "aborted" }),
       );

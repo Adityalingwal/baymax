@@ -185,8 +185,12 @@ async function front(
   if (!alive()) return;
   attempts.delete(talk.attemptId);
   attempt.stopDeadline();
-  if (timedOut) line.cut();
-  else endLine(attempt);
+  if (timedOut) {
+    attempt.ended = true;
+    line.cut();
+  } else {
+    endLine(attempt);
+  }
   const judged = outcome.ok
     ? judge(outcome.text.trim(), outcome.round)
     : {
