@@ -7,7 +7,15 @@ const reply: TalkRequest = {
   taskId: "t2",
   utteranceId: null,
   words: "will it rain in Delhi tomorrow?",
-  recent: [{ taskId: "t0", state: "done", question: "hi", answer: "Hello!" }],
+  recent: [
+    {
+      taskId: "t0",
+      state: "done",
+      question: "hi",
+      answer: "Hello!",
+      cardText: null,
+    },
+  ],
   tasks: [
     {
       taskId: "t1",
