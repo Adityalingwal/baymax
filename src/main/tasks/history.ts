@@ -23,6 +23,16 @@ export function addExchange(
   if (exchanges.length > KEEP) exchanges.splice(0, exchanges.length - KEEP);
 }
 
+// An answer's exchange moves to the waiting task it answered, so that task's result joins it.
+export function setExchangeTask(
+  exchanges: Exchange[],
+  order: number,
+  taskId: TaskId,
+): void {
+  const exchange = exchanges.find((other) => other.order === order);
+  if (exchange !== undefined) exchange.taskId = taskId;
+}
+
 // A task that ended done adds its result line to its latest exchange, once.
 export function appendResult(
   exchanges: Exchange[],

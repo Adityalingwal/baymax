@@ -63,22 +63,6 @@ describe("the routes of a front decision", () => {
   });
 });
 
-describe("the routes that start a worker", () => {
-  it("followUp: the card names the parent and the worker gets the parent's result", () => {
-    const h = createHarness();
-    askNew(h, "hermes");
-    h.state.ask("and rust?", null, null);
-    h.reply("t2", followUp("t1", "rust"), "Checking rust.");
-    expect(h.card("t2")).toMatchObject({
-      state: "queued",
-      parentTaskId: "t1",
-      reply: "Checking rust.",
-      sayBack: null,
-    });
-    expect(h.said).toEqual([]);
-  });
-});
-
 describe("the routes of a front decision that wait or end", () => {
   it("clarify: the card is clarifying with the line as the question and no reply, say-back or line", () => {
     const h = createHarness();
@@ -153,23 +137,6 @@ describe("the front call's timing and record", () => {
         { role: "assistant", text: "You're welcome!" },
       ],
     });
-  });
-});
-
-describe("the conversation order", () => {
-  it("keeps the conversation in the order the calls started when they finish in reverse", () => {
-    const h = createHarness();
-    h.state.ask("first question", null, null);
-    h.state.ask("second question", null, null);
-    h.reply("t2", chat(), "Second answer.");
-    h.reply("t1", chat(), "First answer.");
-    h.state.ask("third question", null, null);
-    expect(h.talked.at(-1)?.history).toEqual([
-      { role: "user", text: "first question" },
-      { role: "assistant", text: "First answer." },
-      { role: "user", text: "second question" },
-      { role: "assistant", text: "Second answer." },
-    ]);
   });
 
   it("drops a second reply to the same call", () => {

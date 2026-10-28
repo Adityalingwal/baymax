@@ -55,6 +55,7 @@ export function frontKey(talk: {
 }
 
 // How a front call went; decision is the decide tool's raw input, or null when no tool came.
+// A failed call still carries the line it spoke before failing, so the conversation keeps it.
 export type TalkerReply =
   | { kind: "said"; text: string; decision: unknown }
-  | { kind: "failed"; failure: FailureKind };
+  | { kind: "failed"; failure: FailureKind; text?: string };

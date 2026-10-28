@@ -30,6 +30,7 @@ type Attempt = {
   line: LineFeed;
   stopDeadline: () => void;
   ended: boolean; // the line was ended (or cut), so nothing more is pushed to it
+  spoken: string; // the text pushed to speech so far
 };
 
 const talkerModel = "claude-fable-5-1";
@@ -83,24 +84,31 @@ async function call(
 
 type Judged = { reply: TalkerReply; detail: string | null }; // detail is set when the call failed
 
-const failedError = (detail: string): Judged => ({
-  reply: { kind: "failed", failure: "error" },
+const failedError = (detail: string, text: string): Judged => ({
+  reply: { kind: "failed", failure: "error", ...spokenText(text) },
   detail,
 });
 
+const spokenText = (text: string) => (text === "" ? {} : { text });
+
 // A routable response is text, then exactly one decide call, stopped at the tool; no tool at all hands main a null decision.
 function judge(text: string, round: ToolRound | undefined): Judged {
-  if (text === "") return failedError("no text");
-  if (round === undefined) return failedError("no tool round");
+  if (text === "") return failedError("no text", text);
+  if (round === undefined) return failedError("no tool round", text);
   const { toolUses, stopReason } = round;
   if (toolUses.length === 0) {
-    if (stopReason !== "end_turn") return failedError(`stopped: ${stopReason}`);
+    if (stopReason !== "end_turn")
+      return failedError(`stopped: ${stopReason}`, text);
     return { reply: { kind: "said", text, decision: null }, detail: null };
   }
   if (toolUses.length !== 1 || toolUses[0].name !== "decide") {
-    return failedError(`tools: ${toolUses.map((tool) => tool.name).join(",")}`);
+    return failedError(
+      `tools: ${toolUses.map((tool) => tool.name).join(",")}`,
+      text,
+    );
   }
-  if (stopReason !== "tool_use") return failedError(`stopped: ${stopReason}`);
+  if (stopReason !== "tool_use")
+    return failedError(`stopped: ${stopReason}`, text);
   const decision = toolUses[0].input;
   return { reply: { kind: "said", text, decision }, detail: null };
 }
@@ -143,7 +151,9 @@ async function runCall(
     request(talk),
     attempt.abort.signal,
     (text) => {
-      if (alive() && !attempt.ended) attempt.line.push(text);
+      if (!alive() || attempt.ended) return;
+      attempt.spoken += text;
+      attempt.line.push(text);
     },
     () => endLine(attempt),
   );
@@ -166,6 +176,7 @@ async function front(
     line,
     stopDeadline: () => undefined,
     ended: false,
+    spoken: "",
   };
   attempts.set(talk.attemptId, attempt);
   const alive = () => attempts.get(talk.attemptId) === attempt;
@@ -178,7 +189,10 @@ async function front(
   else endLine(attempt);
   const judged = outcome.ok
     ? judge(outcome.text.trim(), outcome.round)
-    : { reply: failedReply(outcome), detail: outcome.detail };
+    : {
+        reply: failedReply(outcome, attempt.spoken.trim()),
+        detail: outcome.detail,
+      };
   const note = outcome.ok ? usageNote(outcome.round) : "";
   if (judged.detail === null) deps.log(`talker front call done${note}`);
   else deps.log(`talker front call failed: ${judged.detail}`);
@@ -187,8 +201,13 @@ async function front(
 
 function failedReply(
   outcome: Extract<TextOutcome, { ok: false }>,
+  text: string,
 ): TalkerReply {
-  return { kind: "failed", failure: failureKinds[outcome.failure] };
+  return {
+    kind: "failed",
+    failure: failureKinds[outcome.failure],
+    ...spokenText(text),
+  };
 }
 
 function cancel(attempts: Map<string, Attempt>, attemptId: string): void {

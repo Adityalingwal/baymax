@@ -1,6 +1,7 @@
 import type { QuestionId, TaskId } from "../../shared/cards";
 import type { FailureKind } from "../../shared/engine";
 import { checkDecision } from "./decision";
+import { addExchange } from "./history";
 import { failureLine } from "./lines";
 import type { Attempt, Change, FrontParts, Model, TaskRecord } from "./record";
 import { dropped, say, talk } from "./record";
@@ -66,6 +67,13 @@ export function receiveFront(
     return dropped(change, `front call ${attemptId} for ${taskId}`);
   }
   record.attempt = null;
+  // What was spoken is part of the conversation whether or not the decision holds.
+  addExchange(change.model.exchanges, {
+    order: attempt.order,
+    taskId,
+    words: attempt.parts.words,
+    line: reply.text ?? "",
+  });
   if (reply.kind === "failed") {
     return failFront(change, record, attempt, reply.failure);
   }

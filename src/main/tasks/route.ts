@@ -1,7 +1,7 @@
 import type { Change, Attempt, TaskRecord } from "./record";
 import type { Decision } from "./decision";
 import { endChat, endOutside } from "./end";
-import { addExchange } from "./history";
+import { setExchangeTask } from "./history";
 import { admit } from "./run";
 import { shownQuestion } from "./questions";
 
@@ -90,17 +90,9 @@ export function applyDecision(
   decision: Decision,
   line: string,
 ): boolean {
-  const words = attempt.parts.words;
   const target = resolveTarget(change, record, attempt, decision);
-  const exchangeTask = (target ?? record).card.taskId;
-  const { order } = attempt;
-  addExchange(change.model.exchanges, {
-    order,
-    taskId: exchangeTask,
-    words,
-    line,
-  });
   if (target === null) return true;
+  setExchangeTask(change.model.exchanges, attempt.order, target.card.taskId);
   switch (decision.route) {
     case "chat":
       endChat(change, target, line);
