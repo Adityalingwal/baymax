@@ -104,7 +104,7 @@ cards       <--IPC--  whole display state                         <--- task even
 | Part | Choice |
 | --- | --- |
 | STT | Deepgram Flux (`flux-general-en`) over one warm WebSocket; backup Nova-3 pre-recorded for one utterance when the socket cannot reconnect |
-| TTS | Deepgram Aura-2 over a WebSocket, fed the talker's tokens as they arrive; backup the Aura-2 REST call |
+| TTS | Deepgram Aura-2 over one warm WebSocket (24 kHz PCM), fed the talker's text clause by clause; backup the Aura-2 REST call |
 | Talker | Claude Haiku 5.5, in main |
 | Intake check | Claude Sonnet 5.5 |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
@@ -153,7 +153,7 @@ cards       <--IPC--  whole display state                         <--- task even
 
 ### Intake and tasks
 
-- **The intake check** is one structured Sonnet 5.5 call, its say-back line first in the output. It gets the user's exact words, a short code-kept record of the recent questions and answers, and the waiting clarifying question if any. It decides whether the words are a new question, the answer to the waiting question, a follow-up or chat (the talker's line was the whole answer, so no task and no card); whether a clarifying question is needed (only when missing intent, constraints or the thing referred to would change the work); the start line; and the worker brief.
+- **The intake check** is one structured Sonnet 5.5 call, its say-back line first in the output. It gets the user's exact words, a short code-kept record of the recent questions and answers, and the waiting clarifying question if any. It decides whether the words are a new question, the answer to the waiting question, a follow-up or chat (the talker's line was the whole answer: no worker, and the thinking card becomes a done card showing that line); whether a clarifying question is needed (only when missing intent, constraints or the thing referred to would change the work); the start line; and the worker brief.
 - **Outside research.** A request for anything but research gets the fixed [line](#failures-the-user-hears), and no task starts.
 - **The say-back** names what Baymax understood ("how Hermes works inside, from its docs and code"). It is feedback, not a gate: the work starts at once, and a wrong say-back is fixed by cancelling the card and asking again.
 - **Tasks and the queue.** Main keeps one list of tasks, each with an id and a state: thinking, clarifying, queued, running, done, incomplete or cancelled. At most three tasks wait while one runs. The intake still runs for every question, because the words may answer the waiting question; main refuses only a new task or follow-up when three already wait, with "I already have three waiting. Cancel one or ask again later.", and that card leaves like a cancelled one. A "thinking" card appears at key release (or on submit) before the intake returns, and its id becomes the task's id. Each task carries a goal version (always 1 in V1) and a depth value (always "normal" in V1).
