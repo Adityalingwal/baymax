@@ -8,12 +8,13 @@ const CARD_COUNT = 2;
 const CARD_LIMIT = 1500;
 const citationLink = /\[(s\d+)\]\(<[^>]*>\)/g;
 
-// The card text for the intake: citation links reduced to their labels, cut to a fixed length.
+// Links become labels so URLs do not use up the intake's card limit.
 function cardExcerpt(cardText: string): string {
   const plain = cardText.replace(citationLink, "[$1]");
-  return plain.length > CARD_LIMIT
-    ? `${plain.slice(0, CARD_LIMIT - 1)}…`
-    : plain;
+  if (plain.length <= CARD_LIMIT) return plain;
+  const cut = plain.slice(0, CARD_LIMIT - 1);
+  // A cut inside a surrogate pair would leave half a character.
+  return `${/[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut}…`;
 }
 
 // A deep copy, so a changed snapshot never reaches the model or the source allowlist.

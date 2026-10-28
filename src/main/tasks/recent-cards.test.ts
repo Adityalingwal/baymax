@@ -12,7 +12,7 @@ const partial = (taskId: string, text: string) =>
 type CardRow = {
   name: string;
   run: (h: Harness) => void;
-  cards: (string | null)[]; // card text per recent exchange, oldest to newest
+  cards: (string | null)[];
 };
 
 const link = "[s1](<https://a.example/x_(y)>)";
@@ -47,6 +47,12 @@ const cardRows: CardRow[] = [
     name: "2000 characters cut to exactly 1500 ending in an ellipsis",
     run: (h) => finish(h, askNew(h, "a"), "x".repeat(2000)),
     cards: [`${"x".repeat(1499)}…`],
+  },
+  {
+    name: "a cut that would split an emoji drops its first half",
+    run: (h) =>
+      finish(h, askNew(h, "a"), `${"z".repeat(1498)}😀${"z".repeat(9)}`),
+    cards: [`${"z".repeat(1498)}…`],
   },
   {
     name: "1500 characters kept whole",
