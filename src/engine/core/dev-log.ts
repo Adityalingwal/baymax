@@ -1,4 +1,4 @@
-// Ids, roles, models, counts, dollars, times and failure causes only: never a key, a header, a prompt or the user's words.
+// Ids, roles, models, counts, dollars, times, failure causes and hostnames only: never a path, a query, a key, a header, a prompt or the user's words.
 export type DevLogEntry = { event: string } & Record<
   string,
   string | number | boolean | null

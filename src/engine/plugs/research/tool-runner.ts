@@ -5,10 +5,11 @@ import type { DispatchDeps, DispatchJob } from "../../core/dispatch";
 import { taskLimits } from "../../core/limits";
 import { runToolBatch } from "../../core/tool-batch";
 import type { ToolStep, ToolTurn } from "../../core/tool-batch";
+import { hostOf } from "./log-hosts";
 import { pageForModel, searchHitsForModel } from "./model-text";
 import { parseCalls } from "./research-tools";
 import type { ResearchCall } from "./research-tools";
-import type { WebTool } from "./web-tool";
+import type { ReadOutcome, WebTool } from "./web-tool";
 
 type ToolRunner = {
   web: WebTool;
@@ -41,6 +42,7 @@ function logTool(
   tool: ResearchCall["tool"],
   outcome: string,
   started: number,
+  extra: Record<string, string | null> = {},
 ): void {
   runner.deps.log({
     event: "toolCall",
@@ -48,7 +50,21 @@ function logTool(
     tool,
     outcome,
     ms: runner.deps.now() - started,
+    ...extra,
   });
+}
+
+// Hostnames only: where the worker asked to read, and where a kept page really came from.
+function readLogFields(
+  asked: string,
+  outcome: ReadOutcome,
+): Record<string, string | null> {
+  const host = hostOf(asked);
+  if (outcome.ok) {
+    const { id, url } = outcome.page;
+    return { host, sourceId: id, keptHost: hostOf(url) };
+  }
+  return outcome.cause === "refused" ? { host, rule: outcome.rule } : { host };
 }
 
 function report(
@@ -102,7 +118,8 @@ async function read(
   if (signal.aborted) return { kind: "aborted" };
   const started = runner.deps.now();
   const outcome = await runner.web.read(call.url, signal);
-  logTool(runner, "read", outcome.ok ? "ok" : outcome.cause, started);
+  const fields = readLogFields(call.url, outcome);
+  logTool(runner, "read", outcome.ok ? "ok" : outcome.cause, started, fields);
   if (!outcome.ok && outcome.cause === "aborted") return { kind: "aborted" };
   const counter = counterLine(runner, counts);
   if (!outcome.ok) {

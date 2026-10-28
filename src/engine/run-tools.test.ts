@@ -110,6 +110,9 @@ const loggedEnds = [
     tool: "read",
     outcome: "ok",
     ms: 0,
+    host: "example.test",
+    sourceId: "s1",
+    keptHost: "example.test",
   },
   {
     event: "doneCheck",
@@ -127,6 +130,12 @@ const loggedEnds = [
   },
   { event: "taskEnd", taskId: "task-1", how: "result" },
 ];
+const loggedSources = {
+  event: "cardSources",
+  taskId: "task-1",
+  sourceIds: "s1",
+  hosts: "example.test",
+};
 
 describe("runTask dev log", () => {
   it("logs tool calls, checks and the end without queries, URLs, pages or words", async () => {
@@ -142,13 +151,17 @@ describe("runTask dev log", () => {
     run.port.send(runTask());
     await run.ended();
     const kept = run.entries.filter((entry) =>
-      ["toolCall", "doneCheck", "taskEnd"].includes(entry.event),
+      ["toolCall", "doneCheck", "cardSources", "taskEnd"].includes(entry.event),
     );
-    expect(kept).toEqual(loggedEnds);
+    expect(kept).toEqual([
+      ...loggedEnds.slice(0, 4),
+      loggedSources,
+      loggedEnds[4],
+    ]);
     const logged = JSON.stringify(run.entries);
     for (const secret of [
       "hermes secret query",
-      "example.test",
+      "/one",
       "Plain words",
       brief.userWords,
       brief.goal,

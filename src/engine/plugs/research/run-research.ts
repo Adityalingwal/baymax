@@ -15,6 +15,7 @@ import { runWorkerLoop } from "../../core/worker-loop";
 import { answerSchema } from "./answer";
 import type { Connect, LookupAll } from "./connection";
 import { foundFindings } from "./found";
+import { cardSourcesEntry } from "./log-hosts";
 import { researchTools } from "./research-tools";
 import { runRounds } from "./retry-rounds";
 import type { Rounds, WorkTurn } from "./retry-rounds";
@@ -134,5 +135,8 @@ function startRounds(run: ResearchRun): Rounds {
 export async function runResearch(
   run: ResearchRun,
 ): Promise<EngineEvent | null> {
-  return runRounds(startRounds(run));
+  const event = await runRounds(startRounds(run));
+  const entry = cardSourcesEntry(run.task.taskId, event);
+  if (entry !== null) run.deps.log(entry);
+  return event;
 }
