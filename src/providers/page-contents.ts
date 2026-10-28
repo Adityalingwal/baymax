@@ -1,4 +1,4 @@
-import { postToExa } from "./exa-request";
+import { exaApiHost, postToExa } from "./exa-request";
 import type { ExaFailure } from "./exa-request";
 
 export type ContentsFailure = ExaFailure | "noUsableText";
@@ -10,7 +10,7 @@ export type ContentsFn = (
   signal: AbortSignal,
 ) => Promise<ContentsOutcome>;
 
-const exaContentsUrl = "https://api.exa.ai/contents";
+const exaContentsUrl = `https://${exaApiHost}/contents`;
 const maxBodyBytes = 1_000_000;
 const minTextChars = 200;
 

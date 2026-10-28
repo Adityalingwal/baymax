@@ -1,4 +1,4 @@
-import { postToExa } from "./exa-request";
+import { exaApiHost, postToExa } from "./exa-request";
 import type { ExaFailure } from "./exa-request";
 
 export type SearchHit = { url: string; title: string; snippet: string };
@@ -10,7 +10,7 @@ export type SearchFn = (
   signal: AbortSignal,
 ) => Promise<SearchOutcome>;
 
-const exaSearchUrl = "https://api.exa.ai/search";
+const exaSearchUrl = `https://${exaApiHost}/search`;
 const snippetChars = 500;
 
 function hitFrom(result: unknown): SearchHit | null {

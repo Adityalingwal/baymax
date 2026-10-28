@@ -1,3 +1,5 @@
+export const exaApiHost = "api.exa.ai";
+
 export type ExaFailure =
   | "keyRejected"
   | "quota"
