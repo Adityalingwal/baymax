@@ -11,7 +11,7 @@ function asked() {
   return w;
 }
 
-describe("the talker through the wiring (L12, L15, L16)", () => {
+describe("the talker through the wiring (L12, L16)", () => {
   it("starts the talker and the intake on the same words at once", () => {
     const w = asked();
     expect(w.port.sent.map((command) => command.type)).toEqual(["question"]);
@@ -38,14 +38,14 @@ describe("the talker through the wiring (L12, L15, L16)", () => {
     expect(w.syntheses.map((call) => call.input)).toEqual(["It's 4."]);
   });
 
-  it('says "One moment." first when the talker is silent 1.5 s after the submit', async () => {
+  it("says nothing while the talker is silent, then its reply", async () => {
     const w = asked();
-    w.advance(1500);
-    await w.playNext();
+    w.advance(5000);
+    expect(w.syntheses).toEqual([]);
     w.talkerCalls[0].onText("It's 4.");
     w.talkerCalls[0].resolve({ ok: true, text: "It's 4." });
     await flush();
     await w.playAll();
-    expect(w.spoken()).toEqual(["One moment.", "It's 4."]);
+    expect(w.spoken()).toEqual(["It's 4."]);
   });
 });

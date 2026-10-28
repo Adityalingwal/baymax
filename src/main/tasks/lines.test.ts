@@ -12,7 +12,6 @@ import {
 const found: Findings = { cardText: "Partial.", sources: [], openPoints: [] };
 
 const fixedRows: { name: keyof typeof fixedLines; line: string }[] = [
-  { name: "oneMoment", line: "One moment." },
   { name: "queued", line: "Okay, I'll look at that after the current one." },
   {
     name: "queueFull",

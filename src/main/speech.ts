@@ -9,7 +9,6 @@ import type {
   Spoken,
 } from "./speech-model";
 import { endPlaying, log, stopPlaying } from "./speech-model";
-import { dropMoment, sayMoment } from "./speech-moment";
 import { startRest } from "./speech-rest";
 import { auraClosed, auraHeard, startStream } from "./speech-stream";
 import type { SaidLine } from "./tasks/state";
@@ -26,8 +25,6 @@ export type LineFeed = {
 type Speech = {
   speak(line: SaidLine): void;
   speakFed(spoken: Spoken): LineFeed;
-  sayMoment(key: string): void;
-  dropMoment(key: string): void;
   holdStarted(): void;
   holdEnded(): void;
   setMuted(muted: boolean): void;
@@ -79,7 +76,7 @@ function pump(ctx: SpeechContext): void {
     state.pending.shift();
     line = state.pending[0];
   }
-  // A talker line takes the slot only with its first words, so "One moment." can still go ahead of it.
+  // A talker line takes the slot only with its first words, so it never holds up the lines behind it while silent.
   if (line === undefined || line.feed.text === "") return;
   state.pending.shift();
   if (aura !== null && aura.isOpen()) startStream(ctx, aura, line);
@@ -107,11 +104,7 @@ function speakFed(ctx: SpeechContext, spoken: Spoken): LineFeed {
   return {
     push: (text) => {
       if (line.feed.ended || text === "") return;
-      const hadWords = line.feed.text.trim() !== "";
       line.feed.text += text;
-      const words = !hadWords && line.feed.text.trim() !== "";
-      // A "One moment." with no audio yet gives way to its talker's first words.
-      if (words && line.key !== null) dropMoment(ctx, line.key);
       changed();
     },
     end: () => {
@@ -204,8 +197,6 @@ export function createSpeech(deps: SpeechDeps): Speech {
       queueLine(ctx, { taskId, kind, key: null, feed });
     },
     speakFed: (spoken) => speakFed(ctx, spoken),
-    sayMoment: (key) => sayMoment(ctx, key),
-    dropMoment: (key) => dropMoment(ctx, key),
     holdStarted: () => startHold(ctx),
     holdEnded: () => endHold(ctx),
     setMuted: (muted) => changeMuted(ctx, muted),

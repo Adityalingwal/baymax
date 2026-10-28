@@ -27,7 +27,7 @@ export type TalkRequest =
   | { kind: "question"; taskId: TaskId; question: string; choices: string[] }
   | { kind: "result"; taskId: TaskId; text: string };
 
-// The "One moment." generation a reply belongs to: its utterance, or its typed question.
+// The generation a reply belongs to, for its timing: its utterance, or its typed question.
 export function replyKey(talk: {
   taskId: TaskId;
   utteranceId: UtteranceId | null;

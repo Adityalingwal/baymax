@@ -15,8 +15,7 @@ import { fixedLines, incompleteLines } from "./lines";
 import type { TalkRequest, TalkerReply } from "./talk";
 
 // Main's state says only fixed lines (failure, notice); the talker and voice say the rest.
-export type SaidKind =
-  "talk" | "moment" | "question" | "answer" | "failure" | "notice";
+export type SaidKind = "talk" | "question" | "answer" | "failure" | "notice";
 export type SaidLine = { taskId: TaskId | null; text: string; kind: SaidKind };
 
 export type Admission = { startLine: string; brief: WorkerBrief };

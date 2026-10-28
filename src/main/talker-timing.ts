@@ -12,7 +12,7 @@ type Release = { at: number; logged: Set<string> };
 // Releases whose events never came must not pile up.
 const releaseLimit = 16;
 
-// Logs when a generation's talker reply and "One moment." happen, in ms after its release, once each.
+// Logs when a generation's talker reply steps happen, in ms after its release, once each.
 export function createTalkerTiming(deps: {
   now: () => number;
   log: (message: string) => void;
@@ -34,9 +34,7 @@ export function createTalkerTiming(deps: {
       if (oldest.done !== true) releases.delete(oldest.value);
     },
     audioStarted: ({ kind, key }) => {
-      if (key === null) return;
-      if (kind === "moment") once(key, '"One moment." first audio');
-      if (kind === "talk") once(key, "talker first audio");
+      if (key !== null && kind === "talk") once(key, "talker first audio");
     },
     timed: (key, feed) => {
       if (key === null) return feed;

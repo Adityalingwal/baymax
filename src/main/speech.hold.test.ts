@@ -117,14 +117,3 @@ describe("mute alone", () => {
     expect(h.texts()).toEqual(["held"]);
   });
 });
-
-describe('"One moment."', () => {
-  it("goes ahead of the lines waiting, behind the line playing", async () => {
-    const h = createHarness();
-    const blocker = await play(h, said("blocker", "t2"));
-    h.speech.speak(said("Talker line.", "t1", "talk"));
-    h.speech.sayMoment("k1");
-    finish(h, blocker);
-    expect(h.texts()).toEqual(["blocker", "One moment."]);
-  });
-});

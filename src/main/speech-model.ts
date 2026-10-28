@@ -32,7 +32,7 @@ export type LineText = {
   changed: (() => void) | null;
 };
 
-// key: the "One moment." generation of a talker reply, else null.
+// key: the generation (release or typed question) of a talker reply, else null.
 export type Line = {
   taskId: TaskId | null;
   kind: SaidKind;

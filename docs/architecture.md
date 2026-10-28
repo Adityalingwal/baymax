@@ -127,7 +127,7 @@ cards       <--IPC--  whole display state                         <--- task even
 
 - **The port.** The engine code lives in `src/engine/` and imports nothing from `src/main/`, the renderer or `electron`. It builds its own providers from `src/providers/`; its start takes only serializable values (keys, paths, settings), and test fakes enter through a separate optional parameter. Main and the engine talk only through one port object (`send`, `onMessage`, `close`) carrying plain JSON messages with ids, typed in `src/shared/engine.ts`. Cancel is a port message (`{ type: "cancel", taskId }`) that the engine maps to its own `AbortController`. V1 implements the port in-process; V2 swaps in a `utilityProcess` behind the same port.
 - **Who runs what.** The engine runs the intake check at once for every question, typed or spoken, even while a task runs, and tells main through the port what the words are (a new task, a follow-up, the answer to the waiting question, or outside research), with the start line and the brief. Main owns the queue: it queues the task or sends the engine a run message when none runs. Only then does the engine's runner run the worker and the done check, attaching a queued follow-up's parent result at that moment, and report back through the port. Answers kept for follow-ups stay apart from the running task's state, so a database can later be added beside them.
-- **The engine keeps nothing across tasks.** Main sends what each step needs: a question carries the user's exact words, main's short record of recent questions and answers, and the clarifying question shown at key-down if any; a run message carries the task id, goal version, depth and brief, and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines and the talker's "One moment." timer.
+- **The engine keeps nothing across tasks.** Main sends what each step needs: a question carries the user's exact words, main's short record of recent questions and answers, and the clarifying question shown at key-down if any; a run message carries the task id, goal version, depth and brief, and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines.
 - **Why in main.** The reasons for a separate process (synchronous SQLite, crash resume, restart) are V2, the agent loop mostly waits on the network, the spike ran the loop inside main, and a separate process was never tested on this repo's Electron 40.
 - **The risk and its limits.** Engine code that blocks would also freeze voice and cancel. V1 lowers this without guaranteeing against it: no `*Sync` calls anywhere in `src/`; every model and web call has an `AbortSignal` and a deadline; downloads are capped before parsing ([Web tool](#web-tool)); history and kept page text are bounded. Expected network, model and parsing failures are caught at their awaited task boundaries and end the task with a [failure line](#failures-the-user-hears). A truly uncaught exception or unhandled rejection is not attributed to a task and normal work is not resumed, because Node's state may be undefined: main logs it, shows "Baymax hit a problem and is restarting." and relaunches the app (`app.relaunch()`, then exit). A relaunched app that fails again within about 10 s of start exits instead of relaunching, so a start-up bug cannot loop. Only a separate process (V2) can stop a truly stuck engine.
 - **Keys.** Main reads `.env` once at start, keeps the Deepgram, Anthropic and search keys, and deletes them from `process.env` before any window opens. The renderer gets no key and makes no network calls; the display state carries display fields only.
@@ -150,7 +150,7 @@ cards       <--IPC--  whole display state                         <--- task even
 - **What it says.** A short reply it can give from what it knows ("hi", "thanks", "what is 2 + 2") is the whole answer. For research it says a line that shows it understood the question ("I'll check tomorrow's Delhi forecast; the rain chance decides the umbrella."), with no time promise and no claim of progress. It never asks its own question and never decides what a task means: the intake routes, and binds answers to a waiting question.
 - **Warm connection.** A key press sends a key-less request to the Anthropic API, so the talker's call reuses an open connection instead of setting one up (about 0.15 s, measured with a 401 call on 28 Oct).
 - **Later lines.** The intake's clarifying question and the worker's result reach the user through the talker, in its own words, with the choices and the full answer on the card.
-- **Fallback.** If the talker has no words yet about 1.5 s after key release, code speaks "One moment." It never delays the talker: it is skipped when the talker already has words, and dropped when the talker's first words come before its audio starts. A talker failure never stops the intake.
+- **No filler.** Nothing is said before the talker's first words; a filler line ("One moment.") was tried and removed on 28 Oct because it delayed a talker that was nearly ready. A talker failure never stops the intake.
 
 ### Intake and tasks
 
@@ -248,7 +248,6 @@ It checks support and completion, not truth.
 | What | Starting value |
 | --- | --- |
 | Longest hold | about 90 s |
-| Fixed "One moment." when the talker is silent after key release | about 1.5 s |
 | First spoken line, target | under about 3 s after key release |
 | Flux silence keep-alive | about 100 ms of zero PCM every 5 s |
 | Zero PCM before `ForceEndTurn` | about 200 ms, sent at once |
@@ -305,9 +304,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/speech-rest.ts` | A line through the Aura-2 REST call, and voice-down reported from its failures |
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
-| `src/main/moment.ts` | The "One moment." timers, one per release or submit: each is cancelled only by its own generation's first talker audio, discard or words-not-caught result (which also drop its queued "One moment."), or by a renderer reset or voice stop |
-| `src/main/talker-timing.ts` | Logs each generation's talker reply steps and "One moment." audio in ms after its release |
-| `src/main/speech-moment.ts` | "One moment." ahead of the waiting lines, skipped when its generation's talker already has words and dropped when they come before its audio |
+| `src/main/talker-timing.ts` | Logs each generation's talker reply steps in ms after its release |
 | `src/main/talker.ts` | The talker: one Haiku 5.5 streaming call per question, and one per clarifying question or result in its own words; its words stream into speech |
 | `src/main/talker-prompt.ts` | The talker's instructions and the blocks it reads |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |

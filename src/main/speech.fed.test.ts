@@ -2,8 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakeAura,
   createHarness,
-  finish,
-  play,
   resolveCall,
   said,
 } from "./speech.harness";
@@ -82,82 +80,6 @@ describe("a talker line's backup and audio", () => {
     aura.audio(1);
     aura.audio(2);
     expect(h.started).toEqual(["failure", "talk"]);
-  });
-});
-
-describe('"One moment." and its talker line', () => {
-  it("goes ahead of its talker line still waiting for its words, which plays after it", async () => {
-    const h = createHarness();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
-    h.speech.sayMoment("k1");
-    await resolveCall(h, 0);
-    line.push("Hello there.");
-    line.end();
-    expect(h.texts()).toEqual(["One moment."]);
-    finish(h, h.speeches[0].lineId);
-    expect(h.texts()).toEqual(["One moment.", "Hello there."]);
-  });
-
-  it("is skipped when its talker line already has words, so it never delays them", () => {
-    const h = createHarness();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
-    line.push("Hello there.");
-    line.end();
-    h.speech.sayMoment("k1");
-    expect(h.calls[0].signal.aborted).toBe(false);
-    expect(h.texts()).toEqual(["Hello there."]);
-  });
-
-  it("gives way to its talker's first words while it has no audio yet", () => {
-    const h = createHarness();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
-    h.speech.sayMoment("k1");
-    line.push(" ");
-    expect(h.calls[0].signal.aborted).toBe(false);
-    line.push("Hello there.");
-    line.end();
-    expect(h.calls[0].signal.aborted).toBe(true);
-    expect(h.texts()).toEqual(["One moment.", " Hello there."]);
-  });
-});
-
-describe('"One moment." and other lines', () => {
-  it("leaves another generation's talker line where it is", () => {
-    const h = createHarness();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k2" });
-    line.push("Older reply.");
-    line.end();
-    h.speech.sayMoment("k1");
-    expect(h.calls[0].signal.aborted).toBe(false);
-    expect(h.texts()).toEqual(["Older reply."]);
-  });
-
-  it("restarts the socket when it streams with no audio yet and its talker's first words come", () => {
-    const aura = createFakeAura();
-    const h = createHarness(aura);
-    aura.open();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
-    h.speech.sayMoment("k1");
-    line.push("Hi, there");
-    line.end();
-    expect(aura.sent).toEqual(["speak One moment.", "flush", "restart"]);
-    expect(h.texts()).toEqual(["Hi, there"]);
-  });
-
-  it("is dropped by its generation's end while it waits or synthesizes, never once playing", async () => {
-    const h = createHarness();
-    const blocker = await play(h, said("blocker", "t2"));
-    h.speech.sayMoment("k1");
-    h.speech.dropMoment("k1");
-    finish(h, blocker);
-    expect(h.texts()).toEqual(["blocker"]);
-    h.speech.sayMoment("k2");
-    h.speech.dropMoment("k2");
-    expect(h.calls[1].signal.aborted).toBe(true);
-    h.speech.sayMoment("k3");
-    await resolveCall(h, 2);
-    h.speech.dropMoment("k3");
-    expect(h.stops).toEqual([]);
   });
 });
 
