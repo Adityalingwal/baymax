@@ -32,6 +32,11 @@ export function createFakeFlux() {
       return true;
     },
     connectNow: () => sent.push("connectNow"),
+    restart: () => {
+      sent.push("restart");
+      control.open = false;
+      control.listener?.closed();
+    },
     stop: () => sent.push("stop"),
   };
   return {

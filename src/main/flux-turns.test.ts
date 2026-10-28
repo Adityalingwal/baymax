@@ -118,7 +118,7 @@ describe("turn binding (L3b, L5)", () => {
 });
 
 describe("the deadline (L5, L8)", () => {
-  it("uses the kept texts and the latest update 2 s after release, then drops the late final", () => {
+  it("uses the kept texts and the latest update 2 s after release", () => {
     const { flux, h } = openHarness();
     const a = hold(h, "accept");
     sendAudio(h, a);
@@ -128,11 +128,30 @@ describe("the deadline (L5, L8)", () => {
     expect(h.heard).toEqual([]);
     h.clock.advance(1);
     expect(h.heard).toEqual([words(a, "one two")]);
-    const b = hold(h, "accept");
-    sendAudio(h, b);
+  });
+
+  it("restarts the socket at the next key-down while that final is missing, so a late final never lands on the next hold", () => {
+    const { flux, h } = openHarness();
+    const a = hold(h, "accept");
+    sendAudio(h, a, [1]);
+    h.clock.advance(2000);
+    h.flow.holdStarted();
+    const b = h.last();
+    frame(h, b, 2);
     flux.emit(manual("one two three"));
+    flux.open();
+    h.flow.holdEnded("accept");
+    end(h, b);
     flux.emit(manual("next question"));
-    expect(h.heard).toEqual([words(a, "one two"), words(b, "next question")]);
+    expect(flux.sent).toEqual([
+      "audio 1",
+      "endTurn",
+      "restart",
+      "connectNow",
+      "audio 2",
+      "endTurn",
+    ]);
+    expect(h.heard).toEqual([missed(a, "empty"), words(b, "next question")]);
   });
 
   it("is not caught when nothing was heard by the deadline", () => {

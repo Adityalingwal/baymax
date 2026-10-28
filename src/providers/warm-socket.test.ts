@@ -100,4 +100,17 @@ describe("warm socket control", () => {
     h.advance(60_000);
     expect(h.sockets).toHaveLength(1);
   });
+
+  it("restarts: closes the socket, tells the listener, connects a fresh one and ignores the old one", () => {
+    const { h, seen, socket } = start();
+    const old = h.last();
+    old.events.opened();
+    socket.restart();
+    expect(old.closed).toBe(true);
+    expect(h.sockets).toHaveLength(2);
+    old.events.received("stale");
+    old.events.closed(1000, "");
+    h.last().events.opened();
+    expect(seen).toEqual(["opened", "closed", "opened"]);
+  });
 });

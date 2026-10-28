@@ -1,16 +1,19 @@
-import type { Transcription } from "../providers/deepgram";
-import type { Flux, FluxEvent, FluxListener } from "../providers/flux";
-import { wavFromPcm } from "../providers/wav";
+import type { Flux, FluxEvent } from "../providers/flux";
 import type { UtteranceId } from "../shared/cards";
-import type { Timers } from "./tasks/state";
+import {
+  abandon,
+  batchWaitMs,
+  deadlineMs,
+  deliver,
+  finish,
+  joined,
+  pcmLimitBytes,
+  startBatch,
+  transcription,
+} from "./flux-turns-model";
+import type { State, TurnsDeps, Utterance } from "./flux-turns-model";
 
-export type TurnsDeps = {
-  startFlux: (listener: FluxListener) => Flux | null; // null when there is no Deepgram key
-  transcribe: (audio: ArrayBuffer, mimeType: string) => Promise<Transcription>;
-  timers: Timers;
-  log: (message: string) => void;
-  onResult: (utteranceId: UtteranceId, result: Transcription) => void;
-};
+export type { TurnsDeps } from "./flux-turns-model";
 
 export type Turns = {
   begin: (utteranceId: UtteranceId) => void;
@@ -21,76 +24,6 @@ export type Turns = {
   reset: () => void;
   stop: () => void;
 };
-
-// One held utterance; its whole PCM stays until it resolves, so the batch call can still take it.
-type Utterance = {
-  id: UtteranceId;
-  frames: ArrayBuffer[];
-  bytes: number;
-  sentFrames: number;
-  onSocket: boolean;
-  ended: boolean;
-  forced: boolean;
-  batch: "no" | "marked" | "sent";
-  done: boolean;
-  kept: string[];
-  update: string;
-  cancelDeadline: () => void;
-};
-
-type State = {
-  deps: TurnsDeps;
-  flux: Flux | null;
-  byId: Map<UtteranceId, Utterance>;
-  sending: Utterance[]; // in key-down order; the first one owns the socket until its ForceEndTurn
-  awaiting: Utterance[]; // on the current socket, in the order their audio was sent
-};
-
-const sampleRate = 16_000;
-const deadlineMs = 2000;
-// The 90 s hold cap is about 2.9 MB; frames past this bound are dropped.
-const pcmLimitBytes = 96 * sampleRate * 2;
-
-function describeError(error: unknown): string {
-  return error instanceof Error
-    ? `${error.name}: ${error.message}`
-    : String(error);
-}
-
-function joined(texts: string[]): string {
-  return texts
-    .map((text) => text.trim())
-    .filter((text) => text !== "")
-    .join(" ");
-}
-
-function transcription(text: string): Transcription {
-  return text === "" ? { kind: "empty" } : { kind: "words", words: text };
-}
-
-function finish(state: State, utterance: Utterance): void {
-  utterance.done = true;
-  utterance.cancelDeadline();
-  utterance.frames = [];
-  state.byId.delete(utterance.id);
-}
-
-function deliver(state: State, utterance: Utterance, result: Transcription) {
-  if (utterance.done) {
-    state.deps.log("transcript dropped: its hold already ended");
-    return;
-  }
-  finish(state, utterance);
-  state.deps.onResult(utterance.id, result);
-}
-
-// An utterance that resolved before its ForceEndTurn still ends its Flux turn, so turns never mix.
-function abandon(state: State, utterance: Utterance): void {
-  state.sending = state.sending.filter((other) => other !== utterance);
-  if (!utterance.onSocket || utterance.forced) return;
-  utterance.forced = true;
-  state.flux?.endTurn();
-}
 
 function sendFrames(state: State, flux: Flux, utterance: Utterance): boolean {
   while (utterance.sentFrames < utterance.frames.length) {
@@ -121,35 +54,6 @@ function pump(state: State): void {
   }
 }
 
-function startBatch(state: State, utterance: Utterance): void {
-  if (utterance.done || utterance.batch === "sent") return;
-  abandon(state, utterance);
-  utterance.batch = "sent";
-  utterance.cancelDeadline();
-  const pcm = new Uint8Array(utterance.bytes);
-  let offset = 0;
-  for (const frame of utterance.frames) {
-    pcm.set(new Uint8Array(frame), offset);
-    offset += frame.byteLength;
-  }
-  if (pcm.byteLength === 0) return deliver(state, utterance, { kind: "empty" });
-  state.deps.log(`batch transcription of ${pcm.byteLength} bytes`);
-  const wav = wavFromPcm(pcm, sampleRate);
-  // Wrapped so a synchronous throw takes the same path as a rejection.
-  new Promise<Transcription>((resolve) =>
-    resolve(state.deps.transcribe(wav, "audio/wav")),
-  )
-    .catch((error: unknown) => ({
-      kind: "failed" as const,
-      cause: "error" as const,
-      detail: describeError(error),
-    }))
-    .then((result) => deliver(state, utterance, result))
-    .catch((error: unknown) => {
-      state.deps.log(`delivering a batch transcript failed: ${String(error)}`);
-    });
-}
-
 function receiveFrames(state: State, id: UtteranceId, pcm: ArrayBuffer) {
   const utterance = state.byId.get(id);
   if (utterance === undefined || utterance.ended) return;
@@ -175,18 +79,39 @@ function receiveEnd(state: State, id: UtteranceId): void {
   pump(state);
 }
 
-function deadlinePassed(state: State, utterance: Utterance): void {
-  if (utterance.done || utterance.batch !== "no") return;
+function resolveLatest(state: State, utterance: Utterance): void {
   state.deps.log("final transcript deadline passed; the latest update is used");
   const text = joined([...utterance.kept, utterance.update]);
+  utterance.byDeadline = true;
   deliver(state, utterance, transcription(text));
   abandon(state, utterance);
   pump(state);
 }
 
+// At the cap the utterance goes to batch with the PCM it has; with none it is not caught.
+function batchWaitPassed(state: State, utterance: Utterance): void {
+  if (utterance.done || utterance.batch === "sent") return;
+  if (utterance.batch === "no" && utterance.onSocket) {
+    return resolveLatest(state, utterance);
+  }
+  state.deps.log("no end of frames by the cap; the utterance goes to batch");
+  utterance.ended = true;
+  startBatch(state, utterance);
+}
+
+// An utterance bound for batch, or whose socket is not open, is never resolved empty here: it waits for its frames.
+function deadlinePassed(state: State, utterance: Utterance): void {
+  if (utterance.done || utterance.batch === "sent") return;
+  const open = state.flux?.isOpen() ?? false;
+  if (utterance.batch === "no" && open) return resolveLatest(state, utterance);
+  utterance.cancelDeadline = state.deps.timers.setTimer(batchWaitMs, () =>
+    batchWaitPassed(state, utterance),
+  );
+}
+
 function release(state: State, id: UtteranceId): void {
   const utterance = state.byId.get(id);
-  if (utterance === undefined || utterance.batch !== "no") return;
+  if (utterance === undefined || utterance.batch === "sent") return;
   utterance.cancelDeadline();
   utterance.cancelDeadline = state.deps.timers.setTimer(deadlineMs, () =>
     deadlinePassed(state, utterance),
@@ -226,7 +151,6 @@ function socketClosed(state: State): void {
     utterance.onSocket = false;
     if (utterance.done) continue;
     utterance.batch = "marked";
-    utterance.cancelDeadline();
     if (utterance.ended) startBatch(state, utterance);
   }
   state.sending = state.sending.filter((other) => other.batch === "no");
@@ -243,10 +167,16 @@ function begin(state: State, id: UtteranceId): void {
     forced: false,
     batch: "no",
     done: false,
+    byDeadline: false,
     kept: [],
     update: "",
     cancelDeadline: () => undefined,
   };
+  // An earlier utterance resolved by its deadline whose final never came would shift every later final: start a fresh socket.
+  if (state.flux !== null && state.awaiting.some((other) => other.byDeadline)) {
+    state.deps.log("an earlier final never came; the Flux socket restarts");
+    state.flux.restart();
+  }
   state.byId.set(id, utterance);
   state.sending.push(utterance);
   if (state.flux !== null && !state.flux.isOpen()) state.flux.connectNow();

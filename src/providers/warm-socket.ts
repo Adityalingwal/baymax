@@ -38,6 +38,7 @@ export type WarmSocket = {
   isOpen: () => boolean;
   send: (payload: SocketPayload) => boolean;
   connectNow: () => void;
+  restart: () => void; // closes the socket, tells the listener if it was open, and connects a fresh one at once
   stop: () => void;
 };
 
@@ -126,16 +127,34 @@ function send(state: State, payload: SocketPayload): boolean {
   }
 }
 
-function stop(state: State): void {
-  state.stopped = true;
-  cancelRetry(state);
-  const socket = state.connection?.socket ?? null;
+function closeConnection(state: State): boolean {
+  const connection = state.connection;
   state.connection = null;
   try {
-    socket?.close();
+    connection?.socket?.close();
   } catch {
     // Closing a socket that already failed has nothing left to release.
   }
+  return connection?.open ?? false;
+}
+
+// Events of the closed socket are ignored from here on, since it is no longer the current connection.
+function restart(
+  state: State,
+  params: WarmSocketParams,
+  listener: WarmSocketListener,
+): void {
+  if (state.stopped) return;
+  const wasOpen = closeConnection(state);
+  params.log("socket restarted");
+  if (wasOpen) listener.closed();
+  connect(state, params, listener);
+}
+
+function stop(state: State): void {
+  state.stopped = true;
+  cancelRetry(state);
+  closeConnection(state);
 }
 
 // One socket kept open from app start: a close reconnects with backoff, and connectNow skips the wait.
@@ -154,6 +173,7 @@ export function startWarmSocket(
     isOpen: () => state.connection?.open ?? false,
     send: (payload) => send(state, payload),
     connectNow: () => connect(state, params, listener),
+    restart: () => restart(state, params, listener),
     stop: () => stop(state),
   };
 }

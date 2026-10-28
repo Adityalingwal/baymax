@@ -18,6 +18,7 @@ export type Flux = {
   sendAudio: (pcm: ArrayBuffer) => boolean;
   endTurn: () => boolean;
   connectNow: () => void;
+  restart: () => void;
   stop: () => void;
 };
 
@@ -112,6 +113,7 @@ export function startFlux(params: FluxParams, listener: FluxListener): Flux {
       send(new ArrayBuffer(endSilenceBytes)) &&
       send(JSON.stringify({ type: "ForceEndTurn" })),
     connectNow: socket.connectNow,
+    restart: socket.restart,
     stop: () => {
       cancelKeepAlive();
       socket.stop();
