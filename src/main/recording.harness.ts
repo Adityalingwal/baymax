@@ -17,17 +17,21 @@ type Deferred = {
 
 // A Flux socket the test opens, closes and speaks for; it records what main sent in order.
 export function createFakeFlux() {
-  const control = { open: false, listener: null as FluxListener | null };
+  const control = {
+    open: false,
+    failing: null as "audio" | "endTurn" | null, // that send fails while the socket is open
+    listener: null as FluxListener | null,
+  };
   const sent: string[] = [];
   const flux: Flux = {
     isOpen: () => control.open,
     sendAudio: (pcm) => {
-      if (!control.open) return false;
+      if (!control.open || control.failing === "audio") return false;
       sent.push(`audio ${new Uint8Array(pcm)[0]}`);
       return true;
     },
     endTurn: () => {
-      if (!control.open) return false;
+      if (!control.open || control.failing === "endTurn") return false;
       sent.push("endTurn");
       return true;
     },
@@ -54,6 +58,9 @@ export function createFakeFlux() {
       control.listener?.closed();
     },
     emit: (event: FluxEvent) => control.listener?.heard(event),
+    failSends: (which: "audio" | "endTurn") => {
+      control.failing = which;
+    },
   };
 }
 

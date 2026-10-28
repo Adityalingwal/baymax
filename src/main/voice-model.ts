@@ -28,6 +28,8 @@ export type VoiceModel = {
   stopped: boolean;
 };
 
+const admittedLimit = 16;
+
 export function createModel(): VoiceModel {
   return {
     state: null,
@@ -49,6 +51,9 @@ export function admit(model: VoiceModel, utteranceId: UtteranceId): void {
   const order = model.nextOrder;
   model.admitted.set(utteranceId, { waiting, order, releasedAt: null });
   model.nextOrder += 1;
+  if (model.admitted.size <= admittedLimit) return;
+  const oldest = model.admitted.keys().next();
+  if (oldest.done !== true) model.admitted.delete(oldest.value);
 }
 
 export function tellHealth(model: VoiceModel): void {

@@ -112,13 +112,13 @@ describe("voice health from STT", () => {
     ]);
   });
 
-  it("keeps STT down when an older success settles after a newer hold failed", async () => {
+  it("keeps STT down when an older success settles after a newer failure", async () => {
     const h = createHarness();
     sendAudio(h, hold(h));
     sendAudio(h, hold(h));
     await transcribed(h, 1, failed("unreachable"));
     await transcribed(h, 0, words("hi"));
-    expect(h.calls).toEqual(["voiceAvailable false"]);
+    expect(h.calls).toEqual(["voiceAvailable false", "ask hi"]);
   });
 
   it("shows voice down from the start without a Deepgram key", async () => {

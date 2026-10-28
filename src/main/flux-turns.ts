@@ -2,6 +2,7 @@ import type { Flux, FluxEvent } from "../providers/flux";
 import type { UtteranceId } from "../shared/cards";
 import {
   abandon,
+  restartSocket,
   batchWaitMs,
   deadlineMs,
   deliver,
@@ -47,10 +48,21 @@ function pump(state: State): void {
       abandon(state, head);
       continue;
     }
-    if (!sendFrames(state, flux, head) || !head.ended) return;
+    // A resolved or dropped utterance still waiting for its final could bind it to this audio's turn.
+    const unsent = head.sentFrames < head.frames.length;
+    const missing = state.awaiting.some((other) => other.done);
+    if (unsent && missing) {
+      return restartSocket(state, "an earlier final is still missing");
+    }
+    if (!sendFrames(state, flux, head)) {
+      return restartSocket(state, "an audio send failed");
+    }
+    if (!head.ended) return;
     state.sending.shift();
     head.forced = true;
-    if (!flux.endTurn()) return;
+    if (!flux.endTurn()) {
+      return restartSocket(state, "a ForceEndTurn send failed");
+    }
   }
 }
 
@@ -82,7 +94,6 @@ function receiveEnd(state: State, id: UtteranceId): void {
 function resolveLatest(state: State, utterance: Utterance): void {
   state.deps.log("final transcript deadline passed; the latest update is used");
   const text = joined([...utterance.kept, utterance.update]);
-  utterance.byDeadline = true;
   deliver(state, utterance, transcription(text));
   abandon(state, utterance);
   pump(state);
@@ -167,16 +178,10 @@ function begin(state: State, id: UtteranceId): void {
     forced: false,
     batch: "no",
     done: false,
-    byDeadline: false,
     kept: [],
     update: "",
     cancelDeadline: () => undefined,
   };
-  // An earlier utterance resolved by its deadline whose final never came would shift every later final: start a fresh socket.
-  if (state.flux !== null && state.awaiting.some((other) => other.byDeadline)) {
-    state.deps.log("an earlier final never came; the Flux socket restarts");
-    state.flux.restart();
-  }
   state.byId.set(id, utterance);
   state.sending.push(utterance);
   if (state.flux !== null && !state.flux.isOpen()) state.flux.connectNow();

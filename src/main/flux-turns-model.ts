@@ -23,7 +23,6 @@ export type Utterance = {
   forced: boolean;
   batch: "no" | "marked" | "sent";
   done: boolean;
-  byDeadline: boolean; // resolved by the deadline before its final came
   kept: string[];
   update: string;
   cancelDeadline: () => void;
@@ -82,11 +81,21 @@ export function deliver(
 }
 
 // An utterance that resolved before its ForceEndTurn still ends its Flux turn, so turns never mix.
+// A fresh socket: the listener's close marks every unresolved utterance on the old one for batch.
+export function restartSocket(state: State, why: string): void {
+  const flux = state.flux;
+  if (flux === null || !flux.isOpen()) return;
+  state.deps.log(`the Flux socket restarts: ${why}`);
+  flux.restart();
+}
+
 export function abandon(state: State, utterance: Utterance): void {
   state.sending = state.sending.filter((other) => other !== utterance);
   if (!utterance.onSocket || utterance.forced) return;
   utterance.forced = true;
-  state.flux?.endTurn();
+  if (state.flux?.endTurn() === false) {
+    restartSocket(state, "a ForceEndTurn send failed");
+  }
 }
 
 export function startBatch(state: State, utterance: Utterance): void {

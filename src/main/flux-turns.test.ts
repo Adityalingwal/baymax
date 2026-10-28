@@ -130,7 +130,7 @@ describe("the deadline (L5, L8)", () => {
     expect(h.heard).toEqual([words(a, "one two")]);
   });
 
-  it("restarts the socket at the next key-down while that final is missing, so a late final never lands on the next hold", () => {
+  it("restarts the socket before a later hold's audio while that final is missing, so a late final never lands on it", () => {
     const { flux, h } = openHarness();
     const a = hold(h, "accept");
     sendAudio(h, a, [1]);
@@ -147,7 +147,6 @@ describe("the deadline (L5, L8)", () => {
       "audio 1",
       "endTurn",
       "restart",
-      "connectNow",
       "audio 2",
       "endTurn",
     ]);
@@ -164,7 +163,7 @@ describe("the deadline (L5, L8)", () => {
 });
 
 describe("discarded holds (L6)", () => {
-  it("still ends the Flux turn at once and drops its transcript", () => {
+  it("still ends the Flux turn at once and drops its transcript; the next hold, before the tap's final, goes to a fresh socket", async () => {
     const { flux, h } = openHarness();
     h.flow.holdStarted();
     const tap = h.last();
@@ -175,11 +174,30 @@ describe("discarded holds (L6)", () => {
     const b = hold(h, "accept");
     sendAudio(h, b, [3]);
     flux.emit(manual("tap words"));
-    flux.emit(manual("real question"));
-    expect(flux.sent).toEqual(["audio 1", "endTurn", "audio 3", "endTurn"]);
+    expect(flux.sent).toEqual(["audio 1", "endTurn", "restart"]);
+    await resolveCall(h, 0, { kind: "words", words: "real question" });
     expect(h.heard).toEqual([words(b, "real question")]);
   });
 
+  it("sends the next hold on the same socket once the tap's final came", () => {
+    const { flux, h } = openHarness();
+    const tap = hold(h, "discard");
+    expect(flux.sent).toEqual([]);
+    h.flow.holdStarted();
+    const first = h.last();
+    frame(h, first, 1);
+    h.flow.holdEnded("discard");
+    flux.emit(manual("tap words"));
+    const b = hold(h, "accept");
+    sendAudio(h, b, [3]);
+    flux.emit(manual("real question"));
+    expect(tap).not.toBe(first);
+    expect(flux.sent).toEqual(["audio 1", "endTurn", "audio 3", "endTurn"]);
+    expect(h.heard).toEqual([words(b, "real question")]);
+  });
+});
+
+describe("dropped holds that end their turn (L6)", () => {
   it("ends the turn on a renderer reset while recording and drops it", () => {
     const { flux, h } = openHarness();
     h.flow.holdStarted();

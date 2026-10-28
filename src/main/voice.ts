@@ -144,8 +144,8 @@ function holdChanged(
   model.held = change.holdState === "listening";
   if (model.held) {
     model.releasedAt = null;
-    // A new hold makes every older utterance's pending result late, so it is dropped when it comes.
-    model.admitted.clear();
+    // Recording discards a hold still open when a new one starts.
+    if (model.current !== null) model.admitted.delete(model.current);
     flows.speech.holdStarted();
     flows.recording.holdStarted();
     return;
