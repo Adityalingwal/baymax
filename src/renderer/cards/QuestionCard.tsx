@@ -1,7 +1,13 @@
 import { useState, type FormEvent } from "react";
 import type { ClarifyingQuestion, TaskCard } from "../../shared/cards";
 import type { CardActions } from "../actions";
-import { CardFooter, CardHeader, CardShell, pillButton } from "./CardFrame";
+import {
+  CardFooter,
+  CardHeader,
+  CardShell,
+  pillButton,
+  TalkerReply,
+} from "./CardFrame";
 import { Pill } from "./Pill";
 
 type QuestionProps = {
@@ -89,6 +95,7 @@ function QuestionBody({ card, question, actions }: QuestionProps) {
   return (
     <CardShell>
       <CardHeader card={card} />
+      <TalkerReply card={card} />
       {card.sayBack !== null && (
         <p className="text-sm text-zinc-300">{card.sayBack}</p>
       )}

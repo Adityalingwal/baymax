@@ -89,3 +89,10 @@ export function CardFooter({ card, actions }: ControlProps) {
     </div>
   );
 }
+
+// The talker's spoken reply, unless it is already the card's answer (a chat card).
+export function TalkerReply({ card }: { card: TaskCard }) {
+  const { reply } = card;
+  if (reply === null || reply === card.answer?.cardText) return null;
+  return <p className="text-sm text-zinc-200">{reply}</p>;
+}

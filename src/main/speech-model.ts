@@ -9,7 +9,7 @@ import type {
   SpeechLine,
   StopPlayback,
 } from "../shared/ipc";
-import type { SaidLine, Timers } from "./tasks/state";
+import type { SaidKind, Timers } from "./tasks/state";
 
 export type VoiceDownCause = "unreachable" | "keyRejected" | "noCredit";
 
@@ -21,15 +21,32 @@ export type SpeechDeps = {
   sendEnd: (end: SpeechEnd) => void;
   sendStop: (payload: StopPlayback) => void;
   onVoiceAvailable: (available: boolean, cause: VoiceDownCause | null) => void; // only on a change
+  onAudioStarted: (line: Spoken) => void; // a line's first audio reached the renderer
   timers: Timers;
 };
 
+// A line's text: whole at once, or fed piece by piece by the talker until it ends.
+export type LineText = {
+  text: string;
+  ended: boolean;
+  changed: (() => void) | null;
+};
+
+// key: the generation (release or typed question) of a talker reply, else null.
+export type Line = {
+  taskId: TaskId | null;
+  kind: SaidKind;
+  key: string | null;
+  feed: LineText;
+};
+
 // A distinct object per synthesis, so a settled job can tell whether it still owns the slot.
-export type Job = { line: SaidLine; abort: AbortController };
+export type Job = { line: Line; abort: AbortController };
 
 // A line on the Aura socket while its text and audio still flow; seq numbers its chunks.
 export type StreamJob = {
   seq: number;
+  taken: number; // characters of the line's text already cut into clauses
   flushesSent: number;
   flushesDone: number;
   spokeSinceFlush: boolean;
@@ -39,13 +56,13 @@ export type StreamJob = {
 // The line that owns playback, from its first audio until the renderer reports its end.
 export type Playing = {
   lineId: LineId;
-  line: SaidLine;
+  line: Line;
   cancelDeadline: () => void;
   stream: StreamJob | null;
 };
 
 export type SpeechState = {
-  pending: SaidLine[];
+  pending: Line[];
   synthesizing: Job | null;
   playing: Playing | null;
   held: boolean;
@@ -61,7 +78,7 @@ export type SpeechContext = {
   pump: () => void;
 };
 
-export type Spoken = Pick<SaidLine, "taskId" | "kind">;
+export type Spoken = Pick<Line, "taskId" | "kind" | "key">;
 export type Matches = (line: Spoken) => boolean;
 
 // A renderer that never reports must not block speech forever.
@@ -121,7 +138,7 @@ function deadlinePassed(ctx: SpeechContext, lineId: LineId): void {
 // Gives the line the playback slot with its deadline; without a deadline a lost report could block speech for good.
 export function occupy(
   ctx: SpeechContext,
-  line: SaidLine,
+  line: Line,
   stream: StreamJob | null,
 ): Playing | null {
   const lineId = randomUUID();

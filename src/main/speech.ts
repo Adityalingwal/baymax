@@ -1,10 +1,12 @@
 import type { TaskId } from "../shared/cards";
 import type { PlaybackFinished } from "../shared/ipc";
 import type {
+  Line,
   Matches,
   SpeechContext,
   SpeechDeps,
   SpeechState,
+  Spoken,
 } from "./speech-model";
 import { endPlaying, log, stopPlaying } from "./speech-model";
 import { startRest } from "./speech-rest";
@@ -13,8 +15,16 @@ import type { SaidLine } from "./tasks/state";
 
 export type { VoiceDownCause } from "./speech-model";
 
+// A line the talker writes as its reply streams in; end() closes it, cut() drops it wherever it is.
+export type LineFeed = {
+  push: (text: string) => void;
+  end: () => void;
+  cut: () => void;
+};
+
 type Speech = {
   speak(line: SaidLine): void;
+  speakFed(spoken: Spoken): LineFeed;
   holdStarted(): void;
   holdEnded(): void;
   setMuted(muted: boolean): void;
@@ -55,28 +65,61 @@ function pump(ctx: SpeechContext): void {
   const { state, aura } = ctx;
   if (state.held || state.muted) return;
   if (state.synthesizing !== null || state.playing !== null) return;
-  const line = state.pending.shift();
-  if (line === undefined) return;
+  let line = state.pending[0];
+  // A talker line that ended with no words has nothing to say.
+  while (
+    line !== undefined &&
+    line.feed.ended &&
+    line.feed.text.trim() === ""
+  ) {
+    log(`line dropped: no text (${line.kind})`);
+    state.pending.shift();
+    line = state.pending[0];
+  }
+  // A talker line takes the slot only with its first words, so it never holds up the lines behind it while silent.
+  if (line === undefined || line.feed.text === "") return;
+  state.pending.shift();
   if (aura !== null && aura.isOpen()) startStream(ctx, aura, line);
   else startRest(ctx, line);
 }
 
-function speakLine(ctx: SpeechContext, line: SaidLine): void {
+function queueLine(ctx: SpeechContext, line: Line): void {
   const { state } = ctx;
   if (state.muted) return log(`line dropped: muted (${line.kind})`);
   const taskId = line.taskId;
   if (taskId !== null && state.cancelled.has(taskId)) {
     return log(`line dropped: task cancelled (${line.kind})`);
   }
-  if (taskId !== null && line.kind !== "letMeCheck") {
-    const superseded: Matches = (other) =>
-      other.taskId === taskId && other.kind === "letMeCheck";
-    const why = `"Let me check." superseded by the ${line.kind} line`;
-    dropPending(state, superseded, why);
-    dropSynthesis(state, superseded, why);
-  }
   state.pending.push(line);
   pump(ctx);
+}
+
+function speakFed(ctx: SpeechContext, spoken: Spoken): LineFeed {
+  const line: Line = {
+    ...spoken,
+    feed: { text: "", ended: false, changed: () => pump(ctx) },
+  };
+  queueLine(ctx, line);
+  const changed = () => line.feed.changed?.();
+  return {
+    push: (text) => {
+      if (line.feed.ended || text === "") return;
+      line.feed.text += text;
+      changed();
+    },
+    end: () => {
+      if (line.feed.ended) return;
+      line.feed.ended = true;
+      changed();
+    },
+    cut: () => {
+      line.feed.ended = true;
+      line.feed.changed = null;
+      const matches: Matches = (other) => other === line;
+      clearSpeech(ctx, { matches, why: "line cut", sendStop: true });
+      pump(ctx);
+    },
+  };
 }
 
 function startHold(ctx: SpeechContext): void {
@@ -149,7 +192,11 @@ export function createSpeech(deps: SpeechDeps): Speech {
     closed: () => auraClosed(ctx),
   });
   return {
-    speak: (line) => speakLine(ctx, line),
+    speak: ({ taskId, kind, text }) => {
+      const feed = { text, ended: true, changed: null };
+      queueLine(ctx, { taskId, kind, key: null, feed });
+    },
+    speakFed: (spoken) => speakFed(ctx, spoken),
     holdStarted: () => startHold(ctx),
     holdEnded: () => endHold(ctx),
     setMuted: (muted) => changeMuted(ctx, muted),

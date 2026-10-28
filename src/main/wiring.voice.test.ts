@@ -3,7 +3,7 @@ import type { Synthesis } from "../providers/deepgram";
 import type { UtteranceId } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
 import { fixedLines } from "./tasks/lines";
-import { admitTask, fakeSender, wire } from "./wiring.harness";
+import { fakeSender, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -91,9 +91,11 @@ describe("main's lines and voice", () => {
     ]);
   });
 
-  it("silences a cancelled task's start line", async () => {
+  it("silences a cancelled task's line", async () => {
     const w = wire();
-    admitTask(w);
+    w.send(ipcChannels.submitQuestion, { text: "how does hermes work" });
+    await flush();
+    w.port.emit({ type: "failure", taskId: "t1", kind: "error" });
     expect(w.syntheses).toHaveLength(1);
     w.send(ipcChannels.cancelTask, { taskId: "t1" });
     w.syntheses[0].resolve(audio);

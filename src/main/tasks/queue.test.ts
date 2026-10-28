@@ -17,7 +17,7 @@ function runTaskIds(h: Harness): string[] {
 }
 
 describe("the run slot and the queue", () => {
-  it("runs the first new task at once and says its start line", () => {
+  it("runs the first new task at once and shows its start line without saying it", () => {
     const h = createHarness();
     askNew(h, "hermes");
     expect(h.sent.at(-1)).toEqual({
@@ -33,16 +33,12 @@ describe("the run slot and the queue", () => {
       sayBack: "hermes",
       line: "Looking into hermes.",
     });
-    expect(h.said.at(-1)).toEqual({
-      taskId: "t1",
-      text: "Looking into hermes.",
-      kind: "startLine",
-    });
+    expect(h.said).toEqual([]);
   });
 });
 
 describe("the queue", () => {
-  it("queues the next three with the queued line", () => {
+  it("queues the next three with the queued line on their cards only", () => {
     const h = fourTasks();
     expect(runTaskIds(h)).toEqual(["t1"]);
     for (const taskId of ["t2", "t3", "t4"]) {
@@ -50,11 +46,7 @@ describe("the queue", () => {
         state: "queued",
         line: queuedLine,
       });
-      expect(h.said).toContainEqual({
-        taskId,
-        text: queuedLine,
-        kind: "startLine",
-      });
+      expect(h.said.filter((line) => line.taskId === taskId)).toEqual([]);
     }
   });
 
@@ -89,9 +81,8 @@ describe("leaving the queue", () => {
       state: "running",
       line: "Looking into rust.",
     });
-    expect(h.said.slice(saidBefore).map((line) => line.kind)).toEqual([
-      "answer",
-    ]);
+    expect(h.said.slice(saidBefore)).toEqual([]);
+    expect(h.talked.at(-1)).toMatchObject({ kind: "result", taskId: "t1" });
   });
 
   it("cancels a queued task without a message and keeps the others' order", () => {

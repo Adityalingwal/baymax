@@ -186,6 +186,22 @@ const rows: Row[] = [
     expected: failed,
   },
   {
+    name: "chat",
+    command: question("thanks, that helps"),
+    step: questionReply({ route: "chat", sayBack: "  thanks  " }),
+    expected: {
+      type: "intake",
+      taskId: "task-1",
+      outcome: { route: "chat", sayBack: "thanks" },
+    },
+  },
+  {
+    name: "chat without a say-back",
+    command: question("thanks"),
+    step: questionReply({ route: "chat", sayBack: " " }),
+    expected: failed,
+  },
+  {
     name: "outsideResearch",
     command: question("email my boss that I'm running late"),
     step: questionReply({ route: "outsideResearch" }),

@@ -16,6 +16,9 @@ import type { HoldOutcome } from "./hold";
 import { createRecording } from "./recording";
 import type { Heard, NotCaughtCause } from "./recording";
 import { createSpeech } from "./speech";
+import type { LineFeed } from "./speech";
+import type { Spoken } from "./speech-model";
+import { createTalkerTiming } from "./talker-timing";
 import type { SaidLine, Timers } from "./tasks/state";
 import { admit, createModel, setStt, tellHealth } from "./voice-model";
 import type { VoiceModel, VoiceState } from "./voice-model";
@@ -46,6 +49,8 @@ export type Voice = {
   playbackFinished(payload: PlaybackFinished): void;
   setMuted(muted: boolean): void;
   say(line: SaidLine): void;
+  talk(spoken: Spoken): LineFeed;
+  submitted(key: string): void; // a typed question: its talker timing starts as at a key release
   silence(taskId: TaskId): void;
   rendererReset(): void;
   stop(): void;
@@ -54,6 +59,7 @@ export type Voice = {
 type Flows = {
   recording: ReturnType<typeof createRecording>;
   speech: ReturnType<typeof createSpeech>;
+  timing: ReturnType<typeof createTalkerTiming>;
 };
 
 // Voice never throws into main's state or the hold key; a failing call is logged.
@@ -164,11 +170,13 @@ function holdChanged(
     model.releasedAt = deps.now();
     const entry = ending === null ? undefined : model.admitted.get(ending);
     if (entry !== undefined) entry.releasedAt = model.releasedAt;
+    if (ending !== null) flows.timing.released(ending, model.releasedAt);
   }
   flows.speech.holdEnded();
 }
 
 function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
+  const timing = createTalkerTiming({ now: deps.now, log: deps.log });
   const recording = createRecording({
     sendRecording: (command) => sendRecording(model, deps, command),
     startFlux: deps.startFlux,
@@ -194,9 +202,10 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
       model.ttsUp = available;
       forwarded(deps, () => tellHealth(model));
     },
+    onAudioStarted: (line) => timing.audioStarted(line),
     timers: deps.timers,
   });
-  return { recording, speech };
+  return { recording, speech, timing };
 }
 
 function forgetRenderer(model: VoiceModel, flows: Flows): void {
@@ -252,6 +261,8 @@ export function createVoice(deps: VoiceDeps): Voice {
         }
       }),
     say: (line) => contained(deps, "say", () => speech.speak(line)),
+    talk: (spoken) => flows.timing.timed(spoken.key, speech.speakFed(spoken)),
+    submitted: (key) => flows.timing.released(key, deps.now()),
     silence: (taskId) =>
       contained(deps, "silence", () => speech.cancelTask(taskId)),
     rendererReset: () => forgetRenderer(model, flows),

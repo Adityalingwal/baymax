@@ -1,7 +1,13 @@
 import type { TaskCard } from "../../shared/cards";
 import type { CardActions } from "../actions";
 import { Answer } from "./Answer";
-import { CardFooter, CardHeader, CardShell, revealOnHover } from "./CardFrame";
+import {
+  CardFooter,
+  CardHeader,
+  CardShell,
+  revealOnHover,
+  TalkerReply,
+} from "./CardFrame";
 import { sourcesCount } from "./forms";
 import { SourcesRow } from "./SourcesRow";
 
@@ -47,6 +53,7 @@ export function OpenCard({ card, actions }: OpenCardProps) {
       <CardHeader card={card}>
         <HeaderControls card={card} actions={actions} />
       </CardHeader>
+      <TalkerReply card={card} />
       <p className="text-xs text-zinc-400">
         Read {sourcesCount(card.sourcesRead)}
       </p>

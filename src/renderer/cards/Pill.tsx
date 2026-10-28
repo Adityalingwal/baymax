@@ -1,6 +1,6 @@
 import type { TaskCard } from "../../shared/cards";
 import type { CardActions } from "../actions";
-import { CardFooter, CardHeader, CardShell } from "./CardFrame";
+import { CardFooter, CardHeader, CardShell, TalkerReply } from "./CardFrame";
 import { sourcesCount } from "./forms";
 
 function progressText(card: TaskCard): string | null {
@@ -17,6 +17,7 @@ export function Pill({ card, actions }: PillProps) {
   return (
     <CardShell>
       <CardHeader card={card} />
+      <TalkerReply card={card} />
       {said !== null && <p className="text-sm text-zinc-300">{said}</p>}
       {progress !== null && (
         <p className="truncate text-xs text-zinc-400">{progress}</p>

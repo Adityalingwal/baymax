@@ -66,7 +66,7 @@ const silenceRows: SilenceRow[] = [
     silenced: ["t1"],
   },
   {
-    name: "removing the thinking card of words that answer the question",
+    name: "nothing when removing the thinking card of words that answer the question, whose talker reply still plays",
     act: (h) => {
       askClarify(h, "q1");
       h.state.ask("the second", null, h.state.waitingQuestion());
@@ -79,7 +79,7 @@ const silenceRows: SilenceRow[] = [
         }),
       );
     },
-    silenced: ["t2"],
+    silenced: [],
   },
 ];
 

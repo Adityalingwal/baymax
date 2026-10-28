@@ -94,7 +94,16 @@ describe("an incomplete task", () => {
         step: null,
         sourcesRead: 2,
       });
-      expect(h.said.at(-1)).toEqual({ taskId: "t1", text: said, kind });
+      // The worker's next question is model text, so the talker says it; fixed lines are said as written.
+      if (kind === "question") {
+        expect(h.talked.at(-1)).toEqual({
+          kind: "result",
+          taskId: "t1",
+          text: said,
+        });
+      } else {
+        expect(h.said.at(-1)).toEqual({ taskId: "t1", text: said, kind });
+      }
     },
   );
 });

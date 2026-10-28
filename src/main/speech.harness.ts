@@ -97,12 +97,20 @@ function fakeSynthesize(calls: Call[]) {
   );
 }
 
+// What a streamed line sent to the renderer, and the kinds of lines whose audio started.
+function streamed() {
+  return {
+    chunks: [] as SpeechChunk[],
+    ends: [] as SpeechEnd[],
+    started: [] as string[],
+  };
+}
+
 // Without a fake Aura there is no socket, so every line goes to the REST call.
 export function createHarness(fakeAura: FakeAura | null = null) {
   const calls: Call[] = [];
   const speeches: SpeechLine[] = [];
-  const chunks: SpeechChunk[] = [];
-  const ends: SpeechEnd[] = [];
+  const { chunks, ends, started } = streamed();
   const stops: StopPlayback[] = [];
   const voice: { available: boolean; cause: VoiceDownCause | null }[] = [];
   const fakeTimers = createFakeTimers();
@@ -128,6 +136,7 @@ export function createHarness(fakeAura: FakeAura | null = null) {
     sendEnd: (end) => ends.push(end),
     sendStop,
     onVoiceAvailable,
+    onAudioStarted: (line) => started.push(line.kind),
     timers: { setTimer },
   });
   return {
@@ -137,6 +146,7 @@ export function createHarness(fakeAura: FakeAura | null = null) {
     speeches,
     chunks,
     ends,
+    started,
     stops,
     voice,
     timers,

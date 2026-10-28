@@ -58,6 +58,7 @@ describe("startEngine intake request", () => {
       "followUp",
       "answer",
       "clarify",
+      "chat",
       "outsideResearch",
     ]);
   });

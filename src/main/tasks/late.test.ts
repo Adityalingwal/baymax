@@ -51,11 +51,6 @@ const acceptedRows: Row[] = [
     act: (h) => h.state.cancelTask("t1"),
   },
   {
-    name: "the 1.5 s timer",
-    setup: (h) => h.state.ask("hi", null, null),
-    act: (h) => h.advance(1500),
-  },
-  {
     name: "setMuted",
     setup: () => undefined,
     act: (h) => h.state.setMuted(true),
@@ -137,7 +132,7 @@ const droppedRows: Row[] = [
       h.state.receive({ type: "cancelled", taskId: "t2", findings: null }),
   },
   {
-    name: "the 1.5 s timer after the intake",
+    name: "1.5 s after the intake, when no timer is left",
     setup: (h) => askNew(h, "hermes"),
     act: (h) => h.advance(1500),
   },
@@ -206,11 +201,11 @@ describe("re-entry", () => {
     expect(h.timeline).toEqual([
       "publish",
       "send question t1",
+      "talk reply t1",
       "publish",
       "send runTask t1",
-      "say startLine",
       "publish",
-      "say answer",
+      "talk result t1",
     ]);
     expect(h.card("t1")?.state).toBe("done");
   });

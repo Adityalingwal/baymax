@@ -107,6 +107,7 @@ describe("the shown question", () => {
       parentTaskId: null,
       sayBack: "about q1",
       line: null,
+      reply: null,
       step: null,
       sourcesRead: 0,
       question: { ...question("q1"), answered: false },
@@ -115,10 +116,12 @@ describe("the shown question", () => {
       canRetry: false,
       folded: false,
     });
-    expect(h.said.at(-1)).toEqual({
-      taskId: "t1",
-      text: "Question q1?",
+    // The talker says the question in its own words; the card shows it in full.
+    expect(h.talked.at(-1)).toEqual({
       kind: "question",
+      taskId: "t1",
+      question: "Question q1?",
+      choices: question("q1").choices,
     });
     expect(h.state.waitingQuestion()).toEqual({
       taskId: "t1",
@@ -186,17 +189,21 @@ describe("a second question", () => {
       askClarify(h, "q1");
       askClarify(h, "q2");
       expect(h.card("t2")?.question).toBeNull();
-      expect(h.said.filter((line) => line.kind === "question")).toHaveLength(1);
+      const questions = () => h.talked.filter((r) => r.kind === "question");
+      expect(questions()).toHaveLength(1);
       release(h);
       expect(h.state.waitingQuestion()).toEqual({
         taskId: "t2",
         question: question("q2"),
       });
-      expect(
-        h.said.filter(
-          (line) => line.taskId === "t2" && line.kind === "question",
-        ),
-      ).toEqual([{ taskId: "t2", text: "Question q2?", kind: "question" }]);
+      expect(questions().filter((r) => r.taskId === "t2")).toEqual([
+        {
+          kind: "question",
+          taskId: "t2",
+          question: "Question q2?",
+          choices: question("q2").choices,
+        },
+      ]);
     },
   );
 

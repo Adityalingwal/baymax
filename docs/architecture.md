@@ -41,7 +41,7 @@ Asking by voice and receiving an answer never take the focus away from the user'
 - Answers live in memory while the app is open; no database, no crash resume.
 - The engine runs inside the main process behind a port.
 - Cancel from the screen; speech silenced by the key or the mute switch.
-- Streaming voice: Deepgram Flux STT and Aura-2 TTS over WebSockets, and a Haiku talker that is Baymax's only voice ([Voice](#voice), [Talker](#talker)).
+- Streaming voice: Deepgram Flux STT and Aura-2 TTS over WebSockets, and a Fable talker that is Baymax's only voice ([Voice](#voice), [Talker](#talker)).
 - Friendly fixed failure lines; raw errors only in the dev log.
 
 ### V1 if time remains
@@ -91,7 +91,7 @@ Not planned now, not "never".
 renderer                          main                                      engine (in main, behind the port)
 text box    --IPC-->  -------------------------------------------+
 PCM frames  --IPC-->  Flux WebSocket -> final transcript --------+--> intake check -> worker -> done check
-                                         \-> talker (Haiku) first line
+                                         \-> talker (Fable) first line
 playback    <--IPC--  Aura-2 WebSocket <- speak() <- talker       <--- say-back, question, result, failure
 cards       <--IPC--  whole display state                         <--- task events
 ```
@@ -105,7 +105,7 @@ cards       <--IPC--  whole display state                         <--- task even
 | --- | --- |
 | STT | Deepgram Flux (`flux-general-en`) over one warm WebSocket; backup Nova-3 pre-recorded for one utterance when the socket cannot reconnect |
 | TTS | Deepgram Aura-2 over one warm WebSocket (24 kHz PCM), fed the talker's text clause by clause; backup the Aura-2 REST call |
-| Talker | Claude Haiku 5.5, in main |
+| Talker | Claude Fable 5.1 at low effort, in main |
 | Intake check | Claude Sonnet 5.5 |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
@@ -127,7 +127,7 @@ cards       <--IPC--  whole display state                         <--- task even
 
 - **The port.** The engine code lives in `src/engine/` and imports nothing from `src/main/`, the renderer or `electron`. It builds its own providers from `src/providers/`; its start takes only serializable values (keys, paths, settings), and test fakes enter through a separate optional parameter. Main and the engine talk only through one port object (`send`, `onMessage`, `close`) carrying plain JSON messages with ids, typed in `src/shared/engine.ts`. Cancel is a port message (`{ type: "cancel", taskId }`) that the engine maps to its own `AbortController`. V1 implements the port in-process; V2 swaps in a `utilityProcess` behind the same port.
 - **Who runs what.** The engine runs the intake check at once for every question, typed or spoken, even while a task runs, and tells main through the port what the words are (a new task, a follow-up, the answer to the waiting question, or outside research), with the start line and the brief. Main owns the queue: it queues the task or sends the engine a run message when none runs. Only then does the engine's runner run the worker and the done check, attaching a queued follow-up's parent result at that moment, and report back through the port. Answers kept for follow-ups stay apart from the running task's state, so a database can later be added beside them.
-- **The engine keeps nothing across tasks.** Main sends what each step needs: a question carries the user's exact words, main's short record of recent questions and answers, and the clarifying question shown at key-down if any; a run message carries the task id, goal version, depth and brief, and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines and the talker's "One moment." timer.
+- **The engine keeps nothing across tasks.** Main sends what each step needs: a question carries the user's exact words, main's short record of recent questions and answers, and the clarifying question shown at key-down if any; a run message carries the task id, goal version, depth and brief, and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines.
 - **Why in main.** The reasons for a separate process (synchronous SQLite, crash resume, restart) are V2, the agent loop mostly waits on the network, the spike ran the loop inside main, and a separate process was never tested on this repo's Electron 40.
 - **The risk and its limits.** Engine code that blocks would also freeze voice and cancel. V1 lowers this without guaranteeing against it: no `*Sync` calls anywhere in `src/`; every model and web call has an `AbortSignal` and a deadline; downloads are capped before parsing ([Web tool](#web-tool)); history and kept page text are bounded. Expected network, model and parsing failures are caught at their awaited task boundaries and end the task with a [failure line](#failures-the-user-hears). A truly uncaught exception or unhandled rejection is not attributed to a task and normal work is not resumed, because Node's state may be undefined: main logs it, shows "Baymax hit a problem and is restarting." and relaunches the app (`app.relaunch()`, then exit). A relaunched app that fails again within about 10 s of start exits instead of relaunching, so a start-up bug cannot loop. Only a separate process (V2) can stop a truly stuck engine.
 - **Keys.** Main reads `.env` once at start, keeps the Deepgram, Anthropic and search keys, and deletes them from `process.env` before any window opens. The renderer gets no key and makes no network calls; the display state carries display fields only.
@@ -146,10 +146,11 @@ cards       <--IPC--  whole display state                         <--- task even
 
 ### Talker
 
-- **What it is.** One Claude Haiku 5.5 call in main per final transcript or typed question, started at the same moment as the intake check. It gets the user's words, the recent questions and answers, the running and waiting tasks and the waiting clarifying question, and streams a short spoken line into TTS.
+- **What it is.** One Claude Fable 5.1 call (low effort; its thinking cannot be turned off) in main per final transcript or typed question, started at the same moment as the intake check. It gets the user's words, the recent questions and answers, the running and waiting tasks and the waiting clarifying question, and streams a short spoken line into TTS.
 - **What it says.** A short reply it can give from what it knows ("hi", "thanks", "what is 2 + 2") is the whole answer. For research it says a line that shows it understood the question ("I'll check tomorrow's Delhi forecast; the rain chance decides the umbrella."), with no time promise and no claim of progress. It never asks its own question and never decides what a task means: the intake routes, and binds answers to a waiting question.
+- **Warm connection.** A key press sends a key-less request to the Anthropic API, so the talker's call reuses an open connection instead of setting one up (about 0.15 s, measured with a 401 call on 28 Oct).
 - **Later lines.** The intake's clarifying question and the worker's result reach the user through the talker, in its own words, with the choices and the full answer on the card.
-- **Fallback.** If the talker has said nothing about 1.5 s after key release, code speaks "One moment." A talker failure never stops the intake.
+- **No filler.** Nothing is said before the talker's first words; a filler line ("One moment.") was tried and removed on 28 Oct because it delayed a talker that was nearly ready. A talker failure never stops the intake.
 
 ### Intake and tasks
 
@@ -247,7 +248,6 @@ It checks support and completion, not truth.
 | What | Starting value |
 | --- | --- |
 | Longest hold | about 90 s |
-| Fixed "One moment." when the talker is silent after key release | about 1.5 s |
 | First spoken line, target | under about 3 s after key release |
 | Flux silence keep-alive | about 100 ms of zero PCM every 5 s |
 | Zero PCM before `ForceEndTurn` | about 200 ms, sent at once |
@@ -303,7 +303,10 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/speech-stream.ts` | A line on the Aura socket: clauses and flushes out, chunks and the end to the renderer, the REST backup when the socket drops |
 | `src/main/speech-rest.ts` | A line through the Aura-2 REST call, and voice-down reported from its failures |
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
-| `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line timing |
+| `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
+| `src/main/talker-timing.ts` | Logs each generation's talker reply steps in ms after its release |
+| `src/main/talker.ts` | The talker: one Fable 5.1 streaming call per question, and one per clarifying question or result in its own words; its words stream into speech |
+| `src/main/talker-prompt.ts` | The talker's instructions and the blocks it reads |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
 | `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
@@ -311,7 +314,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/restart.ts` | The restart path: the restarting line, work stopped, one relaunch after a short delay, and the loop guard |
 | `src/main/wiring.ts` | Connects main's state to voice, the engine port and the renderer actions; a state throw goes to the restart path |
 | `src/main/renderer-actions.ts` | The renderer -> main actions: sender and payload checks, then one state or voice call each |
-| `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime and the fixed lines, through one update path |
+| `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime, the chat route and the fixed lines, through one update path; it asks the talker through talk requests (`talk.ts`) |
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |
 | `src/engine/plugs/research/` | The research plug: the web tool (safe page reads, pages kept by source id), its prompts and its done condition |
@@ -319,7 +322,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
-| `src/providers/` | Process-neutral provider code: the Exa search and page-contents calls and their outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/` | Process-neutral provider code: the Exa search and page-contents calls and their outcome types, the Anthropic call with its timeout and usage record, and its streamed form for the talker, the Deepgram calls. Imports nothing from a process folder |
 | `src/providers/deepgram.ts` | Deepgram calls: pre-recorded transcription and REST speech |
 | `src/providers/warm-socket.ts` | A socket kept open from start that reconnects with backoff, and the real WebSocket opener |
 | `src/providers/flux.ts` | The Flux socket: the listen URL, its messages, the silence keep-alive and ending a turn |

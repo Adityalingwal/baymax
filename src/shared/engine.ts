@@ -91,6 +91,7 @@ export type IntakeOutcome =
       reply: ClarifyingReply;
     }
   | { route: "clarify"; sayBack: string; question: ClarifyingQuestion }
+  | { route: "chat"; sayBack: string } // small talk the talker already answered; no worker
   | { route: "outsideResearch" };
 
 // Structured, never page text; main builds the shown step from it.
