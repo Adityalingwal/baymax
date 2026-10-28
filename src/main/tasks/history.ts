@@ -3,6 +3,7 @@ import type { HistoryTurn } from "./talk";
 
 // One front call that said something: the user's words and the line Baymax said, kept apart from the cards.
 export type Exchange = {
+  order: number; // when its front call started, so a slower call cannot reorder the conversation
   taskId: TaskId;
   words: string;
   line: string;
@@ -14,10 +15,11 @@ const KEEP = 20;
 
 export function addExchange(
   exchanges: Exchange[],
-  entry: { taskId: TaskId; words: string; line: string },
+  entry: { order: number; taskId: TaskId; words: string; line: string },
 ): void {
   if (entry.line.trim() === "") return;
   exchanges.push({ ...entry, result: null });
+  exchanges.sort((a, b) => a.order - b.order);
   if (exchanges.length > KEEP) exchanges.splice(0, exchanges.length - KEEP);
 }
 

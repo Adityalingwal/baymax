@@ -93,7 +93,13 @@ export function applyDecision(
   const words = attempt.parts.words;
   const target = resolveTarget(change, record, attempt, decision);
   const exchangeTask = (target ?? record).card.taskId;
-  addExchange(change.model.exchanges, { taskId: exchangeTask, words, line });
+  const { order } = attempt;
+  addExchange(change.model.exchanges, {
+    order,
+    taskId: exchangeTask,
+    words,
+    line,
+  });
   if (target === null) return true;
   switch (decision.route) {
     case "chat":

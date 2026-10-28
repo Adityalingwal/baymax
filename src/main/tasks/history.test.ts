@@ -3,7 +3,12 @@ import { addExchange, appendResult, conversationHistory } from "./history";
 import type { Exchange } from "./history";
 
 const add = (exchanges: Exchange[], taskId: string, n: number) =>
-  addExchange(exchanges, { taskId, words: `words ${n}`, line: `line ${n}` });
+  addExchange(exchanges, {
+    order: n,
+    taskId,
+    words: `words ${n}`,
+    line: `line ${n}`,
+  });
 
 describe("the conversation history", () => {
   it("alternates the user's words and what Baymax said, oldest first", () => {
@@ -18,6 +23,18 @@ describe("the conversation history", () => {
     ]);
   });
 
+  it("orders by when the call started, not by when its exchange was added", () => {
+    const exchanges: Exchange[] = [];
+    add(exchanges, "t2", 2);
+    add(exchanges, "t1", 1);
+    expect(conversationHistory(exchanges).map((turn) => turn.text)).toEqual([
+      "words 1",
+      "line 1",
+      "words 2",
+      "line 2",
+    ]);
+  });
+
   it("keeps the last 10 exchanges", () => {
     const exchanges: Exchange[] = [];
     for (let n = 1; n <= 25; n += 1) add(exchanges, `t${n}`, n);
@@ -29,7 +46,7 @@ describe("the conversation history", () => {
 
   it("skips an exchange with nothing said", () => {
     const exchanges: Exchange[] = [];
-    addExchange(exchanges, { taskId: "t1", words: "hi", line: "  " });
+    addExchange(exchanges, { order: 1, taskId: "t1", words: "hi", line: "  " });
     add(exchanges, "t2", 2);
     expect(conversationHistory(exchanges)).toHaveLength(2);
   });

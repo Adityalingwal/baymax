@@ -15,8 +15,10 @@ export function openAttempt(
   submitted: QuestionId | null,
 ): void {
   record.attempts += 1;
+  change.model.exchangeOrder += 1;
   const id = `${record.card.taskId}#${record.attempts}`;
-  record.attempt = { id, parts, submitted };
+  const order = change.model.exchangeOrder;
+  record.attempt = { id, order, parts, submitted };
   talk(change, { kind: "front", attemptId: id, ...parts });
 }
 

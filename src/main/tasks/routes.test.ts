@@ -154,6 +154,23 @@ describe("the front call's timing and record", () => {
       ],
     });
   });
+});
+
+describe("the conversation order", () => {
+  it("keeps the conversation in the order the calls started when they finish in reverse", () => {
+    const h = createHarness();
+    h.state.ask("first question", null, null);
+    h.state.ask("second question", null, null);
+    h.reply("t2", chat(), "Second answer.");
+    h.reply("t1", chat(), "First answer.");
+    h.state.ask("third question", null, null);
+    expect(h.talked.at(-1)?.history).toEqual([
+      { role: "user", text: "first question" },
+      { role: "assistant", text: "First answer." },
+      { role: "user", text: "second question" },
+      { role: "assistant", text: "Second answer." },
+    ]);
+  });
 
   it("drops a second reply to the same call", () => {
     const h = createHarness();

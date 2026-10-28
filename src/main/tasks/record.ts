@@ -25,6 +25,7 @@ export type FrontParts = Omit<TalkRequest, "kind" | "attemptId">;
 // One front call in flight or failed; submitted is the question a card answer claimed when it started.
 export type Attempt = {
   id: string;
+  order: number; // the exchange's place in the conversation, fixed when the call starts
   parts: FrontParts;
   submitted: QuestionId | null;
 };
@@ -49,6 +50,7 @@ export type Model = {
   created: number;
   answers: Map<TaskId, ParentResult>;
   exchanges: Exchange[];
+  exchangeOrder: number;
   queue: TaskId[];
   questions: TaskId[];
   notice: string | null;
@@ -79,6 +81,7 @@ export function createModel(): Model {
     created: 0,
     answers: new Map(),
     exchanges: [],
+    exchangeOrder: 0,
     queue: [],
     questions: [],
     notice: null,
