@@ -36,7 +36,7 @@ function checkRun(built: Findings[]): CheckRun {
 const answerWith = (status: string, nextQuestion: string | null) =>
   JSON.stringify({
     spokenLine: "Little was found.",
-    cardText: "A loop [s1].",
+    cardText: "A loop.",
     claims: [{ claim: "A loop", sourceIds: ["s1"] }],
     openPoints: [],
     status,
@@ -55,7 +55,7 @@ describe("checkRound status cards", () => {
     const turn = readTurn(run, { kind: "answer", text });
     const end = await checkRound(run, turn);
     const card = {
-      cardText: `A loop [s1](<${url}>).`,
+      cardText: "A loop.",
       sources: [{ id: "s1", url, title: "Page one" }],
       openPoints: [],
     };

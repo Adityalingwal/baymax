@@ -21,10 +21,9 @@ afterEach(closeRuns);
 
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
-const linked = (id: string, name: string) => `[${id}](<${pageUrl(name)}>)`;
 
 const goodFindings: Findings = {
-  cardText: `## How it works\n\nHermes runs a loop ${linked("s1", "one")} with tools ${linked("s2", "two")}.`,
+  cardText: "## How it works\n\nHermes runs a loop with tools.",
   sources: [one, two],
   openPoints: goodAnswer.openPoints,
 };
@@ -81,7 +80,7 @@ const codeRows: CodeRow[] = [
     name: "(2) no claims",
     answer: { claims: [] },
     part: "claims without a source",
-    findings: goodFindings,
+    findings: { ...goodFindings, sources: [] },
   },
   {
     name: "(2) a claim with no source id",
@@ -89,38 +88,31 @@ const codeRows: CodeRow[] = [
       claims: [...claimOne, { claim: "It uses tools", sourceIds: [] }],
     },
     part: "claims without a source",
-    findings: goodFindings,
+    findings: { ...goodFindings, sources: [one] },
   },
   {
-    name: "(3) a card with no marker",
-    answer: { cardText: "Hermes runs a loop.", claims: claimOne },
-    part: "a card with no citations",
-    findings: {
-      ...goodFindings,
-      cardText: "Hermes runs a loop.",
-      sources: [one],
+    name: "(3) a claim naming a page not read",
+    answer: {
+      cardText: "A loop and memory.",
+      claims: [...claimOne, { claim: "It has memory", sourceIds: ["s7"] }],
     },
-  },
-  {
-    name: "(4) a marker for a page not read",
-    answer: { cardText: "A loop [s1] and memory [s7].", claims: claimOne },
     part: "citations to pages that were not read",
     findings: {
       ...goodFindings,
-      cardText: `A loop ${linked("s1", "one")} and memory .`,
+      cardText: "A loop and memory.",
       sources: [one],
     },
   },
   {
-    name: "(4) a claim citing a snippet-only page by id",
+    name: "(3) a claim citing a snippet-only page by id",
     answer: {
-      cardText: "A loop [s1].",
+      cardText: "A loop.",
       claims: [{ claim: "A loop", sourceIds: ["s1", "s3"] }],
     },
     part: "citations to pages that were not read",
     findings: {
       ...goodFindings,
-      cardText: `A loop ${linked("s1", "one")}.`,
+      cardText: "A loop.",
       sources: [one],
     },
   },

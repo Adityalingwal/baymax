@@ -122,7 +122,7 @@ export type AnswerFields = {
 
 export const goodAnswer = {
   spokenLine: "Hermes runs a loop of model calls and tools.",
-  cardText: "## How it works\n\nHermes runs a loop [s1] with tools [s2].",
+  cardText: "## How it works\n\nHermes runs a loop with tools.",
   claims: [
     { claim: "Hermes runs a loop", sourceIds: ["s1"] },
     { claim: "It uses tools", sourceIds: ["s2"] },
@@ -237,13 +237,10 @@ export async function until(condition: () => boolean): Promise<void> {
   if (!condition()) throw new Error("the awaited step never came");
 }
 
-// Every unescaped "[" in a card must open a code-built marker link to one of its sources; anything else is a stray link.
+// The code builds no links, so any unescaped "[" in a card is stray.
 export function strayLinks(findings: Findings): string[] {
-  const links = findings.sources.map(({ id, url }) => `[${id}](<${url}>)`);
   const { cardText } = findings;
-  return [...cardText.matchAll(/\\[\s\S]|\[/g)].flatMap((match) => {
-    if (match[0] !== "[") return [];
-    const rest = cardText.slice(match.index);
-    return links.some((link) => rest.startsWith(link)) ? [] : [rest];
-  });
+  return [...cardText.matchAll(/\\[\s\S]|\[/g)].flatMap((match) =>
+    match[0] === "[" ? [cardText.slice(match.index)] : [],
+  );
 }

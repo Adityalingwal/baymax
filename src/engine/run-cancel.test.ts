@@ -95,7 +95,7 @@ describe("runTask cancel at the end", () => {
     const run = await startRun([
       toolUseReply([{ read: pageUrl("one") }]),
       workerAnswer({
-        cardText: "A loop [s1].",
+        cardText: "A loop.",
         claims: [{ claim: "A loop", sourceIds: ["s1"] }],
       }),
       verdictReply(),

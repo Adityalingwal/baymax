@@ -24,10 +24,10 @@ function costly(step: ModelOutcome): ModelOutcome {
   return step;
 }
 
-const link = (id: string, name: string) => `[${id}](<${pageUrl(name)}>)`;
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
 const claimOne = [{ claim: "A loop", sourceIds: ["s1"] }];
+const unreadClaims = [...claimOne, { claim: "Memory", sourceIds: ["s7"] }];
 
 type FoundRow = {
   name: string;
@@ -48,24 +48,24 @@ const foundRows: FoundRow[] = [
       costly(toolUseReply([{ read: pageUrl("two") }])),
     ],
     found: {
-      cardText: `- ${link("s1", "one")} Page one\n- ${link("s2", "two")} Page two`,
+      cardText: "- Page one\n- Page two",
       sources: [one, two],
       openPoints: [],
     },
   },
   {
-    name: "the failed first answer's card, unread markers dropped",
+    name: "the failed first answer's card, unread ids left out of its sources",
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
       costly(
         workerAnswer({
-          cardText: "A loop [s1] and memory [s7].",
-          claims: claimOne,
+          cardText: "A loop and memory.",
+          claims: unreadClaims,
         }),
       ),
     ],
     found: {
-      cardText: `A loop ${link("s1", "one")} and memory .`,
+      cardText: "A loop and memory.",
       sources: [one],
       openPoints: ["How it stores memory"],
     },
@@ -77,7 +77,7 @@ const foundRows: FoundRow[] = [
       costly(workerAnswer({ cardText: " ", claims: claimOne })),
     ],
     found: {
-      cardText: `- ${link("s1", "one")} Page one`,
+      cardText: "- Page one",
       sources: [one],
       openPoints: [],
     },
@@ -100,12 +100,12 @@ describe("runTask what was found", () => {
 });
 
 const listOne: Findings = {
-  cardText: `- ${link("s1", "one")} Page one`,
+  cardText: "- Page one",
   sources: [one],
   openPoints: [],
 };
 const unreadCard: Findings = {
-  cardText: `A loop ${link("s1", "one")} and memory .`,
+  cardText: "A loop and memory.",
   sources: [one],
   openPoints: ["How it stores memory"],
 };
@@ -157,8 +157,8 @@ const endRows: EndRow[] = [
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
       workerAnswer({
-        cardText: "A loop [s1] and memory [s7].",
-        claims: claimOne,
+        cardText: "A loop and memory.",
+        claims: unreadClaims,
       }),
       notJson(),
       notJson(),
@@ -206,7 +206,7 @@ const escapedTitles = [
 ];
 
 describe("runTask page list", () => {
-  it("escapes page titles so only the code's links remain", async () => {
+  it("escapes page titles so no link or autolink can form", async () => {
     const run = await startRun([
       toolUseReply(titles.map((_, index) => ({ read: pageUrl(`t${index}`) }))),
       costly(toolUseReply([{ read: pageUrl("one") }])),
@@ -226,12 +226,11 @@ describe("runTask page list", () => {
     const lines = findings.cardText.split("\n");
     const ids = findings.sources.map((source) => source.id);
     expect(ids).toEqual(["s1", "s2", "s3", "s4"]);
-    for (const [index, escaped] of escapedTitles.entries()) {
-      const url = findings.sources[index].url;
-      expect(lines).toContain(`- [s${index + 1}](<${url}>) ${escaped}`);
+    for (const escaped of escapedTitles) {
+      expect(lines).toContain(`- ${escaped}`);
     }
     expect(strayLinks(findings)).toEqual([]);
-    // An autolink would be "<scheme:" not escaped and not the code's own "](<" destination.
-    expect(findings.cardText).not.toMatch(/(?<![\\(])<[a-z][a-z0-9+.-]*:/i);
+    // An autolink would be "<scheme:" with no backslash before it.
+    expect(findings.cardText).not.toMatch(/(?<!\\)<[a-z][a-z0-9+.-]*:/i);
   });
 });

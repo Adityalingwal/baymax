@@ -1,5 +1,5 @@
 import type { Findings } from "../../../shared/cards";
-import { linkable } from "./answer-check";
+import { hostOf } from "./log-hosts";
 import type { ReadPage } from "./page-text";
 
 // Page or model text on a card: one line, with every Markdown mark escaped, so it can never form a link or a block.
@@ -10,9 +10,11 @@ function markdownLine(text: string): string {
     .replace(/[\\`*_[\]()<>#!|~]/g, "\\$&");
 }
 
+// No id and no link: the Sources footer shows the clickable pages.
 function pageLine(page: ReadPage): string {
-  const label = linkable(page.url) ? `[${page.id}](<${page.url}>)` : page.id;
-  return `- ${label} ${markdownLine(page.title)}`.trimEnd();
+  const label =
+    page.title.trim() === "" ? (hostOf(page.url) ?? page.url) : page.title;
+  return `- ${markdownLine(label)}`;
 }
 
 // A checked card whose gaps stayed open after the last round: they join its open points, and one code-written line names them.

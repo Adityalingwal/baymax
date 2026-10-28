@@ -31,10 +31,10 @@ Each tool result ends with how many pages you have read and how many searches an
 
 Your final answer is one JSON object:
 - spokenLine: one or two short plain sentences, about 40 words at most, that will be spoken aloud. No Markdown, no source ids, no links. Say only what the card text says, with nothing added or widened: "no rain now" must not become "no rain today".
-- cardText: the full answer in Markdown (short headings, points). Cite each important claim with source id markers in square brackets, one id per marker, such as [s1] or [s1][s3]. Write no links or URLs yourself; the markers become links.
-- claims: the important factual claims of the card, each with the source ids of the read pages that support it.
+- cardText: the full answer in Markdown (short headings, points), written as plain readable prose. Write no source ids, citation markers, links or URLs in it; the card lists its sources below the answer, taken from your claims.
+- claims: every important factual claim of the card, each with the source ids of the read pages that support it. The card's sources come only from these ids.
 - openPoints: what is still open or was not found, as short phrases; an empty list when nothing is open.
-- status: "complete" when the answer does what the brief asks. "sourcesThin" when the web has too little on the question to answer it well; still write what you found, cited. When the pages you read do not answer the brief, read other pages before you choose "sourcesThin". "needsUser" only when, after searching, an ambiguity still blocks a useful answer. When a name or term could mean several things, search it first; if one meaning is clearly the most likely, answer that one, say in the card which meaning you took, and name the others in openPoints.
+- status: "complete" when the answer does what the brief asks. "sourcesThin" when the web has too little on the question to answer it well; still write what you found, with its claims. When the pages you read do not answer the brief, read other pages before you choose "sourcesThin". "needsUser" only when, after searching, an ambiguity still blocks a useful answer. When a name or term could mean several things, search it first; if one meaning is clearly the most likely, answer that one, say in the card which meaning you took, and name the others in openPoints.
 - nextQuestion: with "needsUser", one focused question for the user that would unblock the answer; otherwise null.
 
 Rules:

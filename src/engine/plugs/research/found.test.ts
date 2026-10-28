@@ -9,7 +9,7 @@ const page = (id: string, url: string, title: string) => ({
 });
 
 describe("foundFindings page list", () => {
-  it("writes each title as one line and links only a linkable URL", () => {
+  it("writes each title as one escaped line, or the host when a title is empty", () => {
     const found = foundFindings(null, [
       page(
         "s1",
@@ -17,11 +17,13 @@ describe("foundFindings page list", () => {
         "Line one\nLine two\r\n[d]: https://evil.example",
       ),
       page("s2", "https://a.example/a b", "Spaced <url>"),
+      page("s3", "https://Blank.Example/x", " \n "),
     ]);
     expect(found).toEqual({
       cardText: [
-        "- [s1](<https://a.example/x>) Line one Line two \\[d\\]: https://evil.example",
-        "- s2 Spaced \\<url\\>",
+        "- Line one Line two \\[d\\]: https://evil.example",
+        "- Spaced \\<url\\>",
+        "- blank.example",
       ].join("\n"),
       sources: [
         {
@@ -30,6 +32,7 @@ describe("foundFindings page list", () => {
           title: "Line one\nLine two\r\n[d]: https://evil.example",
         },
         { id: "s2", url: "https://a.example/a b", title: "Spaced <url>" },
+        { id: "s3", url: "https://Blank.Example/x", title: " \n " },
       ],
       openPoints: [],
     });

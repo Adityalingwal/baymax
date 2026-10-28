@@ -58,7 +58,7 @@ describe("runTask happy path", () => {
         taskId: "task-1",
         spokenLine: goodAnswer.spokenLine,
         findings: {
-          cardText: `## How it works\n\nHermes runs a loop [s1](<${pageUrl("one")}>) with tools [s2](<${pageUrl("two")}>).`,
+          cardText: "## How it works\n\nHermes runs a loop with tools.",
           sources: [
             { id: "s1", url: pageUrl("one"), title: "Page one" },
             { id: "s2", url: pageUrl("two"), title: "Page two" },
@@ -157,7 +157,7 @@ describe("runTask judge request", () => {
     }
     expect(text).toContain(brief.goal);
     expect(text).toContain(goodAnswer.spokenLine);
-    expect(text).toContain("Hermes runs a loop [s1]");
+    expect(text).toContain("Hermes runs a loop with tools.");
     expect(text).toContain(`<page source_id="s1" url="${pageUrl("one")}">`);
     expect(text).toContain(`<page source_id="s2" url="${pageUrl("two")}">`);
   });
@@ -167,7 +167,7 @@ const parent: ParentResult = {
   taskId: "task-0",
   outcome: "done",
   findings: {
-    cardText: "Hermes is an agent [s1](https://hermes.example/docs).",
+    cardText: "Hermes is an agent.",
     sources: [{ id: "s1", url: "https://hermes.example/docs", title: "Docs" }],
     openPoints: ["its memory"],
   },

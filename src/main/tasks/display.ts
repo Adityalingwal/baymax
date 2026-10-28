@@ -7,13 +7,10 @@ import { shownQuestion } from "./record";
 const RECENT_COUNT = 5;
 const CARD_COUNT = 2;
 const CARD_LIMIT = 1500;
-const citationLink = /\[(s\d+)\]\(<[^>]*>\)/g;
 
-// Links become labels so URLs do not use up the intake's card limit.
 function cardExcerpt(cardText: string): string {
-  const plain = cardText.replace(citationLink, "[$1]");
-  if (plain.length <= CARD_LIMIT) return plain;
-  const cut = plain.slice(0, CARD_LIMIT - 1);
+  if (cardText.length <= CARD_LIMIT) return cardText;
+  const cut = cardText.slice(0, CARD_LIMIT - 1);
   // A cut inside a surrogate pair would leave half a character.
   return `${/[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut}…`;
 }

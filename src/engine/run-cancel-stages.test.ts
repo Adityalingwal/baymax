@@ -43,13 +43,12 @@ describe("startEngine cancel during intake", () => {
   });
 });
 
-const link = `[s1](<${pageUrl("one")}>)`;
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const readOne = () => toolUseReply([{ read: pageUrl("one") }]);
-const answered = (cardText: string) =>
+const answered = (cardText: string, sourceIds = ["s1"]) =>
   workerAnswer({
     cardText,
-    claims: [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }],
+    claims: [{ claim: "Hermes runs a loop", sourceIds }],
   });
 const card = (cardText: string): Findings => ({
   cardText,
@@ -78,54 +77,54 @@ const stageRows: StageRow[] = [
     steps: () => [readOne(), toolUseReply([{ search: "hermes" }])],
     searches: ["waitForAbort"],
     at: (sent) => sent.queries === 1,
-    found: { cardText: `- ${link} Page one`, sources: [one], openPoints: [] },
+    found: { cardText: "- Page one", sources: [one], openPoints: [] },
   },
   {
     name: "a read",
     steps: () => [readOne(), toolUseReply([{ read: pageUrl("slow") }])],
     at: (sent) => sent.connects === 2,
-    found: { cardText: `- ${link} Page one`, sources: [one], openPoints: [] },
+    found: { cardText: "- Page one", sources: [one], openPoints: [] },
   },
   {
     name: "the judge",
-    steps: () => [readOne(), answered("A loop [s1]."), "waitForAbort"],
+    steps: () => [readOne(), answered("A loop."), "waitForAbort"],
     at: (sent) => sent.calls === 3,
-    found: card(`A loop ${link}.`),
+    found: card("A loop."),
   },
   {
     name: "the retry round's worker call",
     steps: () => [
       readOne(),
-      answered("A loop [s1], memory [s7]."),
+      answered("A loop, memory.", ["s1", "s7"]),
       "waitForAbort",
     ],
     at: (sent) => sent.calls === 3,
-    found: card(`A loop ${link}, memory .`),
+    found: card("A loop, memory."),
   },
   {
     name: "the retry round's judge",
     steps: () => [
       readOne(),
-      answered("A loop [s1]."),
+      answered("A loop."),
       verdictReply({ goalMet: false }),
       toolUseReply([{ read: pageUrl("two") }]),
-      answered("A loop again [s1]."),
+      answered("A loop again."),
       "waitForAbort",
     ],
     at: (sent) => sent.calls === 6,
-    found: card(`A loop again ${link}.`),
+    found: card("A loop again."),
   },
   {
     name: "the worker call after a nudge",
     steps: () => [
       readOne(),
-      answered("A loop [s1]."),
+      answered("A loop."),
       verdictReply({ goalMet: false }),
-      answered("A loop again [s1]."),
+      answered("A loop again."),
       "waitForAbort",
     ],
     at: (sent) => sent.calls === 5,
-    found: card(`A loop ${link}.`),
+    found: card("A loop."),
   },
 ];
 
