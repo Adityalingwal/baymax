@@ -5,7 +5,7 @@ import type { DispatchDeps, DispatchJob } from "../../core/dispatch";
 import { taskLimits } from "../../core/limits";
 import { runToolBatch } from "../../core/tool-batch";
 import type { ToolStep, ToolTurn } from "../../core/tool-batch";
-import { hostOf } from "./log-hosts";
+import { hostOf } from "./url-host";
 import { pageForModel, searchHitsForModel } from "./model-text";
 import { parseCalls } from "./research-tools";
 import type { ResearchCall } from "./research-tools";

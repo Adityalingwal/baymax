@@ -1,5 +1,5 @@
 import type { Findings } from "../../../shared/cards";
-import { hostOf } from "./log-hosts";
+import { hostOf } from "./url-host";
 import type { ReadPage } from "./page-text";
 
 // Page or model text on a card: one line, with every Markdown mark escaped, so it can never form a link or a block.

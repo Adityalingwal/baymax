@@ -154,3 +154,46 @@ describe("runTask dev log privacy", () => {
     }
   });
 });
+
+describe("runTask dev log redirects", () => {
+  it("logs the asked host and the kept host apart when a read crosses hosts", async () => {
+    const run = await startRun([
+      toolUseReply([{ read: "http://a.example/start?q=user+words" }]),
+      workerAnswer(oneCited),
+      verdictReply(),
+    ]);
+    run.network.answer("a.example", ["93.184.216.34"]);
+    run.network.answer("b.example", ["93.184.216.34"]);
+    run.network.route(
+      "/start?q=user+words",
+      sendRoute({
+        status: 301,
+        headers: { Location: "http://b.example/final" },
+      }),
+    );
+    run.network.route(
+      "/final",
+      sendRoute({
+        headers: { "Content-Type": "text/html" },
+        body: htmlPage("Final", `<p>${"Plain words to keep. ".repeat(20)}</p>`),
+      }),
+    );
+    run.port.send(runTask());
+    await run.ended();
+    expect(readEntries(run.entries)).toEqual([
+      expect.objectContaining({
+        outcome: "ok",
+        host: "a.example",
+        sourceId: "s1",
+        keptHost: "b.example",
+      }),
+    ]);
+    expect(cardEntries(run.entries)).toEqual([
+      expect.objectContaining({ sourceIds: "s1", hosts: "b.example" }),
+    ]);
+    const logged = JSON.stringify(run.entries);
+    for (const leak of ["/start", "/final", "user", "words", "?q="]) {
+      expect(logged).not.toContain(leak);
+    }
+  });
+});

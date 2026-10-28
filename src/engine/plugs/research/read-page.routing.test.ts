@@ -176,6 +176,12 @@ const redirectRows: RedirectRow[] = [
     connects: 1,
   },
   {
+    name: "to Exa's API host",
+    location: "https://api.exa.ai/contents",
+    expected: { ok: false, cause: "refused", rule: "blockedHost" },
+    connects: 1,
+  },
+  {
     name: "to a URL with credentials",
     location: "http://u:p@example.test/",
     expected: { ok: false, cause: "refused", rule: "credentials" },
