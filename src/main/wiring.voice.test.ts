@@ -22,46 +22,49 @@ function heldAndReleased(w: Wired): UtteranceId {
   return start.utteranceId;
 }
 
-const recorded = (utteranceId: UtteranceId, audio: unknown) => ({
+const frames = (utteranceId: UtteranceId, pcm: unknown) => ({
+  type: "frames",
   utteranceId,
-  outcome: "recorded",
-  audio,
-  mimeType: "audio/webm",
+  pcm,
 });
 
-describe("the clip channel", () => {
+describe("the mic audio channel", () => {
   it.each([
     ["an ArrayBuffer", new Uint8Array([7, 8, 9]).buffer],
     [
       "a view of part of a buffer",
       new Uint8Array([6, 7, 8, 9, 5]).subarray(1, 4),
     ],
-  ])("brings %s to transcription", (_name, clipAudio) => {
+  ])("brings frames in %s to transcription", (_name, pcm) => {
     const w = wire();
-    w.send(ipcChannels.sendClip, recorded(heldAndReleased(w), clipAudio));
+    const utteranceId = heldAndReleased(w);
+    w.send(ipcChannels.micAudio, frames(utteranceId, pcm));
+    w.send(ipcChannels.micAudio, { type: "end", utteranceId });
     expect(w.transcriptions.map((call) => call.input)).toEqual([
-      "audio/webm 7,8,9",
+      "audio/wav 7,8,9",
     ]);
     expect(w.failures).toEqual([]);
   });
 
-  it("drops a clip from another sender and a malformed clip", () => {
+  it("drops audio from another sender and malformed audio", () => {
     const w = wire();
     const utteranceId = heldAndReleased(w);
-    const clip = recorded(utteranceId, new ArrayBuffer(3));
-    w.send(ipcChannels.sendClip, clip, fakeSender().sender);
-    w.send(ipcChannels.sendClip, { ...clip, mimeType: 3 });
+    const audio = frames(utteranceId, new ArrayBuffer(3));
+    w.send(ipcChannels.micAudio, audio, fakeSender().sender);
+    w.send(ipcChannels.micAudio, { ...audio, pcm: 3 });
+    w.send(ipcChannels.micAudio, { type: "end", utteranceId });
     expect(w.transcriptions).toEqual([]);
     expect(w.logs.slice(-2)).toEqual([
-      `${ipcChannels.sendClip} dropped: not from the Baymax window`,
-      `${ipcChannels.sendClip} dropped: malformed payload`,
+      `${ipcChannels.micAudio} dropped: not from the Baymax window`,
+      `${ipcChannels.micAudio} dropped: malformed payload`,
     ]);
   });
 
   it("asks main's state with the heard words", async () => {
     const w = wire();
     const utteranceId = heldAndReleased(w);
-    w.send(ipcChannels.sendClip, recorded(utteranceId, new ArrayBuffer(3)));
+    w.send(ipcChannels.micAudio, frames(utteranceId, new ArrayBuffer(3)));
+    w.send(ipcChannels.micAudio, { type: "end", utteranceId });
     w.transcriptions[0].resolve({ kind: "words", words: "how does it work" });
     await flush();
     expect(w.port.sent).toMatchObject([

@@ -4,7 +4,7 @@ import {
   audio,
   createHarness,
   hold,
-  sendClip,
+  sendAudio,
   synthesized,
   transcribed,
 } from "./voice.harness";
@@ -44,7 +44,7 @@ describe("stop", () => {
 
   it("drops a transcript that settles after it", async () => {
     const h = createHarness();
-    sendClip(h, hold(h));
+    sendAudio(h, hold(h));
     h.voice.stop();
     await transcribed(h, 0, { kind: "words", words: "late" });
     expect(h.asked).toEqual([]);
@@ -63,7 +63,7 @@ describe("stop", () => {
 describe("a state throw outside a listener", () => {
   it("goes to the restart path from a transcript", async () => {
     const h = createHarness();
-    sendClip(h, hold(h));
+    sendAudio(h, hold(h));
     h.waiting.stateFails = true;
     await transcribed(h, 0, { kind: "words", words: "hello" });
     expect(h.failures).toEqual(["Error: ask broke"]);

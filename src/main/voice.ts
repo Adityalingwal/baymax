@@ -1,8 +1,9 @@
 import type { Synthesis, Transcription } from "../providers/deepgram";
+import type { Flux, FluxListener } from "../providers/flux";
 import type { TaskId } from "../shared/cards";
 import type {
-  Clip,
   HoldState,
+  MicAudio,
   PlaybackFinished,
   RecordingCommand,
   SpeechLine,
@@ -23,6 +24,7 @@ export type VoiceDeps = {
   sendSpeech: (line: SpeechLine) => void;
   sendStop: (payload: StopPlayback) => void;
   transcribe: (audio: ArrayBuffer, mimeType: string) => Promise<Transcription>;
+  startFlux: (listener: FluxListener) => Flux | null; // null when there is no Deepgram key
   synthesize: (text: string, signal: AbortSignal) => Promise<Synthesis>;
   timers: Timers;
   now: () => number;
@@ -34,7 +36,7 @@ export type VoiceDeps = {
 export type Voice = {
   start(state: VoiceState): void;
   holdChanged(holdState: HoldState, outcome: HoldOutcome | null): void;
-  clipArrived(clip: Clip): void;
+  micAudio(audio: MicAudio): void;
   playbackFinished(payload: PlaybackFinished): void;
   setMuted(muted: boolean): void;
   say(line: SaidLine): void;
@@ -122,6 +124,10 @@ function receiveHeard(model: VoiceModel, deps: VoiceDeps, heard: Heard) {
     return;
   }
   model.admitted.delete(heard.utteranceId);
+  if (entry.releasedAt !== null) {
+    const ms = Math.round(deps.now() - entry.releasedAt);
+    deps.log(`final transcript ${ms} ms after release`);
+  }
   if (heard.kind === "notCaught") {
     return notCaught(model, deps, state, heard.cause, entry.order);
   }
@@ -149,14 +155,21 @@ function holdChanged(
   const ending = model.current;
   flows.recording.holdEnded(outcome);
   if (outcome === "discard" && ending !== null) model.admitted.delete(ending);
-  if (outcome === "accept") model.releasedAt = deps.now();
+  if (outcome === "accept") {
+    model.releasedAt = deps.now();
+    const entry = ending === null ? undefined : model.admitted.get(ending);
+    if (entry !== undefined) entry.releasedAt = model.releasedAt;
+  }
   flows.speech.holdEnded();
 }
 
 function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
   const recording = createRecording({
     sendRecording: (command) => sendRecording(model, deps, command),
+    startFlux: deps.startFlux,
     transcribe: deps.transcribe,
+    timers: deps.timers,
+    log: deps.log,
     onHeard: (heard) => forwarded(deps, () => receiveHeard(model, deps, heard)),
   });
   const speech = createSpeech({
@@ -185,8 +198,7 @@ function forgetRenderer(model: VoiceModel, flows: Flows): void {
 function stopVoice(model: VoiceModel, flows: Flows): void {
   if (model.stopped) return;
   model.stopped = true;
-  flows.recording.holdEnded("discard");
-  flows.recording.rendererReset();
+  flows.recording.stop();
   model.admitted.clear();
   model.current = null;
   model.held = false;
@@ -214,7 +226,8 @@ export function createVoice(deps: VoiceDeps): Voice {
       withState("hold change", () =>
         holdChanged(model, deps, flows, { holdState, outcome }),
       ),
-    clipArrived: (clip) => withState("clip", () => recording.clipArrived(clip)),
+    micAudio: (audio) =>
+      withState("mic audio", () => recording.micAudio(audio)),
     playbackFinished: (payload) => speech.playbackFinished(payload),
     setMuted: (muted) =>
       withState("mute", (state) => {

@@ -60,7 +60,7 @@ type ActionRow = {
 };
 
 const taskAction = { taskId: "t1" };
-const audio = new ArrayBuffer(4);
+const pcm = new ArrayBuffer(4);
 
 const actionRows: ActionRow[] = [
   {
@@ -115,17 +115,11 @@ const actionRows: ActionRow[] = [
     expected: [ipcChannels.setMuted, { muted: true }],
   },
   {
-    name: "sendClip",
-    act: () =>
-      api.sendClip({
-        utteranceId: "u1",
-        outcome: "recorded",
-        audio,
-        mimeType: "audio/webm",
-      }),
+    name: "sendMicAudio",
+    act: () => api.sendMicAudio({ type: "frames", utteranceId: "u1", pcm }),
     expected: [
-      ipcChannels.sendClip,
-      { utteranceId: "u1", outcome: "recorded", audio, mimeType: "audio/webm" },
+      ipcChannels.micAudio,
+      { type: "frames", utteranceId: "u1", pcm },
     ],
   },
   {
@@ -192,7 +186,7 @@ const subscriptionRows: SubscriptionRow[] = [
     name: "onSpeech",
     subscribe: (callback) => api.onSpeech(callback),
     channel: ipcChannels.speech,
-    payload: { lineId: "l1", audio, mimeType: "audio/mpeg" },
+    payload: { lineId: "l1", audio: pcm, mimeType: "audio/mpeg" },
     replay: [],
   },
   {

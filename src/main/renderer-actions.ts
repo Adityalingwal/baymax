@@ -1,6 +1,6 @@
 import type { ClarifyingReply, DisplayState } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
-import type { Clip, RendererToMain } from "../shared/ipc";
+import type { MicAudio, RendererToMain } from "../shared/ipc";
 import type { MainState } from "./tasks/state";
 import type { Voice } from "./voice";
 
@@ -15,10 +15,10 @@ export type RendererIpc = {
   removeListener: (channel: string, listener: RendererListener) => unknown;
 };
 
-// What the actions call: main's state, and voice for the clip, playback and mute.
+// What the actions call: main's state, and voice for the mic audio, playback and mute.
 export type ActionTargets = {
   state: MainState;
-  voice: Pick<Voice, "clipArrived" | "playbackFinished" | "setMuted">;
+  voice: Pick<Voice, "micAudio" | "playbackFinished" | "setMuted">;
 };
 
 export type ActionDeps = {
@@ -102,20 +102,21 @@ function readAudio(value: unknown): ArrayBuffer | null {
   return copy.buffer;
 }
 
-const clipFailures = ["permissionDenied", "noMicrophone", "error"] as const;
+const micFailures = ["permissionDenied", "noMicrophone", "error"] as const;
 
-const readClip: Reader<typeof ipcChannels.sendClip> = (f): Clip | null => {
+const readMicAudio: Reader<typeof ipcChannels.micAudio> = (
+  f,
+): MicAudio | null => {
   const utteranceId = f.utteranceId;
   if (typeof utteranceId !== "string") return null;
-  if (f.outcome === "recorded") {
-    const audio = readAudio(f.audio);
-    return audio !== null && typeof f.mimeType === "string"
-      ? { utteranceId, outcome: "recorded", audio, mimeType: f.mimeType }
-      : null;
+  if (f.type === "frames") {
+    const pcm = readAudio(f.pcm);
+    return pcm === null ? null : { type: "frames", utteranceId, pcm };
   }
-  const reason = clipFailures.find((known) => known === f.reason);
-  return f.outcome === "failed" && reason !== undefined
-    ? { utteranceId, outcome: "failed", reason }
+  if (f.type === "end") return { type: "end", utteranceId };
+  const reason = micFailures.find((known) => known === f.reason);
+  return f.type === "failed" && reason !== undefined
+    ? { type: "failed", utteranceId, reason }
     : null;
 };
 
@@ -196,8 +197,8 @@ const actions: Action[] = [
   action(ipcChannels.setMuted, readMuted, ({ voice }, { muted }) =>
     voice.setMuted(muted),
   ),
-  action(ipcChannels.sendClip, readClip, ({ voice }, clip) =>
-    voice.clipArrived(clip),
+  action(ipcChannels.micAudio, readMicAudio, ({ voice }, audio) =>
+    voice.micAudio(audio),
   ),
   action(ipcChannels.playbackFinished, readPlayback, ({ voice }, payload) =>
     voice.playbackFinished(payload),

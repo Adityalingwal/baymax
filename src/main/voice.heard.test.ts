@@ -6,7 +6,7 @@ import {
   createHarness,
   failed,
   hold,
-  sendClip,
+  sendAudio,
   transcribed,
   waitingQuestion,
 } from "./voice.harness";
@@ -15,11 +15,21 @@ const words = (text: string): Transcription => ({ kind: "words", words: text });
 
 function heldAndSent(h: Harness): UtteranceId {
   const utteranceId = hold(h);
-  sendClip(h, utteranceId);
+  sendAudio(h, utteranceId);
   return utteranceId;
 }
 
 describe("admitted utterances", () => {
+  it("still asks with an older accepted utterance's words that come while a newer key is held", async () => {
+    const h = createHarness();
+    const first = heldAndSent(h);
+    h.voice.holdChanged("listening", null);
+    await transcribed(h, 0, words("first"));
+    expect(h.asked.map((asked) => [asked.words, asked.utteranceId])).toEqual([
+      ["first", first],
+    ]);
+  });
+
   it("sends two holds in transcription at once to ask with their own waiting question", async () => {
     const h = createHarness();
     h.waiting.waiting = waitingQuestion("q1");
@@ -66,13 +76,13 @@ const droppedRows: { name: string; result: Transcription; log: string }[] = [
 describe("dropped transcripts", () => {
   it.each(droppedRows)(
     "drops $name that settles after a renderer reset",
-    async ({ result, log }) => {
+    async ({ result }) => {
       const h = createHarness();
       heldAndSent(h);
       h.voice.rendererReset();
       await transcribed(h, 0, result);
       expect(h.calls).toEqual([]);
-      expect(h.logs).toContain(`${log}: utterance not admitted`);
+      expect(h.logs).toContain("transcript dropped: its hold already ended");
     },
   );
 
@@ -84,7 +94,7 @@ describe("dropped transcripts", () => {
       for (let index = 0; index < 16; index += 1) hold(h);
       await transcribed(h, 0, result);
       expect(h.calls).toEqual([]);
-      expect(h.logs).toContain(`${log}: utterance not admitted`);
+      expect(h.logs).toContain(`${log}: not an accepted hold`);
     },
   );
 

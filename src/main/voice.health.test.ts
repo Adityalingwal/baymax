@@ -7,7 +7,7 @@ import {
   createHarness,
   failed,
   hold,
-  sendClip,
+  sendAudio,
   synthesized,
   transcribed,
 } from "./voice.harness";
@@ -20,14 +20,14 @@ type Deliver = (h: Harness, index: number) => Promise<void>;
 const transcript =
   (result: Transcription): Deliver =>
   async (h, index) => {
-    sendClip(h, hold(h));
+    sendAudio(h, hold(h));
     await transcribed(h, index, result);
   };
 
 const clipFailed =
   (reason: "permissionDenied" | "noMicrophone" | "error"): Deliver =>
   async (h) => {
-    h.voice.clipArrived({ utteranceId: hold(h), outcome: "failed", reason });
+    h.voice.micAudio({ type: "failed", utteranceId: hold(h), reason });
     await Promise.resolve();
   };
 
@@ -114,8 +114,8 @@ describe("voice health from STT", () => {
 
   it("keeps STT down when an older success settles after a newer failure", async () => {
     const h = createHarness();
-    sendClip(h, hold(h));
-    sendClip(h, hold(h));
+    sendAudio(h, hold(h));
+    sendAudio(h, hold(h));
     await transcribed(h, 1, failed("unreachable"));
     await transcribed(h, 0, words("hi"));
     expect(h.calls).toEqual(["voiceAvailable false", "ask hi"]);

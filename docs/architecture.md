@@ -41,6 +41,7 @@ Asking by voice and receiving an answer never take the focus away from the user'
 - Answers live in memory while the app is open; no database, no crash resume.
 - The engine runs inside the main process behind a port.
 - Cancel from the screen; speech silenced by the key or the mute switch.
+- Streaming voice: Deepgram Flux STT and Aura-2 TTS over WebSockets, and a Haiku talker that is Baymax's only voice ([Voice](#voice), [Talker](#talker)).
 - Friendly fixed failure lines; raw errors only in the dev log.
 
 ### V1 if time remains
@@ -58,7 +59,7 @@ Each item's design is in [V2 design](#v2-design).
 
 - Several tasks at once, each with its own coordinator; splitting a task across parallel workers with one writer.
 - Deep research with a plan, many workers and a report file.
-- The talker model and streaming voice; the speech queue, "go on" and "what did I miss".
+- The talker's labels, live words on screen and interruption-aware speech; the speech queue, "go on" and "what did I miss".
 - Voice stop with its three scopes; steering a running task; goal versions above 1.
 - Actions outside with approvals, the uncertain-action card and rollback; the next plugs (document creation the candidate first; email, GitHub, connectors such as Gmail and Calendar).
 - The full UI contract and the full step log.
@@ -87,23 +88,25 @@ Not planned now, not "never".
 ### Pipeline
 
 ```
-renderer                         main                                   engine (in main, behind the port)
-text box   --IPC-->  ------------------------------------------+
-mic clip   --IPC-->  Deepgram pre-recorded STT -> transcript --+--> intake check -> worker -> done check
-playback   <--IPC--  Deepgram REST speech <- speak()           <--- start line, progress, result, failure
-cards      <--IPC--  whole display state                       <--- task events
+renderer                          main                                      engine (in main, behind the port)
+text box    --IPC-->  -------------------------------------------+
+PCM frames  --IPC-->  Flux WebSocket -> final transcript --------+--> intake check -> worker -> done check
+                                         \-> talker (Haiku) first line
+playback    <--IPC--  Aura-2 WebSocket <- speak() <- talker       <--- say-back, question, result, failure
+cards       <--IPC--  whole display state                         <--- task events
 ```
 
 - Typed text and a final transcript enter the same route: the [intake check](#intake-and-tasks).
-- Nothing acts before the full final sentence after key release.
+- Nothing acts before the full final sentence after key release. The talker and the intake start on it at the same moment; neither waits for the other.
 
 ### Stack
 
 | Part | Choice |
 | --- | --- |
-| STT | Deepgram pre-recorded transcription of the held clip, one call per utterance |
-| TTS | Deepgram REST speech, one call per line, one voice |
-| Intake check | Claude Sonnet 5.5 (Haiku 5.5 if the first spoken line is too slow) |
+| STT | Deepgram Flux (`flux-general-en`) over one warm WebSocket; backup Nova-3 pre-recorded for one utterance when the socket cannot reconnect |
+| TTS | Deepgram Aura-2 over one warm WebSocket (24 kHz PCM), fed the talker's text clause by clause; backup the Aura-2 REST call |
+| Talker | Claude Haiku 5.5, in main |
+| Intake check | Claude Sonnet 5.5 |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
 | Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and page reads through Exa Contents, with Baymax's own plain reader as the fallback |
@@ -124,7 +127,7 @@ cards      <--IPC--  whole display state                       <--- task events
 
 - **The port.** The engine code lives in `src/engine/` and imports nothing from `src/main/`, the renderer or `electron`. It builds its own providers from `src/providers/`; its start takes only serializable values (keys, paths, settings), and test fakes enter through a separate optional parameter. Main and the engine talk only through one port object (`send`, `onMessage`, `close`) carrying plain JSON messages with ids, typed in `src/shared/engine.ts`. Cancel is a port message (`{ type: "cancel", taskId }`) that the engine maps to its own `AbortController`. V1 implements the port in-process; V2 swaps in a `utilityProcess` behind the same port.
 - **Who runs what.** The engine runs the intake check at once for every question, typed or spoken, even while a task runs, and tells main through the port what the words are (a new task, a follow-up, the answer to the waiting question, or outside research), with the start line and the brief. Main owns the queue: it queues the task or sends the engine a run message when none runs. Only then does the engine's runner run the worker and the done check, attaching a queued follow-up's parent result at that moment, and report back through the port. Answers kept for follow-ups stay apart from the running task's state, so a database can later be added beside them.
-- **The engine keeps nothing across tasks.** Main sends what each step needs: a question carries the user's exact words, main's short record of recent questions and answers, and the clarifying question shown at key-down if any; a run message carries the task id, goal version, depth and brief, and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines and the "Let me check." timer.
+- **The engine keeps nothing across tasks.** Main sends what each step needs: a question carries the user's exact words, main's short record of recent questions and answers, and the clarifying question shown at key-down if any; a run message carries the task id, goal version, depth and brief, and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines and the talker's "One moment." timer.
 - **Why in main.** The reasons for a separate process (synchronous SQLite, crash resume, restart) are V2, the agent loop mostly waits on the network, the spike ran the loop inside main, and a separate process was never tested on this repo's Electron 40.
 - **The risk and its limits.** Engine code that blocks would also freeze voice and cancel. V1 lowers this without guaranteeing against it: no `*Sync` calls anywhere in `src/`; every model and web call has an `AbortSignal` and a deadline; downloads are capped before parsing ([Web tool](#web-tool)); history and kept page text are bounded. Expected network, model and parsing failures are caught at their awaited task boundaries and end the task with a [failure line](#failures-the-user-hears). A truly uncaught exception or unhandled rejection is not attributed to a task and normal work is not resumed, because Node's state may be undefined: main logs it, shows "Baymax hit a problem and is restarting." and relaunches the app (`app.relaunch()`, then exit). A relaunched app that fails again within about 10 s of start exits instead of relaunching, so a start-up bug cannot loop. Only a separate process (V2) can stop a truly stuck engine.
 - **Keys.** Main reads `.env` once at start, keeps the Deepgram, Anthropic and search keys, and deletes them from `process.env` before any window opens. The renderer gets no key and makes no network calls; the display state carries display fields only.
@@ -132,17 +135,25 @@ cards      <--IPC--  whole display state                       <--- task events
 
 ### Voice
 
-- **Listening.** The renderer records the microphone (`getUserMedia`) while Option is held and hands the clip to main over typed IPC at key release; it also plays speech (Web Audio), because Chrome's echo canceller only removes audio Chrome itself plays (Electron issue #47043). Main sends the clip once to Deepgram's pre-recorded transcription. A hold longer than the cap is ended by code as a key-up, and counts as a question.
-- **Hold filter.** Recording is requested at key-down so the first word is not lost; because IPC, the mic permission and the recorder start are asynchronous, that is a measured target, not a guarantee. At release the hold tracker accepts or discards the hold: a hold under about 0.3 s, or one during which any other key was pressed (Option + arrow jumps a word in a terminal), is discarded silently, with no card and no transcription call. Main passes the time with each key event, so the tracker stays pure; any key-down still silences speech at once. The renderer always hands over the clip; main drops a discarded one. If the transcript fails or comes back empty, Baymax says "I didn't catch that, say it again."; a blocked or missing microphone gets its own line, and Deepgram being unreachable shows voice unavailable instead ([failure lines](#failures-the-user-hears)). A late transcript for an old utterance is dropped. If the renderer dies or reloads while recording or playing, main drops that clip, any transcript still in flight from before, and the playing line; a key still held stays held, so nothing is spoken until it is released. A voice failure never stops research that is running.
-- **Why single calls.** V1 reads nothing before key release and does not continue a cut line, so a live stream (reconnects, end-of-turn signals, keep-alive) adds about a day for little gain. The cost is about one second more before the transcript and no live words on screen while speaking.
-- **Speaking.** Baymax speaks in four places only, and everything spoken is also on the screen: the clarifying question, the start line ("Okay, looking at how Hermes works."), a one- or two-line answer with the rest on the card, and a failure line. A queued task folds into the start line ("Okay, I'll look at that after the current one.").
-- **One playback owner.** All speech goes through one `speak(line, kind)` function in main. Each line carries its task id; one line plays at a time and a new line waits for it; the fixed "Let me check." is dropped if the start line is ready first; a line for a cancelled or replaced task is dropped. A key press, mute or cancel clears the pending lines as well as the one playing. Nothing is spoken while the key is held, and pressing the key while Baymax speaks silences it at once.
+- **Listening.** At key-down the renderer starts the microphone (`getUserMedia`) and an AudioWorklet that sends 16 kHz 16-bit PCM frames to main over typed IPC; the microphone is on only while the key is held. The renderer also plays speech (Web Audio), because Chrome's echo canceller only removes audio Chrome itself plays (Electron issue #47043). A hold longer than the cap is ended by code as a key-up, and counts as a question.
+- **Warm socket.** Main opens one Flux WebSocket at start (connecting takes about 1.7 s) with `eot_threshold=1.0` and `eot_timeout_ms=60000`, so Flux never ends a turn on a pause; one socket carries turn after turn. Flux rejects a `KeepAlive` message, so main sends about 100 ms of zero PCM every 5 s while idle. A closed socket reconnects with backoff. If the socket is not open at key-down, main reconnects at once and buffers the frames, then sends them when it opens; only if the reconnect fails is the utterance sent whole to Nova-3 pre-recorded.
+- **Ending the turn.** At key release the renderer sends its last frames and an end-of-frames marker. After the marker, main sends about 200 ms of zero PCM at once (no wait) and then `ForceEndTurn`; without that silence the final came 1.8-2.7 s late in 3 of 8 runs, with it 0.41-0.49 s in 8 of 8. The final `EndOfTurn` is the transcript. If it has not come about 2 s after release, the latest `Update` text is used. If Flux saw no turn (a `FORCE_END_TURN_NO_ACTIVE_TURN` warning) or the text is empty, Baymax says "I didn't catch that, say it again."
+- **Hold filter.** At release the hold tracker accepts or discards the hold: a hold under about 0.3 s, or one during which any other key was pressed (Option + arrow jumps a word in a terminal), is discarded silently, with no card. Its frames already reached Flux, so main still ends that turn and drops its transcript. Main passes the time with each key event, so the tracker stays pure; any key-down still silences speech at once. A blocked or missing microphone gets its own line, and Deepgram being unreachable shows voice unavailable instead ([failure lines](#failures-the-user-hears)). A late transcript for an old utterance is dropped. If the renderer dies or reloads while recording or playing, main ends that turn, drops its transcript and the playing line; a key still held stays held, so nothing is spoken until it is released. A voice failure never stops research that is running.
+- **Speaking.** Only the [talker](#talker) speaks, in three places, and everything spoken is also on the screen: its first line after a question, the intake's clarifying question, and the result; the intake and the worker never speak. Progress shows on the screen only. Fixed [failure lines](#failures-the-user-hears) are spoken as written.
+- **One playback owner.** All speech goes through one `speak(line, kind)` function in main. Each line carries its task id; one line plays at a time and a new line waits for it; a line for a cancelled or replaced task is dropped. A key press, mute or cancel clears the pending lines as well as the one playing. Nothing is spoken while the key is held, and pressing the key while Baymax speaks silences it at once.
 - **Mute.** A switch turns speech off so everything shows on the screen only.
 - **Voice down.** When Deepgram is unreachable, nothing can be spoken: Baymax shows that voice is unavailable and points to the text box; earlier answers, cancel and card clicks keep working.
 
+### Talker
+
+- **What it is.** One Claude Haiku 5.5 call in main per final transcript or typed question, started at the same moment as the intake check. It gets the user's words, the recent questions and answers, the running and waiting tasks and the waiting clarifying question, and streams a short spoken line into TTS.
+- **What it says.** A short reply it can give from what it knows ("hi", "thanks", "what is 2 + 2") is the whole answer. For research it says a line that shows it understood the question ("I'll check tomorrow's Delhi forecast; the rain chance decides the umbrella."), with no time promise and no claim of progress. It never asks its own question and never decides what a task means: the intake routes, and binds answers to a waiting question.
+- **Later lines.** The intake's clarifying question and the worker's result reach the user through the talker, in its own words, with the choices and the full answer on the card.
+- **Fallback.** If the talker has said nothing about 1.5 s after key release, code speaks "One moment." A talker failure never stops the intake.
+
 ### Intake and tasks
 
-- **The intake check** is one structured Sonnet 5.5 call, its say-back line first in the output. It gets the user's exact words, a short code-kept record of the recent questions and answers, and the waiting clarifying question if any. It decides whether the words are a new question, the answer to the waiting question or a follow-up; whether a clarifying question is needed (only when missing intent, constraints or the thing referred to would change the work); the start line; and the worker brief. If the start line is not ready about 1.5 seconds after the final transcript, code speaks a fixed "Let me check."
+- **The intake check** is one structured Sonnet 5.5 call, its say-back line first in the output. It gets the user's exact words, a short code-kept record of the recent questions and answers, and the waiting clarifying question if any. It decides whether the words are a new question, the answer to the waiting question, a follow-up or chat (the talker's line was the whole answer: no worker, and the thinking card becomes a done card showing that line); whether a clarifying question is needed (only when missing intent, constraints or the thing referred to would change the work); the start line; and the worker brief.
 - **Outside research.** A request for anything but research gets the fixed [line](#failures-the-user-hears), and no task starts.
 - **The say-back** names what Baymax understood ("how Hermes works inside, from its docs and code"). It is feedback, not a gate: the work starts at once, and a wrong say-back is fixed by cancelling the card and asking again.
 - **Tasks and the queue.** Main keeps one list of tasks, each with an id and a state: thinking, clarifying, queued, running, done, incomplete or cancelled. At most three tasks wait while one runs. The intake still runs for every question, because the words may answer the waiting question; main refuses only a new task or follow-up when three already wait, with "I already have three waiting. Cancel one or ask again later.", and that card leaves like a cancelled one. A "thinking" card appears at key release (or on submit) before the intake returns, and its id becomes the task's id. Each task carries a goal version (always 1 in V1) and a depth value (always "normal" in V1).
@@ -236,8 +247,11 @@ It checks support and completion, not truth.
 | What | Starting value |
 | --- | --- |
 | Longest hold | about 90 s |
-| Fixed "Let me check." after the final transcript | about 1.5 s |
-| First spoken line, target | under about 3 s; above it, the intake moves to Haiku 5.5 |
+| Fixed "One moment." when the talker is silent after key release | about 1.5 s |
+| First spoken line, target | under about 3 s after key release |
+| Flux silence keep-alive | about 100 ms of zero PCM every 5 s |
+| Zero PCM before `ForceEndTurn` | about 200 ms, sent at once |
+| Final transcript deadline after key release | about 2 s, then the latest `Update` |
 | Searches per task | about 8 |
 | Active time per task | about 2 minutes |
 | Model calls per task | about 25 |
@@ -271,14 +285,18 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/index.ts` | Main process entry: keys, engine start, wiring, hotkey, restart on an uncaught failure |
 | `src/preload.ts` | Bridge between main and renderer (`window.baymax`) |
 | `src/renderer.ts`, `src/renderer/` | The screen (React): text box, cards, mic recording, playback |
-| `src/renderer/microphone.ts` | Mic recording of the held clip |
+| `src/renderer/microphone.ts` | The microphone while the key is held: PCM frames to main, then one end or failure |
+| `src/renderer/capture.ts` | The Web Audio capture: an AudioWorklet, loaded as a data URL, that posts 16 kHz PCM frames |
+| `src/renderer/pcm.ts` | Microphone samples to 16 kHz mono 16-bit PCM; pure |
 | `src/renderer/playback.ts` | Playback of spoken lines (Web Audio) |
 | `src/renderer/notch/` | The shell that unfolds from the notch: its modes, outline, pointer and click capture, and the dot that reopens the last folded answer |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
 | `src/main/hold.ts` | Hold state and the accept or discard outcome from key events and the time; pure |
 | `src/main/platform.ts` | Platform flags and labels |
-| `src/main/recording.ts` | One utterance: recording commands, the clip, the transcript; discarded clips and late transcripts dropped |
+| `src/main/recording.ts` | One utterance: recording commands, the mic audio, the transcript in hold order; discarded holds and late transcripts dropped |
+| `src/main/flux-turns.ts` | Flux turns bound to held utterances: sending order, `ForceEndTurn`, the final-transcript deadline and the Nova-3 batch fallback |
+| `src/main/flux-turns-model.ts` | The held utterance and its end: delivery once, the turn ended on the socket, the batch call |
 | `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, voice-down reported |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line timing |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
@@ -298,6 +316,9 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
 | `src/providers/` | Process-neutral provider code: the Exa search and page-contents calls and their outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
 | `src/providers/deepgram.ts` | Deepgram calls: pre-recorded transcription and REST speech |
+| `src/providers/warm-socket.ts` | A socket kept open from start that reconnects with backoff, and the real WebSocket opener |
+| `src/providers/flux.ts` | The Flux socket: the listen URL, its messages, the silence keep-alive and ending a turn |
+| `src/providers/wav.ts` | A WAV header in front of held PCM for the batch call |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.
 - `src/engine/` imports nothing from `src/main/`, `src/renderer/` or `electron`. `src/main/` imports the engine only through `src/engine/index.ts`. The renderer never imports `src/shared/engine.ts` or the engine.
@@ -358,10 +379,10 @@ Kept from the 26 Oct design freeze so V1 can grow into it. Each part says what i
 | Normal | up to 3 | about 15 | 8 | 5 minutes | about 50 cents | set at build |
 | Deep | up to 5 | about 60 | 30 | 20 minutes | about 75 cents | about 50 cents |
 
-### Talker and streaming voice
+### Talker labels and streaming voice
 
-- **Talker**: Claude Haiku 5.5 in main, between speech-to-text and the intake check. It replaces V1's fixed "Let me check." with a quick spoken line when the intake's line is not ready within about 3 s (a line that makes no time promise and never claims progress) and labels what the user said: yes, no (with the reason), stop, answer (with the chosen option or the "something else" text), go on, progress, correction, new task, unclear. Code binds the first six; the rest go to the intake check. The talker never decides what a task means; its retry is in the [retry table](#cost-ledger-and-retry-owner). A short delay before a voice-started task begins, so the user can still say "wait", is set at build (starting value: none).
-- **Streaming voice**: Deepgram Flux STT (swap: Cartesia Ink-2) over a WebSocket (16 kHz PCM frames from an AudioWorklet), live words on screen, reconnect, `ForceEndTurn` after the remaining frames on key-up, and a warm mic with about 0.3 s of pre-key audio if measuring shows the first word is lost. Flux TTS (swap: ElevenLabs) with Ping keep-alive and `Interrupt` carrying the session-wide playback offset, which is how `text_spoken` is known. With Aura-2 only, a notice counts as heard on the renderer's playback-finished report alone and is replayed whole after an interruption. If TTS drops mid-line, main reconnects and the notice stays unheard; when `text_spoken` is unknown about 1 s after a key cut, the whole line counts as not heard; stale audio frames are rejected. If the renderer dies or reloads while recording or playing, main closes the utterance id, clears the hold state, drops stale frames and marks the notice unheard. A final transcript that does not arrive after key release closes the utterance id; a late or second final is never acted on.
+- **Talker labels**: V1's [talker](#talker) also labels what the user said: yes, no (with the reason), stop, answer (with the chosen option or the "something else" text), go on, progress, correction, new task, unclear. Code binds the first six; the rest go to the intake check. Its retry is in the [retry table](#cost-ledger-and-retry-owner). A short delay before a voice-started task begins, so the user can still say "wait", is set at build (starting value: none).
+- **Streaming voice, beyond V1**: live words on screen, and a warm mic with about 0.3 s of pre-key audio if measuring shows the first word is lost. Flux TTS (swap: ElevenLabs) with Ping keep-alive and `Interrupt` carrying the session-wide playback offset, which is how `text_spoken` is known. With Aura-2 only, a notice counts as heard on the renderer's playback-finished report alone and is replayed whole after an interruption. If TTS drops mid-line, main reconnects and the notice stays unheard; when `text_spoken` is unknown about 1 s after a key cut, the whole line counts as not heard; stale audio frames are rejected. STT swap: Cartesia Ink-2. Speech-to-speech models stay [out of scope](#out-of-scope) until the V1 pipeline is measured too slow.
 
 ### Speech queue
 
