@@ -119,6 +119,10 @@ const researchLine =
 export const nudgeMessage =
   "You made no new search and read no new page in this round. Research the gaps in the check result above before you answer: make a search and read at least one new page for each gap, then write the whole answer again as the JSON object.";
 
+// Fixed text for a "sourcesThin" answer in a task that has read no page; it is sent once per task.
+export const thinNudgeMessage =
+  'You chose "sourcesThin" without reading any page in this task. Search for the brief and read pages first; choose "sourcesThin" only when the pages you read do not answer it. Then write the whole answer again as the JSON object.';
+
 // What the retry message needs from a failed check; the judge's gaps are model text.
 type FailedCheck =
   | { stage: "answer" | "code"; part: string }

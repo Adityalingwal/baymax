@@ -4,7 +4,7 @@ import type { EngineEvent } from "../../../shared/engine";
 import { withNotFound } from "./found";
 import { checkRound, incomplete, readTurn } from "./run-checks";
 import type { AnswerTurn, CheckRun, Fault, RoundEnd } from "./run-checks";
-import { nudgeMessage, retryMessage } from "./worker-prompt";
+import { nudgeMessage, retryMessage, thinNudgeMessage } from "./worker-prompt";
 
 // What the worker loop gave back: an answer turn to check, an ending, or a cancel.
 export type WorkTurn =
@@ -42,11 +42,22 @@ function wouldBeChecked(turn: AnswerTurn): boolean {
   return turn.kind === "answer" && turn.answer.status === "complete";
 }
 
+type ThinNudge = { nudged: boolean };
+
+function zeroReadThin(rounds: Rounds, turn: AnswerTurn): boolean {
+  return (
+    turn.kind === "answer" &&
+    turn.answer.status === "sourcesThin" &&
+    rounds.checks.pages().length === 0
+  );
+}
+
 // One round up to its checked answer. A research round whose answer came without new research gets one nudge, and its next answer is checked as it is.
 async function answeredRound(
   rounds: Rounds,
   round: number,
   research: boolean,
+  thin: ThinNudge,
 ): Promise<RoundEnd> {
   const start = rounds.researchMark();
   let nudged = !research;
@@ -55,6 +66,13 @@ async function answeredRound(
     if (work.kind === "aborted") return work;
     if (work.kind === "event") return work;
     const turn = readTurn(rounds.checks, work.turn);
+    if (!thin.nudged && zeroReadThin(rounds, turn)) {
+      thin.nudged = true;
+      nudged = true;
+      log(rounds, "thinNudge", round);
+      rounds.history.push({ role: "user", content: thinNudgeMessage });
+      continue;
+    }
     const unresearched = rounds.researchMark() === start;
     if (nudged || !unresearched || !wouldBeChecked(turn)) {
       return checkRound(rounds.checks, turn);
@@ -96,12 +114,18 @@ function lastEnding(
 
 // The first round and up to two retry rounds in one conversation: at most three checked answers, never a fourth.
 export async function runRounds(rounds: Rounds): Promise<EngineEvent | null> {
-  let end = await answeredRound(rounds, 0, false);
+  const thin: ThinNudge = { nudged: false };
+  let end = await answeredRound(rounds, 0, false, thin);
   for (let round = 1; round <= retryRounds; round += 1) {
     if (end.kind !== "fault") return eventOf(end);
     log(rounds, "retryRound", round, end.fault);
     rounds.history.push({ role: "user", content: retryMessage(end.fault) });
-    end = await answeredRound(rounds, round, end.fault.stage !== "answer");
+    end = await answeredRound(
+      rounds,
+      round,
+      end.fault.stage !== "answer",
+      thin,
+    );
   }
   if (end.kind !== "fault") return eventOf(end);
   return lastEnding(
