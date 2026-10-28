@@ -55,6 +55,14 @@ describe("checkAnswer sources and rules", () => {
     expect(sources.map((source) => source.id)).toEqual(["s1", "s2"]);
   });
 
+  it.each(["[s1]", "  [s1] [S2]  ", "[s1, s2]"])(
+    "fails emptyText for the card %j, which is empty once its markers go",
+    (text) => {
+      const check = checkAnswer(answerWith(text), pages);
+      expect(check).toMatchObject({ passed: false, rule: "emptyText" });
+    },
+  );
+
   it.each([
     ["no claims", answerWith("Prose.", []), "claimWithoutSource"],
     [

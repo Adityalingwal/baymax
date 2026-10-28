@@ -23,19 +23,20 @@ export type CodeCheck =
 // A leftover source marker such as [s1] or [s1, s2], with the spaces before it, is removed; the card names no sources.
 const marker = String.raw`[ \t]*\[\s*s\d+(?:\s*,\s*s\d+)*\s*\]`;
 
-// One pass over model text: an escape pair stays as written, a marker goes,
-// and every other bracket or autolink start is escaped, so no link, image or reference can form.
-const cardToken = new RegExp(
-  String.raw`\\[\s\S]|(${marker})|[[\]]|<[a-zA-Z][a-zA-Z0-9+.-]*:`,
-  "gi",
-);
+const markerToken = new RegExp(String.raw`\\[\s\S]|${marker}`, "gi");
 
+// Every bracket or autolink start is escaped, so no link, image or reference can form; an escape pair stays as written.
+const escapeToken = /\\[\s\S]|[[\]]|<[a-zA-Z][a-zA-Z0-9+.-]*:/g;
+
+// Two passes, so removing a marker can never join text into a link: markers go first, then the escape pass runs on what is left.
 function rewriteCard(cardText: string): string {
-  return cardText
-    .replace(cardToken, (token, found: string | undefined) => {
-      if (token.startsWith("\\")) return token;
-      return found === undefined ? `\\${token}` : "";
-    })
+  const unmarked = cardText.replace(markerToken, (token) =>
+    token.startsWith("\\") ? token : "",
+  );
+  return unmarked
+    .replace(escapeToken, (token) =>
+      token.startsWith("\\") ? token : `\\${token}`,
+    )
     .trim();
 }
 
@@ -43,8 +44,13 @@ function rewriteCard(cardText: string): string {
 const citedIds = (answer: Answer) =>
   answer.claims.flatMap((claim) => claim.sourceIds);
 
-function failedRule(answer: Answer, pages: ReadPage[]): CheckRule | null {
-  if (answer.spokenLine.trim() === "" || answer.cardText.trim() === "") {
+// The card text is the built one, as the user sees it: a card of only markers is empty.
+function failedRule(
+  answer: Answer,
+  cardText: string,
+  pages: ReadPage[],
+): CheckRule | null {
+  if (answer.spokenLine.trim() === "" || cardText === "") {
     return "emptyText";
   }
   const { claims } = answer;
@@ -75,7 +81,7 @@ export function answerFindings(answer: Answer, pages: ReadPage[]): Findings {
 
 export function checkAnswer(answer: Answer, pages: ReadPage[]): CodeCheck {
   const { cited, findings } = built(answer, pages);
-  const rule = failedRule(answer, pages);
+  const rule = failedRule(answer, findings.cardText, pages);
   return rule === null
     ? { passed: true, findings, cited }
     : { passed: false, rule, uncheckedPart: rules[rule], findings };

@@ -77,6 +77,12 @@ const codeRows: CodeRow[] = [
     findings: { ...goodFindings, cardText: "" },
   },
   {
+    name: "(1) a card of only markers",
+    answer: { cardText: "[s1] [s2]" },
+    part: "an empty spoken line or card text",
+    findings: { ...goodFindings, cardText: "" },
+  },
+  {
     name: "(2) no claims",
     answer: { claims: [] },
     part: "claims without a source",

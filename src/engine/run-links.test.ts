@@ -79,10 +79,10 @@ const rows: Row[] = [
     expected: `A loop, see \\[the docs\\](${pageUrl("one")}).`,
   },
   {
-    name: "a read URL with parentheses",
-    page: "paren(1)",
-    cardText: "A loop.",
-    expected: `A loop.`,
+    name: "a marker inside an autolink",
+    page: "one",
+    cardText: `A loop, see <[s1]${unread}>.`,
+    expected: `A loop, see \\<${unread}>.`,
   },
 ];
 

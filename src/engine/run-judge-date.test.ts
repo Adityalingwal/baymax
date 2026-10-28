@@ -43,3 +43,22 @@ describe("runTask judge date", () => {
     expect(judgeInstructions).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 });
+
+describe("runTask judge card text", () => {
+  it("shows the judge the card as the user sees it, with no markers and escaped brackets", async () => {
+    const run = await startRun([
+      toolUseReply([{ read: pageUrl("one") }]),
+      workerAnswer({
+        ...oneCited,
+        cardText: "Hermes runs a loop [s1] with [brackets].",
+      }),
+      verdictReply(),
+    ]);
+    run.port.send(runTask());
+    await run.ended();
+    const message = run.requests[2].messages[0].content;
+    const text = typeof message === "string" ? message : "";
+    const card = /<card_text>\n([\s\S]*?)\n<\/card_text>/.exec(text)?.[1];
+    expect(card).toBe("Hermes runs a loop with \\[brackets\\].");
+  });
+});

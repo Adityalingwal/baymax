@@ -143,7 +143,8 @@ async function judged(
       user: judgeMessage({
         today: run.today,
         brief: run.brief,
-        answer,
+        // the judge sees the card the user sees
+        answer: { ...answer, cardText: check.findings.cardText },
         pages: check.cited,
       }),
     },
