@@ -6,27 +6,29 @@ import { endPlaying, guarded, log, occupy, voiceBack } from "./speech-model";
 import { startRest } from "./speech-rest";
 import type { SaidLine } from "./tasks/state";
 
-function speak(aura: Aura, stream: StreamJob, clauses: string[]): void {
+// Every send is checked; false means the socket failed and the line takes the socket-failure path.
+function speak(aura: Aura, stream: StreamJob, clauses: string[]): boolean {
   for (const clause of clauses) {
-    aura.speak(clause);
+    if (!aura.speak(clause)) return false;
     stream.spokeSinceFlush = true;
     // The first clause is flushed at once, so its audio starts while the rest is written.
-    if (stream.flushesSent === 0) flush(aura, stream);
+    if (stream.flushesSent === 0 && !flush(aura, stream)) return false;
   }
+  return true;
 }
 
-function flush(aura: Aura, stream: StreamJob): void {
+function flush(aura: Aura, stream: StreamJob): boolean {
   stream.flushesSent += 1;
   stream.spokeSinceFlush = false;
-  aura.flush();
+  return aura.flush();
 }
 
 // Text goes out clause by clause; Flush only after the first clause and at the end, at most two per line.
-function feed(aura: Aura, stream: StreamJob, text: string): void {
+function feed(aura: Aura, stream: StreamJob, text: string): boolean {
   const { clauses } = takeClauses(text, true);
-  speak(aura, stream, clauses);
+  if (!speak(aura, stream, clauses)) return false;
   stream.textEnded = true;
-  if (stream.spokeSinceFlush) flush(aura, stream);
+  return !stream.spokeSinceFlush || flush(aura, stream);
 }
 
 function audioDone(ctx: SpeechContext): void {
@@ -53,7 +55,7 @@ export function startStream(
     textEnded: false,
   };
   if (occupy(ctx, line, stream) === null) return ctx.pump();
-  feed(aura, stream, line.text);
+  if (!feed(aura, stream, line.text)) return auraClosed(ctx);
   audioDone(ctx);
 }
 

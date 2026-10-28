@@ -179,3 +179,15 @@ describe.each(lateResults)("job ownership: an aborted job's $name", (row) => {
     expect(h.voice).toEqual([]);
   });
 });
+
+describe("the cancelled tasks kept", () => {
+  it("keeps the latest 64, so a line of an older cancelled task is said again", () => {
+    const h = createHarness();
+    for (let index = 0; index <= 64; index += 1) {
+      h.speech.cancelTask(`c${index}`);
+    }
+    h.speech.speak(said("still cancelled", "c64"));
+    h.speech.speak(said("forgotten", "c0"));
+    expect(h.texts()).toEqual(["forgotten"]);
+  });
+});

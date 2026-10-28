@@ -65,7 +65,7 @@ describe("a line on the Aura socket (L10)", () => {
   });
 });
 
-describe("clearing a streaming line (L10)", () => {
+describe("cutting a streaming line (L10)", () => {
   it.each([
     [
       "a key press",
@@ -77,7 +77,7 @@ describe("clearing a streaming line (L10)", () => {
       (h: ReturnType<typeof createHarness>) => h.speech.cancelTask("t1"),
     ],
   ])(
-    "%s sends Clear, stops the renderer and drops later audio",
+    "%s restarts the socket, stops the renderer and drops later audio",
     (_name, act) => {
       const { aura, h } = streaming();
       h.speech.speak(said("Hello there."));
@@ -86,19 +86,19 @@ describe("clearing a streaming line (L10)", () => {
       aura.audio(2);
       aura.flushed();
       const lineId = h.chunks[0].lineId;
-      expect(aura.sent.at(-1)).toBe("clear");
+      expect(aura.sent.at(-1)).toBe("restart");
       expect(h.stops).toEqual([{ lineId }]);
       expect(h.chunks).toHaveLength(1);
       expect(h.ends).toEqual([]);
     },
   );
 
-  it("clears a line the renderer never reported once its deadline passes", () => {
+  it("restarts the socket for a line the renderer never reported once its deadline passes", () => {
     const { aura, h } = streaming();
     h.speech.speak(said("Hello there."));
     aura.audio(1);
     h.timers[0].fire();
-    expect(aura.sent.at(-1)).toBe("clear");
+    expect(aura.sent.at(-1)).toBe("restart");
     expect(h.stops).toEqual([{ lineId: h.chunks[0].lineId }]);
   });
 });
@@ -147,5 +147,25 @@ describe("the REST backup (L11)", () => {
       { available: false, cause: "unreachable" },
       { available: true, cause: null },
     ]);
+  });
+});
+
+describe("the REST backup after a failed send or a restart (L11)", () => {
+  it("takes the socket-failure path when a send fails: REST with the whole text before any audio", () => {
+    const { aura, h } = streaming();
+    aura.failSends();
+    h.speech.speak(said("Hello there."));
+    expect(h.texts()).toEqual(["Hello there."]);
+    expect(h.ends).toEqual([]);
+  });
+
+  it("sends the next line to REST while the restarted socket is not open", () => {
+    const { aura, h } = streaming();
+    h.speech.speak(said("Hello there.", "t1"));
+    h.speech.speak(said("Next.", "t2"));
+    aura.audio(1);
+    h.speech.cancelTask("t1");
+    expect(aura.sent.at(-1)).toBe("restart");
+    expect(h.texts()).toEqual(["Next."]);
   });
 });

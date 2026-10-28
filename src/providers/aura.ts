@@ -15,7 +15,7 @@ export type Aura = {
   isOpen: () => boolean;
   speak: (text: string) => boolean;
   flush: () => boolean;
-  clear: () => boolean;
+  restart: () => void; // a fresh socket, so no audio of a cut line can reach the next one
   stop: () => void;
 };
 
@@ -50,6 +50,7 @@ export function readAuraMessage(payload: SocketPayload): AuraEvent {
 }
 
 // One warm Aura-2 socket; text goes in as Speak messages, and each Flush ends with one Flushed.
+// Chunks carry no line id, so a cut line restarts the socket instead of sending Clear.
 export function startAura(params: AuraParams, listener: AuraListener): Aura {
   const socket = startWarmSocket(
     {
@@ -70,7 +71,7 @@ export function startAura(params: AuraParams, listener: AuraListener): Aura {
     isOpen: socket.isOpen,
     speak: (text) => send({ type: "Speak", text }),
     flush: () => send({ type: "Flush" }),
-    clear: () => send({ type: "Clear" }),
+    restart: socket.restart,
     stop: socket.stop,
   };
 }

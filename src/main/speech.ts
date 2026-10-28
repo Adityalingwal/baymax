@@ -24,6 +24,7 @@ type Speech = {
 };
 
 const everyLine: Matches = () => true;
+const cancelledLimit = 64;
 
 function dropPending(state: SpeechState, matches: Matches, why: string): void {
   const kept = state.pending.filter((line) => !matches(line));
@@ -99,7 +100,13 @@ function changeMuted(ctx: SpeechContext, muted: boolean): void {
 }
 
 function cancelLines(ctx: SpeechContext, taskId: TaskId): void {
-  ctx.state.cancelled.add(taskId);
+  const { cancelled } = ctx.state;
+  cancelled.add(taskId);
+  // Only recent cancels can still meet a late line, so the set keeps the latest ones.
+  if (cancelled.size > cancelledLimit) {
+    const oldest = cancelled.values().next();
+    if (oldest.done !== true) cancelled.delete(oldest.value);
+  }
   const matches: Matches = (line) => line.taskId === taskId;
   clearSpeech(ctx, { matches, why: "task cancelled", sendStop: true });
   pump(ctx);

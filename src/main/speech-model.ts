@@ -88,13 +88,13 @@ export function guarded(name: string, call: () => void): boolean {
   }
 }
 
-// A stream cut before its audio ended is cleared on the socket, so its audio stops coming.
+// A stream cut before its audio ended restarts the socket, so none of its audio reaches the next line.
 export function endPlaying(ctx: SpeechContext, lineId: LineId): boolean {
   const playing = ctx.state.playing;
   if (playing === null || playing.lineId !== lineId) return false;
   ctx.state.playing = null;
   guarded("cancelDeadline", playing.cancelDeadline);
-  if (playing.stream !== null) guarded("clear", () => ctx.aura?.clear());
+  if (playing.stream !== null) guarded("restart", () => ctx.aura?.restart());
   return true;
 }
 

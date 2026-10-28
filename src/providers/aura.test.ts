@@ -59,18 +59,29 @@ describe("Aura socket", () => {
     expect(h.last().protocols).toEqual(["token", "dg-key"]);
   });
 
-  it("sends Speak, Flush and Clear as JSON only while open", () => {
+  it("sends Speak and Flush as JSON only while open", () => {
     const { h, aura } = start();
     expect(aura.speak("early")).toBe(false);
     h.last().events.opened();
     aura.speak("Hello there.");
     aura.flush();
-    aura.clear();
     expect(h.last().sent.map(describeSent)).toEqual([
       JSON.stringify({ type: "Speak", text: "Hello there." }),
       JSON.stringify({ type: "Flush" }),
-      JSON.stringify({ type: "Clear" }),
     ]);
+  });
+
+  it("restarts: the old socket is closed, its late audio is ignored, and a fresh one opens", () => {
+    const { h, seen, closes, aura } = start();
+    const old = h.last();
+    old.events.opened();
+    aura.restart();
+    old.events.received(pcm);
+    expect(old.closed).toBe(true);
+    expect(h.sockets).toHaveLength(2);
+    expect(aura.isOpen()).toBe(false);
+    expect(seen).toEqual([]);
+    expect(closes).toEqual(["closed"]);
   });
 
   it("passes on received messages and a close", () => {

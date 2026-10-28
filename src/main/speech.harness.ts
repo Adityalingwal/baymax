@@ -36,10 +36,14 @@ function createFakeTimers() {
 
 // An Aura socket the test opens, closes and answers; it records what speech sent on it in order.
 export function createFakeAura() {
-  const control = { open: false, listener: null as AuraListener | null };
+  const control = {
+    open: false,
+    failSends: false,
+    listener: null as AuraListener | null,
+  };
   const sent: string[] = [];
   const record = (entry: string) => {
-    if (!control.open) return false;
+    if (!control.open || control.failSends) return false;
     sent.push(entry);
     return true;
   };
@@ -47,7 +51,11 @@ export function createFakeAura() {
     isOpen: () => control.open,
     speak: (text) => record(`speak ${text}`),
     flush: () => record("flush"),
-    clear: () => record("clear"),
+    restart: () => {
+      sent.push("restart");
+      control.open = false;
+      control.listener?.closed();
+    },
     stop: () => undefined,
   };
   const listener = () => {
@@ -62,6 +70,9 @@ export function createFakeAura() {
     },
     open: () => {
       control.open = true;
+    },
+    failSends: () => {
+      control.failSends = true;
     },
     close: () => {
       control.open = false;
