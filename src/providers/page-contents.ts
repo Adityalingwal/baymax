@@ -22,12 +22,18 @@ function fieldsOf(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-// Exa leaves a URL it could not fetch out of results and marks it as an error in statuses.
-function failedInStatuses(statuses: unknown[], url: string): boolean {
-  return statuses.some((status) => {
-    const fields = fieldsOf(status);
-    return fields !== null && fields.id === url && fields.status === "error";
-  });
+// Exa marks each URL as "success" or "error" in statuses; text counts only with a well-formed "success" for this URL.
+function succeededInStatuses(statuses: unknown[], url: string): boolean {
+  const entries = statuses.map(fieldsOf);
+  const wellFormed = entries.every(
+    (fields) =>
+      fields !== null &&
+      typeof fields.id === "string" &&
+      typeof fields.status === "string",
+  );
+  if (!wellFormed) return false;
+  const own = entries.filter((fields) => fields?.id === url);
+  return own.length > 0 && own.every((fields) => fields?.status === "success");
 }
 
 function matchingResult(results: unknown[], url: string) {
@@ -45,7 +51,7 @@ function outcomeFrom(body: unknown, url: string): ContentsOutcome {
   if (fields === null) return noUsableText;
   const { results, statuses } = fields;
   if (!Array.isArray(results) || !Array.isArray(statuses)) return noUsableText;
-  if (failedInStatuses(statuses, url)) return noUsableText;
+  if (!succeededInStatuses(statuses, url)) return noUsableText;
   const result = matchingResult(results, url);
   if (result === null || typeof result.text !== "string") return noUsableText;
   const { text } = result;

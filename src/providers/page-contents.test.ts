@@ -127,6 +127,15 @@ const noTextRows: [string, Reply][] = [
     "a result for another URL",
     json(exaBody([{ ...goodResult, id: "a", url: "https://hermes.example/" }])),
   ],
+  ["a null status entry", json(exaBody([goodResult], [null]))],
+  [
+    "a status entry without an id",
+    json(exaBody([goodResult], [{ status: "success" }])),
+  ],
+  [
+    "no status for this URL",
+    json(exaBody([goodResult], [{ id: "a", status: "success" }])),
+  ],
   ["no results field", json({ statuses: [] })],
   ["no statuses field", json({ results: [goodResult] })],
   ["results that are not a list", json({ results: "none", statuses: [] })],
