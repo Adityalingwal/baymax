@@ -46,8 +46,8 @@ type LimitRow = { name: string; budget: TaskBudget; limit: keyof TaskBudget };
 
 const limitRows: LimitRow[] = [
   {
-    name: "model calls at 15",
-    budget: { ...createTaskBudget(), modelCalls: 15 },
+    name: "model calls at 25",
+    budget: { ...createTaskBudget(), modelCalls: 25 },
     limit: "modelCalls",
   },
   {

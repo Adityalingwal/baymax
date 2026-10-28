@@ -6,7 +6,7 @@ import type {
 } from "../../../shared/engine";
 import type { DispatchDeps } from "../../core/dispatch";
 import { runJudge } from "../../core/judge";
-import type { JudgeOutcome } from "../../core/judge";
+import type { JudgeFlag, JudgeOutcome } from "../../core/judge";
 import type { TaskBudget } from "../../core/limits";
 import { parseAnswer } from "./answer";
 import type { Answer } from "./answer";
@@ -26,13 +26,25 @@ export type CheckRun = {
   built: (findings: Findings) => void;
 };
 
-// A failed check that earns the retry round. Stage and rule are code-defined, for the log; part is for the worker.
-export type Fault = {
-  stage: "code" | "judge" | "answer";
-  rule: string;
-  part: string;
-  findings: Findings | null; // the checked card, for an unchecked ending; null for an answer that never parsed
-};
+// A failed check that earns a retry round. Stage and rule are code-defined, for the log; part is for the worker.
+// findings is the checked card, for the ending after the last round; an answer that never parsed has none.
+type FaultBase = { rule: string; part: string };
+export type Fault =
+  | (FaultBase & { stage: "answer"; findings: null })
+  | (FaultBase & { stage: "code"; findings: Findings })
+  | (FaultBase & {
+      stage: "judge";
+      findings: Findings;
+      flags: JudgeFlag[];
+      gaps: string[];
+      spokenLine: string; // trimmed
+    });
+
+// An answer turn as the round sees it, read once: cut off, not valid, or a parsed answer.
+export type AnswerTurn =
+  | { kind: "cutOff" }
+  | { kind: "malformed" }
+  | { kind: "answer"; answer: Answer };
 
 export type RoundEnd =
   | { kind: "event"; event: EngineEvent }
@@ -97,9 +109,17 @@ function verdictEnd(
         }),
       );
     case "fail": {
-      const { failed: rule, uncheckedPart: part } = verdict;
-      const { findings } = check;
-      return { kind: "fault", fault: { stage: "judge", rule, part, findings } };
+      const { failed: rule, uncheckedPart: part, flags, gaps } = verdict;
+      const fault: Fault = {
+        stage: "judge",
+        rule,
+        part,
+        findings: check.findings,
+        flags,
+        gaps,
+        spokenLine: answer.spokenLine.trim(),
+      };
+      return { kind: "fault", fault };
     }
     case "pass": {
       const spokenLine = answer.spokenLine.trim();
@@ -148,17 +168,24 @@ function answerFault(rule: keyof typeof answerFaults): RoundEnd {
   };
 }
 
+export function readTurn(
+  run: CheckRun,
+  turn: { kind: "answer"; text: string } | { kind: "cutOff" },
+): AnswerTurn {
+  if (turn.kind === "cutOff") return turn;
+  const answer = parseAnswer(turn.text);
+  if (answer !== null) return { kind: "answer", answer };
+  run.deps.log({ event: "answerMalformed", taskId: run.task.taskId });
+  return { kind: "malformed" };
+}
+
 // One answer turn through its checks: the code check first, the judge only for an answer that passed it.
 export async function checkRound(
   run: CheckRun,
-  turn: { kind: "answer"; text: string } | { kind: "cutOff" },
+  turn: AnswerTurn,
 ): Promise<RoundEnd> {
-  if (turn.kind === "cutOff") return answerFault("cutOff");
-  const answer = parseAnswer(turn.text);
-  if (answer === null) {
-    run.deps.log({ event: "answerMalformed", taskId: run.task.taskId });
-    return answerFault("malformed");
-  }
+  if (turn.kind !== "answer") return answerFault(turn.kind);
+  const { answer } = turn;
   if (answer.status !== "complete") return ended(statusEvent(run, answer));
   const check = checkAnswer(answer, run.pages());
   run.built(check.findings);
