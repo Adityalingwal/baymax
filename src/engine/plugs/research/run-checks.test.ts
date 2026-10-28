@@ -26,6 +26,7 @@ function checkRun(built: Findings[]): CheckRun {
       limits: "l",
       userWords: "w",
     },
+    today: "2026-10-27",
     pages: () => [page],
     found: () => null,
     built: (findings) => built.push(findings),

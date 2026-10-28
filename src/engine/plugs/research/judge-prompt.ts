@@ -11,6 +11,7 @@ Set three flags:
 - goalMet: the card meets the brief's goal, result shape and constraints. A well-supported answer to a different question is false. A near match called a full match is false.
 - claimsBacked: every important factual claim in the card is represented in claims and supported by the read pages named in that claim's sourceIds.
 - spokenLineBacked: every assertion in spokenLine is supported by cardText itself. Support in a page alone does not count.
+The message starts with today's date. For a current fact (weather now or today, a live price, a score, opening hours), a claim is backed only when a read page gives it for the place and the date or period the brief asks for. A page for another place, another date or an unclear date does not back it: set claimsBacked to false and name the gap.
 
 gaps: when a flag is false, a list of short phrases, each naming one thing the answer is missing or does not back with a read page, written so it can be looked up on the web, for example "the price of the Pro model". An empty list when all three flags are true.
 
@@ -24,17 +25,19 @@ function claimLines(answer: Answer): string {
 }
 
 export function judgeMessage(params: {
+  today: string;
   brief: WorkerBrief;
   answer: Answer;
   pages: ReadPage[];
 }): string {
-  const { brief, answer, pages } = params;
+  const { today, brief, answer, pages } = params;
   const answerParts = [
     taggedText("spoken_line", answer.spokenLine),
     taggedText("card_text", answer.cardText),
     taggedText("claims", claimLines(answer)),
   ];
   return [
+    `Today's date: ${today}.`,
     briefForModel(brief),
     `<answer>\n${answerParts.join("\n")}\n</answer>`,
     ...pages.map(pageForModel),

@@ -21,6 +21,7 @@ export type CheckRun = {
   deps: DispatchDeps;
   task: { taskId: TaskId; budget: TaskBudget; signal: AbortSignal };
   brief: WorkerBrief;
+  today: string; // the worker's date, so the judge reads current facts against the same day
   pages: () => ReadPage[];
   found: () => Findings | null;
   built: (findings: Findings) => void;
@@ -139,7 +140,12 @@ async function judged(
     { ...run.task, role: "judge" },
     {
       system: judgeInstructions,
-      user: judgeMessage({ brief: run.brief, answer, pages: check.cited }),
+      user: judgeMessage({
+        today: run.today,
+        brief: run.brief,
+        answer,
+        pages: check.cited,
+      }),
     },
   );
   if (verdict.kind === "aborted") return { kind: "aborted" };

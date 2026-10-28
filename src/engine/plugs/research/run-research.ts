@@ -116,6 +116,7 @@ function startRounds(run: ResearchRun): Rounds {
     deps: run.deps,
     task: run.task,
     brief: run.command.brief,
+    today: run.today,
     pages: web.pages,
     found,
     built: (findings) => (built = findings),
