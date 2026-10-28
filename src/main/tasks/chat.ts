@@ -32,8 +32,10 @@ export function receiveReply(
     return dropped(change, `talker reply for ${taskId}`);
   }
   record.reply = reply;
-  // Kept for a chat route that may still come; nothing shown changes yet.
-  if (!record.chat || record.card.state !== "thinking") return false;
-  endWith(change, record, reply);
-  return true;
+  // Every route's card shows what the talker said.
+  if (reply.kind === "said") record.card.reply = reply.text;
+  if (record.chat && record.card.state === "thinking") {
+    endWith(change, record, reply);
+  }
+  return reply.kind === "said" || record.chat;
 }

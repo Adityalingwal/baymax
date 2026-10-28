@@ -15,7 +15,7 @@ describe("a line the talker writes as it goes", () => {
     const aura = createFakeAura();
     const h = createHarness(aura);
     aura.open();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk" });
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     line.push("Sure, I'll");
     expect(aura.sent).toEqual(["speak Sure,", "flush"]);
     line.push(" check the forecast. The rain");
@@ -33,7 +33,7 @@ describe("a line the talker writes as it goes", () => {
 
   it("waits for the whole text before the REST call when the socket is not open", () => {
     const h = createHarness();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk" });
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     h.speech.speak(said("Next."));
     line.push("Hello ");
     expect(h.texts()).toEqual([]);
@@ -44,7 +44,7 @@ describe("a line the talker writes as it goes", () => {
 
   it("drops a line that ended with no text and goes on", () => {
     const h = createHarness();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk" });
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     h.speech.speak(said("Next."));
     line.end();
     expect(h.texts()).toEqual(["Next."]);
@@ -56,7 +56,7 @@ describe("a talker line's backup and audio", () => {
     const aura = createFakeAura();
     const h = createHarness(aura);
     aura.open();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk" });
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     line.push("Hello");
     aura.close();
     line.push(" there.");
@@ -83,27 +83,49 @@ describe("a talker line's backup and audio", () => {
   });
 });
 
-describe('"One moment." and a talker line', () => {
-  it('lets "One moment." go ahead of a talker line still waiting for its words', () => {
+describe('"One moment." and its talker line', () => {
+  it("goes ahead of its talker line still waiting for its words", () => {
     const h = createHarness();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk" });
-    h.speech.speak(said("One moment.", null, "moment"));
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
+    h.speech.sayMoment("k1");
     line.push("Hello there.");
     line.end();
     expect(h.texts()).toEqual(["One moment."]);
   });
 
-  it('drops "One moment." once a talker line is being spoken', async () => {
+  it("takes back its talker line that has words but no audio yet, and plays it after", async () => {
     const h = createHarness();
-    const line = h.speech.speakFed({ taskId: "t1", kind: "talk" });
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     line.push("Hello there.");
     line.end();
-    h.speech.speak(said("One moment.", null, "moment"));
-    await resolveCall(h, 0);
+    h.speech.sayMoment("k1");
+    expect(h.calls[0].signal.aborted).toBe(true);
+    await resolveCall(h, 1);
     h.speech.playbackFinished({
       lineId: h.speeches[0].lineId,
       outcome: "ended",
     });
-    expect(h.texts()).toEqual(["Hello there."]);
+    expect(h.texts()).toEqual(["Hello there.", "One moment.", "Hello there."]);
+  });
+
+  it("leaves another generation's talker line where it is", () => {
+    const h = createHarness();
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k2" });
+    line.push("Older reply.");
+    line.end();
+    h.speech.sayMoment("k1");
+    expect(h.calls[0].signal.aborted).toBe(false);
+    expect(h.texts()).toEqual(["Older reply."]);
+  });
+
+  it("restarts the socket for its streaming talker line with no audio yet, which waits behind it", () => {
+    const aura = createFakeAura();
+    const h = createHarness(aura);
+    aura.open();
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
+    line.push("Hi, there");
+    h.speech.sayMoment("k1");
+    expect(aura.sent).toEqual(["speak Hi,", "flush", "restart"]);
+    expect(h.texts()).toEqual(["One moment."]);
   });
 });

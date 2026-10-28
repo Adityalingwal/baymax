@@ -301,7 +301,8 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/speech-rest.ts` | A line through the Aura-2 REST call, and voice-down reported from its failures |
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
-| `src/main/moment.ts` | The "One moment." timer: started at key release or submit, cancelled by the talker's first audio, a words-not-caught result or a new hold |
+| `src/main/moment.ts` | The "One moment." timer, bound to the latest release or submit: cancelled by that generation's first talker audio, discard or words-not-caught result, a new hold, a renderer reset or voice stop |
+| `src/main/speech-moment.ts` | "One moment." ahead of the waiting lines; its generation's talker line with no audio yet waits behind it |
 | `src/main/talker.ts` | The talker: one Haiku 5.5 streaming call per question, and one per clarifying question or result in its own words; its words stream into speech |
 | `src/main/talker-prompt.ts` | The talker's instructions and the blocks it reads |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |

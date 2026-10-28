@@ -91,6 +91,7 @@ export function addRecord(
       parentTaskId: null,
       sayBack: null,
       line: null,
+      reply: null,
       step: null,
       sourcesRead: 0,
       question: null,

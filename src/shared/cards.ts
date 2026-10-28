@@ -46,6 +46,7 @@ export type TaskCard = {
   parentTaskId: TaskId | null;
   sayBack: string | null;
   line: string | null; // the start line, or a fixed status or failure line
+  reply: string | null; // the talker's spoken reply to the words, so what was said is also on screen
   step: string | null; // latest progress, e.g. "searching: how Hermes works"
   sourcesRead: number;
   question: (ClarifyingQuestion & { answered: boolean }) | null;

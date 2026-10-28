@@ -79,15 +79,28 @@ describe("the chat route when the talker fails or is not needed", () => {
     ]);
   });
 
-  it("changes nothing for a task that is not chat, and drops a second reply", () => {
+  it("shows the talker's line on a task that is not chat, and drops a second reply", () => {
     const h = createHarness();
     askNew(h, "hermes");
     const published = h.published.length;
     h.state.talkerReplied("t1", said("I'll look into Hermes."));
     h.state.talkerReplied("t1", said("again"));
-    expect(h.published).toHaveLength(published);
-    expect(h.card("t1")?.state).toBe("running");
+    expect(h.published).toHaveLength(published + 1);
+    expect(h.card("t1")).toMatchObject({
+      state: "running",
+      reply: "I'll look into Hermes.",
+      line: "Looking into hermes.",
+    });
     expect(h.logs.at(-1)).toBe("dropped: talker reply for t1");
+  });
+
+  it("keeps a failed reply off the card and publishes nothing", () => {
+    const h = createHarness();
+    askNew(h, "hermes");
+    const published = h.published.length;
+    h.state.talkerReplied("t1", { kind: "failed", failure: "error" });
+    expect(h.published).toHaveLength(published);
+    expect(h.card("t1")?.reply).toBeNull();
   });
 });
 

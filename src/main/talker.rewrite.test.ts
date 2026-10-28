@@ -68,17 +68,40 @@ describe("a talker rewrite that fails early", () => {
   );
 });
 
-describe("a talker rewrite that fails late, or has no key", () => {
-  it("ends where it is when the call fails after its words started, never repeating them", async () => {
-    const h = createHarness();
-    h.talker.talk(result);
-    h.calls[0].onText("Hermes runs");
-    h.advance(3000);
-    expect(h.calls[0].signal.aborted).toBe(false);
-    h.calls[0].resolve({ ok: false, failure: "unreachable", detail: "x" });
-    await flush();
-    expect(h.lines[0].parts).toEqual(["Hermes runs", "<end>"]);
-  });
+describe("a talker rewrite that fails after its words started, or has no key", () => {
+  it.each([
+    [
+      "fails",
+      (h: ReturnType<typeof createHarness>) =>
+        h.calls[0].resolve({ ok: false, failure: "unreachable", detail: "x" }),
+    ],
+    [
+      "stalls past 6 s",
+      (h: ReturnType<typeof createHarness>) => {
+        h.advance(2999);
+        expect(h.calls[0].signal.aborted).toBe(false);
+        h.advance(1);
+        expect(h.calls[0].signal.aborted).toBe(true);
+        h.calls[0].onText(" too late");
+      },
+    ],
+  ])(
+    "stops a rewrite that %s after its words started and says the given text whole",
+    async (_name, settle) => {
+      const h = createHarness();
+      h.talker.talk(result);
+      h.calls[0].onText("Hermes runs");
+      h.advance(3000);
+      expect(h.calls[0].signal.aborted).toBe(false);
+      settle(h);
+      await flush();
+      expect(h.lines[0].parts).toEqual([
+        "Hermes runs",
+        " Hermes runs a loop of 3 agents.",
+        "<end>",
+      ]);
+    },
+  );
 
   it("says the question as written without an Anthropic key", async () => {
     const h = createHarness({ noKey: true });

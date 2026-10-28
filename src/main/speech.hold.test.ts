@@ -123,7 +123,7 @@ describe('"One moment."', () => {
     const h = createHarness();
     const blocker = await play(h, said("blocker", "t2"));
     h.speech.speak(said("Talker line.", "t1", "talk"));
-    h.speech.speak(said("One moment.", null, "moment"));
+    h.speech.sayMoment("k1");
     finish(h, blocker);
     expect(h.texts()).toEqual(["blocker", "One moment."]);
   });

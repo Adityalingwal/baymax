@@ -32,7 +32,13 @@ export type LineText = {
   changed: (() => void) | null;
 };
 
-export type Line = { taskId: TaskId | null; kind: SaidKind; feed: LineText };
+// key: the "One moment." generation of a talker reply, else null.
+export type Line = {
+  taskId: TaskId | null;
+  kind: SaidKind;
+  key: string | null;
+  feed: LineText;
+};
 
 // A distinct object per synthesis, so a settled job can tell whether it still owns the slot.
 export type Job = { line: Line; abort: AbortController };
@@ -72,7 +78,7 @@ export type SpeechContext = {
   pump: () => void;
 };
 
-export type Spoken = Pick<Line, "taskId" | "kind">;
+export type Spoken = Pick<Line, "taskId" | "kind" | "key">;
 export type Matches = (line: Spoken) => boolean;
 
 // A renderer that never reports must not block speech forever.

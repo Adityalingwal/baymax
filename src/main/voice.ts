@@ -19,6 +19,7 @@ import { createMoment } from "./moment";
 import type { Moment } from "./moment";
 import { createSpeech } from "./speech";
 import type { LineFeed } from "./speech";
+import type { Spoken } from "./speech-model";
 import type { SaidLine, Timers } from "./tasks/state";
 import { admit, createModel, setStt, tellHealth } from "./voice-model";
 import type { VoiceModel, VoiceState } from "./voice-model";
@@ -49,8 +50,8 @@ export type Voice = {
   playbackFinished(payload: PlaybackFinished): void;
   setMuted(muted: boolean): void;
   say(line: SaidLine): void;
-  talk(spoken: Pick<SaidLine, "taskId" | "kind">): LineFeed;
-  submitted(): void; // a typed question: the "One moment." timer starts as at a key release
+  talk(spoken: Spoken): LineFeed;
+  submitted(key: string): void; // a typed question: the "One moment." timer starts as at a key release
   silence(taskId: TaskId): void;
   rendererReset(): void;
   stop(): void;
@@ -146,7 +147,7 @@ function receiveHeard(
   }
   if (heard.kind === "notCaught") {
     // Its own line replaces "One moment."
-    moment.cancel();
+    moment.ended(heard.utteranceId);
     return notCaught(model, deps, state, heard.cause, entry.order);
   }
   setStt(model, deps.log, true, entry.order);
@@ -173,20 +174,23 @@ function holdChanged(
   if (outcome === null) return;
   const ending = model.current;
   flows.recording.holdEnded(outcome);
-  if (outcome === "discard" && ending !== null) model.admitted.delete(ending);
+  if (outcome === "discard" && ending !== null) {
+    model.admitted.delete(ending);
+    flows.moment.ended(ending);
+  }
   if (outcome === "accept") {
     model.releasedAt = deps.now();
     const entry = ending === null ? undefined : model.admitted.get(ending);
     if (entry !== undefined) entry.releasedAt = model.releasedAt;
-    flows.moment.start();
+    if (ending !== null) flows.moment.start(ending, model.releasedAt);
   }
   flows.speech.holdEnded();
 }
 
 function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
   const moment = createMoment({
-    timers: deps.timers,
-    say: (line) => contained(deps, "say", () => speech.speak(line)),
+    setTimer: deps.timers.setTimer,
+    sayMoment: (key) => contained(deps, "say", () => speech.sayMoment(key)),
   });
   const recording = createRecording({
     sendRecording: (command) => sendRecording(model, deps, command),
@@ -215,7 +219,11 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
       forwarded(deps, () => tellHealth(model));
     },
     onAudioStarted: (line) => {
-      if (line.kind === "talk") moment.cancel();
+      if (line.kind !== "talk" || line.key === null) return;
+      const startedAt = moment.audioStarted(line.key);
+      if (startedAt === null) return;
+      const ms = Math.round(deps.now() - startedAt);
+      deps.log(`talker first audio ${ms} ms after release`);
     },
     timers: deps.timers,
   });
@@ -223,6 +231,7 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
 }
 
 function forgetRenderer(model: VoiceModel, flows: Flows): void {
+  flows.moment.cancel();
   flows.recording.rendererReset();
   flows.speech.rendererReset();
   model.admitted.clear();
@@ -235,6 +244,7 @@ function forgetRenderer(model: VoiceModel, flows: Flows): void {
 function stopVoice(model: VoiceModel, flows: Flows): void {
   if (model.stopped) return;
   model.stopped = true;
+  flows.moment.cancel();
   flows.recording.stop();
   model.admitted.clear();
   model.current = null;
@@ -276,7 +286,7 @@ export function createVoice(deps: VoiceDeps): Voice {
       }),
     say: (line) => contained(deps, "say", () => speech.speak(line)),
     talk: (spoken) => speech.speakFed(spoken),
-    submitted: () => flows.moment.start(),
+    submitted: (key) => flows.moment.start(key, deps.now()),
     silence: (taskId) =>
       contained(deps, "silence", () => speech.cancelTask(taskId)),
     rendererReset: () => forgetRenderer(model, flows),

@@ -8,6 +8,7 @@ import type { TaskId } from "../shared/cards";
 import type { FailureKind } from "../shared/engine";
 import type { LineFeed } from "./speech";
 import type { SaidKind, Timers } from "./tasks/state";
+import { replyKey } from "./tasks/talk";
 import type { TalkRequest, TalkerReply } from "./tasks/talk";
 import {
   givenText,
@@ -20,7 +21,11 @@ import {
 
 export type TalkerDeps = {
   stream: TextStream | null; // null when there is no Anthropic key
-  talk: (spoken: { taskId: TaskId | null; kind: SaidKind }) => LineFeed;
+  talk: (spoken: {
+    taskId: TaskId | null;
+    kind: SaidKind;
+    key: string | null;
+  }) => LineFeed;
   onReply: (taskId: TaskId, reply: TalkerReply) => void;
   timers: Timers;
   log: (message: string) => void;
@@ -32,8 +37,9 @@ type Rewrite = Exclude<TalkRequest, Reply>;
 const talkerModel = "claude-haiku-5-5";
 const maxTokens = 256;
 const replyTimeoutMs = 10_000;
-// A rewrite with no words after about 3 s gives way to the given text, spoken as written.
-const rewriteMs = 3000;
+// A rewrite with no words after about 3 s, or not finished after about 6 s, gives way to the given text.
+const firstWordsMs = 3000;
+const rewriteTotalMs = 6000;
 
 const failureKinds: Record<ModelFailure, FailureKind> = {
   keyRejected: "keyRejected",
@@ -77,7 +83,8 @@ async function call(
 }
 
 async function reply(deps: TalkerDeps, talk: Reply): Promise<void> {
-  const line = deps.talk({ taskId: talk.taskId, kind: "talk" });
+  const key = replyKey(talk);
+  const line = deps.talk({ taskId: talk.taskId, kind: "talk", key });
   const body = request(replyInstructions, replyMessage(talk));
   const signal = new AbortController().signal;
   const outcome = await call(deps, body, signal, line.push);
@@ -90,26 +97,50 @@ async function reply(deps: TalkerDeps, talk: Reply): Promise<void> {
   deps.onReply(talk.taskId, { kind: "failed", failure });
 }
 
+// Resolves when a rewrite runs out of time: no words by 3 s, or not finished by 6 s; the call is aborted.
+function rewriteDeadline(
+  deps: TalkerDeps,
+  abort: AbortController,
+  started: () => boolean,
+): { passed: Promise<TextOutcome>; cancel: () => void } {
+  const cancels: (() => void)[] = [];
+  const passed = new Promise<TextOutcome>((resolve) => {
+    const stop = (detail: string) => {
+      abort.abort();
+      resolve({ ok: false, failure: "aborted", detail });
+    };
+    cancels.push(
+      deps.timers.setTimer(firstWordsMs, () => {
+        if (!started()) stop("no words within 3 s");
+      }),
+      deps.timers.setTimer(rewriteTotalMs, () => stop("not done within 6 s")),
+    );
+  });
+  return { passed, cancel: () => cancels.forEach((cancel) => cancel()) };
+}
+
 async function rewrite(deps: TalkerDeps, talk: Rewrite): Promise<void> {
   const kind = talk.kind === "result" ? "answer" : "question";
-  const line = deps.talk({ taskId: talk.taskId, kind });
+  const line = deps.talk({ taskId: talk.taskId, kind, key: null });
   const abort = new AbortController();
   let started = false;
-  const cancelTimer = deps.timers.setTimer(rewriteMs, () => {
-    if (!started) abort.abort();
-  });
+  const deadline = rewriteDeadline(deps, abort, () => started);
   const system =
     talk.kind === "result" ? resultInstructions : questionInstructions;
   const body = request(system, rewriteMessage(talk));
-  const outcome = await call(deps, body, abort.signal, (text) => {
+  const answered = call(deps, body, abort.signal, (text) => {
     if (abort.signal.aborted) return;
     started = true;
     line.push(text);
   });
-  cancelTimer();
-  if (!outcome.ok) deps.log(`talker rewrite failed: ${outcome.detail}`);
-  // Once its words have started, a failing rewrite ends where it is; before that, the given text is said.
-  if (!started) line.push(givenText(talk));
+  const outcome = await Promise.race([answered, deadline.passed]);
+  deadline.cancel();
+  abort.abort();
+  if (!outcome.ok || !started) {
+    if (!outcome.ok) deps.log(`talker rewrite failed: ${outcome.detail}`);
+    // A failed or stalled rewrite gives way to the given text, whole, so no choice or number is lost.
+    line.push(started ? ` ${givenText(talk)}` : givenText(talk));
+  }
   line.end();
 }
 

@@ -9,6 +9,7 @@ import type {
   Spoken,
 } from "./speech-model";
 import { endPlaying, log, stopPlaying } from "./speech-model";
+import { sayMoment } from "./speech-moment";
 import { startRest } from "./speech-rest";
 import { auraClosed, auraHeard, startStream } from "./speech-stream";
 import type { SaidLine } from "./tasks/state";
@@ -21,6 +22,7 @@ export type LineFeed = { push: (text: string) => void; end: () => void };
 type Speech = {
   speak(line: SaidLine): void;
   speakFed(spoken: Spoken): LineFeed;
+  sayMoment(key: string): void;
   holdStarted(): void;
   holdEnded(): void;
   setMuted(muted: boolean): void;
@@ -86,19 +88,8 @@ function queueLine(ctx: SpeechContext, line: Line): void {
   if (taskId !== null && state.cancelled.has(taskId)) {
     return log(`line dropped: task cancelled (${line.kind})`);
   }
-  // "One moment." covers a talker line not yet heard, so it goes ahead of the lines waiting;
-  // once a talker line is already being spoken, it would come after it, so it is dropped.
-  if (line.kind === "moment" && talking(state)) {
-    return log("line dropped: the talker is already speaking (moment)");
-  }
-  if (line.kind === "moment") state.pending.unshift(line);
-  else state.pending.push(line);
+  state.pending.push(line);
   pump(ctx);
-}
-
-function talking(state: SpeechState): boolean {
-  const current = state.playing?.line ?? state.synthesizing?.line;
-  return current?.kind === "talk";
 }
 
 function speakFed(ctx: SpeechContext, spoken: Spoken): LineFeed {
@@ -194,9 +185,10 @@ export function createSpeech(deps: SpeechDeps): Speech {
   return {
     speak: ({ taskId, kind, text }) => {
       const feed = { text, ended: true, changed: null };
-      queueLine(ctx, { taskId, kind, feed });
+      queueLine(ctx, { taskId, kind, key: null, feed });
     },
     speakFed: (spoken) => speakFed(ctx, spoken),
+    sayMoment: (key) => sayMoment(ctx, key),
     holdStarted: () => startHold(ctx),
     holdEnded: () => endHold(ctx),
     setMuted: (muted) => changeMuted(ctx, muted),

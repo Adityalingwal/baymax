@@ -5,6 +5,7 @@ import type { RendererIpc, RendererSender } from "./renderer-actions";
 import { createTalker } from "./talker";
 import { createMainState } from "./tasks/state";
 import type { MainState, MainStateDeps } from "./tasks/state";
+import { replyKey } from "./tasks/talk";
 import type { TalkRequest } from "./tasks/talk";
 import { createVoice } from "./voice";
 import type { Voice, VoiceDeps } from "./voice";
@@ -39,7 +40,7 @@ export function wireMain(deps: WiringDeps): Wiring {
   });
   const talk = (request: TalkRequest): void => {
     if (request.kind === "reply" && request.utteranceId === null) {
-      voice.submitted();
+      voice.submitted(replyKey(request));
     }
     talker.talk(request);
   };

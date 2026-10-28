@@ -107,6 +107,7 @@ describe("the shown question", () => {
       parentTaskId: null,
       sayBack: "about q1",
       line: null,
+      reply: null,
       step: null,
       sourcesRead: 0,
       question: { ...question("q1"), answered: false },
