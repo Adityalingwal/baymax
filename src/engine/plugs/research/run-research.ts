@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { ContentsFn } from "../../../providers/page-contents";
 import type { SearchFn } from "../../../providers/search";
 import type { Findings, TaskId } from "../../../shared/cards";
 import type {
@@ -29,9 +30,10 @@ import {
 
 export type RunTaskCommand = Extract<EngineCommand, { type: "runTask" }>;
 
-// The web tool's outside world: the search call, and DNS and sockets for page reads.
+// The web tool's outside world: the search and page-contents calls, and DNS and sockets for the fallback reader.
 export type WebAccess = {
   search: SearchFn;
+  contents: ContentsFn;
   lookup?: LookupAll;
   connect?: Connect;
 };

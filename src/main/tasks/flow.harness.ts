@@ -118,7 +118,13 @@ export function startFakeEngine(steps: Step[]) {
   const { model, requests } = fakeModel(steps);
   const port = startEngine(
     { anthropicKey: "test-key", searchKey: "" },
-    { model, today: () => "2026-10-27", now: () => 0, log: () => undefined },
+    {
+      model,
+      contents: async () => ({ ok: false, cause: "noUsableText" }),
+      today: () => "2026-10-27",
+      now: () => 0,
+      log: () => undefined,
+    },
   );
   ports.push(port);
   return { port, requests };

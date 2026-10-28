@@ -106,7 +106,7 @@ cards      <--IPC--  whole display state                       <--- task events
 | Intake check | Claude Sonnet 5.5 (Haiku 5.5 if the first spoken line is too slow) |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
-| Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and plain page reads |
+| Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and page reads through Exa Contents, with Baymax's own plain reader as the fallback |
 | Agent runtime | Our own loop on the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), in the engine |
 | Storage | Memory only |
 | Keys | Our own keys from `.env` ([Processes and the port](#processes-and-the-port)) |
@@ -173,7 +173,8 @@ It checks support and completion, not truth.
 ### Web tool
 
 - Searches and page reads need no approval; the task's limits and cancel hold them in check.
-- A page is read plainly with HTML-to-text. A JavaScript-only page or a PDF counts as no usable text, and the worker moves on.
+- A page is read through Exa Contents first, with up to 20,000 characters of text; Exa's crawler also gives text for JavaScript-built pages and PDFs. When Exa gives no usable text for that URL, or its call fails for any reason except a cancel, Baymax's own reader reads the page plainly with HTML-to-text, where a JavaScript-only page or a PDF counts as no usable text and the worker moves on. Kept text is capped at 20,000 characters on both paths.
+- **Exa as a hosted reader.** The URL rules run first, for both paths, so localhost, `.local`, literal private addresses, a URL with credentials and the refused sites never reach Exa. Exa fetches from its own servers, which cannot reach the user's local network, so the rule that protects the local network holds for it; the connection-time address check below belongs to Baymax's own reader, which keeps every rule. The kept page's URL is the checked URL that was asked for; Exa's own URL is used only to match its result.
 - **Safety.** Only http and https. Only public destinations: the address the HTTP client actually connects to is checked at connection time (its own DNS lookup, IPv4 and IPv6), on every redirect and every retry, so localhost, `.local`, private and link-local ranges are refused even when a public-looking name resolves to them. A NAT64 address (`64:ff9b::/96`, which macOS returns for IPv4-only sites on a NAT64 network) is judged by the IPv4 address it carries. If that cannot be built and verified in V1, the reader route is narrowed rather than the gap called harmless. x.com, linkedin.com and reddit.com are refused. A URL that carries credentials is refused, and no cookies or credentials are forwarded. TLS is verified. Download size and time are capped before parsing. A hosted reader is used only if it keeps the same rules.
 - **Page text is untrusted** for both the worker and the judge. The worker cannot act outside, but an injected page could still skew an answer or steer later searches and fetches, so page text never changes the instructions or the tool list. Offline tests cover injected instructions, private addresses (including a name that resolves to one) and redirects.
 - X, Reddit and LinkedIn appear only as links and snippets from a normal search, and Baymax says it did not read the full thread.
@@ -293,7 +294,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
-| `src/providers/` | Process-neutral provider code: the search call and its outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/` | Process-neutral provider code: the Exa search and page-contents calls and their outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
 | `src/providers/deepgram.ts` | Deepgram calls: pre-recorded transcription and REST speech |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.
