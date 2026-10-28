@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { ModelOutcome } from "../providers/anthropic";
 import type { Incomplete } from "../shared/engine";
 import {
   closeRuns,
@@ -127,5 +128,70 @@ describe("runTask invalid answer status", () => {
       stage: "answer",
       rule: "malformed",
     });
+  });
+});
+
+const thinNudgeText =
+  'You chose "sourcesThin" without reading any page in this task. Search for the brief and read pages first; choose "sourcesThin" only when the pages you read do not answer it. Then write the whole answer again as the JSON object.';
+
+const thin = () => workerAnswer({ status: "sourcesThin" });
+const readOne = () => toolUseReply([{ read: pageUrl("one") }]);
+
+type ThinRow = {
+  name: string;
+  steps: () => ModelOutcome[];
+  nudges: number;
+  ending: string;
+};
+
+const thinRows: ThinRow[] = [
+  {
+    name: "a zero-read sourcesThin in round 0, then research and a complete answer",
+    steps: () => [thin(), readOne(), workerAnswer(cited), verdictReply()],
+    nudges: 1,
+    ending: "result",
+  },
+  {
+    name: "a zero-read sourcesThin twice: only the first is held back",
+    steps: () => [thin(), thin()],
+    nudges: 1,
+    ending: "incomplete",
+  },
+  {
+    name: "a sourcesThin after a read page",
+    steps: () => [readOne(), thin()],
+    nudges: 0,
+    ending: "incomplete",
+  },
+  {
+    name: "a zero-read needsUser with a next question",
+    steps: () => [
+      workerAnswer({ status: "needsUser", nextQuestion: "Which one?" }),
+    ],
+    nudges: 0,
+    ending: "incomplete",
+  },
+  {
+    name: "a zero-read sourcesThin in a retry round, then a zero-research complete answer",
+    steps: () => [workerAnswer(cited), thin(), workerAnswer(cited), thin()],
+    nudges: 1,
+    ending: "incomplete",
+  },
+];
+
+describe("runTask zero-read sourcesThin", () => {
+  it.each(thinRows)("handles $name", async (row) => {
+    const run = await startRun(row.steps());
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events[events.length - 1].type).toBe(row.ending);
+    const nudges = run.entries.filter((entry) => entry.event === "thinNudge");
+    expect(nudges).toHaveLength(row.nudges);
+    expect(run.entries.filter((e) => e.event === "retryNudge")).toEqual([]);
+    const held = run.requests.filter((request) => {
+      const tail = request.messages[request.messages.length - 1];
+      return tail?.role === "user" && tail.content === thinNudgeText;
+    });
+    expect(held).toHaveLength(row.nudges);
   });
 });
