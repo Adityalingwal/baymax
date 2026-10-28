@@ -165,6 +165,7 @@ describe("binding an answer", () => {
           state: "done",
           question: "tell me hermes",
           answer: "Done. spoken",
+          cardText: "Done.",
         },
       ],
     });

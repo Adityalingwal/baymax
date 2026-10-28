@@ -23,6 +23,7 @@ const recent: RecentExchange[] = [
     state: "done",
     question: "what is Hermes agent?",
     answer: "Hermes is an open agent.",
+    cardText: null,
   },
 ];
 

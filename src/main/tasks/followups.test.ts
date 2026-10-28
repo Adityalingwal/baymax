@@ -216,6 +216,14 @@ describe("a deleted parent", () => {
   });
 });
 
+const exchange = (
+  taskId: string,
+  state: string,
+  question: string,
+  answer: string | null,
+  cardText: string | null,
+) => ({ taskId, state, question, answer, cardText });
+
 describe("recent exchanges", () => {
   it("carries the last 5 tasks, closed ones included, with the spoken line only for done ones", () => {
     const h = createHarness();
@@ -236,21 +244,11 @@ describe("recent exchanges", () => {
     const command = h.sent.at(-1);
     expect(command).toMatchObject({ type: "question", taskId: "t7" });
     expect(command?.type === "question" ? command.recent : null).toEqual([
-      {
-        taskId: "t2",
-        state: "done",
-        question: "tell me b",
-        answer: "Done. spoken",
-      },
-      {
-        taskId: "t3",
-        state: "incomplete",
-        question: "tell me c",
-        answer: null,
-      },
-      { taskId: "t4", state: "running", question: "tell me d", answer: null },
-      { taskId: "t5", state: "thinking", question: "e", answer: null },
-      { taskId: "t6", state: "thinking", question: "f", answer: null },
+      exchange("t2", "done", "tell me b", "Done. spoken", "Done."),
+      exchange("t3", "incomplete", "tell me c", null, null),
+      exchange("t4", "running", "tell me d", null, null),
+      exchange("t5", "thinking", "e", null, null),
+      exchange("t6", "thinking", "f", null, null),
     ]);
   });
 });

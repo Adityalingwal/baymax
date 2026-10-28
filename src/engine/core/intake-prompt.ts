@@ -16,6 +16,7 @@ This version does research only. It takes no action outside: no email, messages,
 Read what the user said and pick one route:
 - newTask: a new research question.
 - followUp: a question that builds on one of the recent exchanges. Set parentTaskId to that exchange's task id, exactly as shown. The earlier exchange may still be waiting or running, or may have ended incomplete or cancelled; it is still a followUp.
+An exchange may show its card, the content of that earlier answer. Words that point into a card, such as "these", "the second one" or "that number", make a followUp of that task, not a reason to clarify.
 - answer: the words answer the waiting clarifying question. Use it only when a question is waiting and the words answer it. Set reply.choiceIndex to the number of the chosen choice, or reply.text to the user's own answer when it matches no choice. Words that clearly do not answer the waiting question are a new question (newTask or followUp), and the waiting question stays pending.
 - clarify: a clarifying question must come first.
 - chat: small talk or a simple fact that needs no search, such as a greeting, thanks or "what is 2 + 2". A separate voice has already answered it; no research starts.
@@ -52,10 +53,12 @@ function choiceList(question: ClarifyingQuestion): string {
 }
 
 function recentBlock(recent: RecentExchange[]): string {
-  const lines = recent.map(
-    (exchange) =>
-      `- task ${exchange.taskId} (${exchange.state}): question: ${exchange.question} | answer: ${exchange.answer ?? "none"}`,
-  );
+  const lines = recent.map((exchange) => {
+    const line = `- task ${exchange.taskId} (${exchange.state}): question: ${exchange.question} | answer: ${exchange.answer ?? "none"}`;
+    return exchange.cardText === null
+      ? line
+      : `${line}\n  card: ${exchange.cardText}`;
+  });
   return `<recent>\n${lines.length > 0 ? lines.join("\n") : "none"}\n</recent>`;
 }
 
