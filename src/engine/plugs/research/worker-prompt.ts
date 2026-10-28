@@ -1,6 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Findings } from "../../../shared/cards";
 import type { ParentResult, WorkerBrief } from "../../../shared/engine";
+import { judgeFlags } from "../../core/judge";
+import type { JudgeFlag } from "../../core/judge";
 import { briefForModel, taggedText } from "./model-text";
 
 export type ThinkingMode = "off" | "low";
@@ -107,10 +109,31 @@ export const answerFaults = {
   malformed: "The answer was not valid JSON for the schema.",
 } as const;
 
-const retryLine =
-  "Your answer did not pass the check above. Write the whole answer again as the JSON object, fixing that part. You may search or read more first; cite only pages you read.";
+const rewriteLine =
+  "Your answer did not pass the check above. Write the whole answer again as the JSON object, fixing that part. Cite only pages you read.";
 
-// The one message that opens the retry round, after the failed answer turn.
-export function retryMessage(part: string): string {
-  return `${taggedText("check_result", part)}\n\n${retryLine}`;
+const researchLine =
+  'Your answer did not pass the check above. Research each gap first: for each gap, make a search and read at least one new page. If the web does not have a gap, put it in openPoints and say in one line of the card that it was not found. Remove any claim you cannot back with a page you read. In this retry round, use status "complete", not "sourcesThin". Then write the whole answer again as the JSON object, citing only pages you read.';
+
+// Fixed text for an answer in a retry round that came without a new search or read; it is not checked.
+export const nudgeMessage =
+  "You made no new search and read no new page in this round. Research the gaps in the check result above before you answer: make a search and read at least one new page for each gap, then write the whole answer again as the JSON object.";
+
+// What the retry message needs from a failed check; the judge's gaps are model text.
+type FailedCheck =
+  | { stage: "answer" | "code"; part: string }
+  | { stage: "judge"; part: string; flags: JudgeFlag[]; gaps: string[] };
+
+function checkResult(check: FailedCheck): string {
+  if (check.stage !== "judge") return check.part;
+  const failed = check.flags.map((flag) => judgeFlags[flag]).join("; ");
+  const gaps = check.gaps.length > 0 ? check.gaps : [check.part];
+  const listed = gaps.map((gap) => `- ${gap.replace(/\s+/g, " ")}`);
+  return [`Failed checks: ${failed}.`, "Gaps:", ...listed].join("\n");
+}
+
+// The one message that opens a retry round, after the failed answer turn: a cut-off or invalid answer is only rewritten.
+export function retryMessage(check: FailedCheck): string {
+  const line = check.stage === "answer" ? rewriteLine : researchLine;
+  return `${taggedText("check_result", checkResult(check))}\n\n${line}`;
 }

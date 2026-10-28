@@ -10,19 +10,20 @@ import type {
 import type { DispatchDeps } from "../../core/dispatch";
 import type { FoundSoFar } from "../../core/holds";
 import type { TaskBudget } from "../../core/limits";
-import type { LoopEnding } from "../../core/tool-batch";
+import type { LoopEnding, ToolTurn } from "../../core/tool-batch";
 import { runWorkerLoop } from "../../core/worker-loop";
 import { answerSchema } from "./answer";
 import type { Connect, LookupAll } from "./connection";
 import { foundFindings } from "./found";
 import { researchTools } from "./research-tools";
-import { checkRound, incomplete } from "./run-checks";
-import type { CheckRun, Fault, RoundEnd } from "./run-checks";
+import { runRounds } from "./retry-rounds";
+import type { Rounds, WorkTurn } from "./retry-rounds";
+import { incomplete } from "./run-checks";
+import type { CheckRun } from "./run-checks";
 import { createToolRunner } from "./tool-runner";
 import { createWebTool } from "./web-tool";
 import {
   firstWorkerMessage,
-  retryMessage,
   thinkingFields,
   workerInstructions,
   workerThinking,
@@ -67,48 +68,24 @@ function endingEvent(
     : incomplete(taskId, { kind: "error", cause: ending.cause, findings });
 }
 
-// A second failed check ends unchecked with its part; an answer that never parsed names the whole answer, when anything was found.
-function failedTwice(
-  taskId: TaskId,
-  fault: Fault,
-  found: Findings | null,
-): EngineEvent {
-  if (fault.findings !== null) {
-    const { part: uncheckedPart, findings } = fault;
-    return incomplete(taskId, { kind: "unchecked", uncheckedPart, findings });
-  }
-  if (found === null) {
-    return incomplete(taskId, {
-      kind: "error",
-      cause: "error",
-      findings: null,
-    });
-  }
-  return incomplete(taskId, {
-    kind: "unchecked",
-    uncheckedPart: "the whole answer",
-    findings: found,
-  });
-}
-
-type Round = {
+type Worker = {
   run: ResearchRun;
   checks: CheckRun;
   history: Anthropic.MessageParam[];
-  runTools: ReturnType<typeof createToolRunner>;
+  runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
 };
 
-// One worker round in the shared conversation, then its answer's checks.
-async function workerRound(round: Round): Promise<RoundEnd> {
-  const { run, checks } = round;
+// The worker loop in the shared conversation, until its next answer turn or an ending.
+async function work(worker: Worker): Promise<WorkTurn> {
+  const { run, checks } = worker;
   const outcome = await runWorkerLoop(
     {
       deps: run.deps,
       job: { ...run.task, role: "worker" },
       prompt: workerPrompt,
-      runTools: round.runTools,
+      runTools: worker.runTools,
     },
-    round.history,
+    worker.history,
   );
   if (outcome.kind === "aborted" || run.task.signal.aborted) {
     return { kind: "aborted" };
@@ -117,19 +94,10 @@ async function workerRound(round: Round): Promise<RoundEnd> {
     const event = endingEvent(run.task.taskId, outcome.ending, checks.found());
     return { kind: "event", event };
   }
-  return checkRound(checks, outcome);
+  return { kind: "turn", turn: outcome };
 }
 
-function logRetry(run: ResearchRun, fault: Fault): void {
-  run.deps.log({
-    event: "retryRound",
-    taskId: run.task.taskId,
-    stage: fault.stage,
-    rule: fault.rule,
-  });
-}
-
-function startRound(run: ResearchRun): Round {
+function startRounds(run: ResearchRun): Rounds {
   const { taskId } = run.task;
   const web = createWebTool(run.access);
   let built: Findings | null = null;
@@ -143,35 +111,28 @@ function startRound(run: ResearchRun): Round {
     brief: run.command.brief,
     parent: run.command.parent,
   });
+  const checks: CheckRun = {
+    deps: run.deps,
+    task: run.task,
+    brief: run.command.brief,
+    pages: web.pages,
+    found,
+    built: (findings) => (built = findings),
+  };
+  const history: Anthropic.MessageParam[] = [{ role: "user", content: first }];
+  const tools = createToolRunner({ web, deps: run.deps, job, progress });
+  const worker = { run, checks, history, runTools: tools.runTools };
   return {
-    run,
-    checks: {
-      deps: run.deps,
-      task: run.task,
-      brief: run.command.brief,
-      pages: web.pages,
-      found,
-      built: (findings) => (built = findings),
-    },
-    history: [{ role: "user", content: first }],
-    runTools: createToolRunner({ web, deps: run.deps, job, progress }),
+    checks,
+    history,
+    work: () => work(worker),
+    researchMark: tools.researchMark,
   };
 }
 
-const eventOf = (end: Exclude<RoundEnd, { kind: "fault" }>) =>
-  end.kind === "event" ? end.event : null;
-
 // One task's research: returns its one terminal event, or null once cancelled; progress goes out on the way.
-// A failed check gets one more round in the same conversation, and never a third.
 export async function runResearch(
   run: ResearchRun,
 ): Promise<EngineEvent | null> {
-  const round = startRound(run);
-  const first = await workerRound(round);
-  if (first.kind !== "fault") return eventOf(first);
-  logRetry(run, first.fault);
-  round.history.push({ role: "user", content: retryMessage(first.fault.part) });
-  const second = await workerRound(round);
-  if (second.kind !== "fault") return eventOf(second);
-  return failedTwice(run.task.taskId, second.fault, round.checks.found());
+  return runRounds(startRounds(run));
 }

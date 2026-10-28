@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Findings } from "../../../shared/cards";
 import { createTaskBudget } from "../../core/limits";
-import { checkRound } from "./run-checks";
+import { checkRound, readTurn } from "./run-checks";
 import type { CheckRun } from "./run-checks";
 
 const url = "http://example.test/one";
@@ -50,7 +50,9 @@ describe("checkRound status cards", () => {
   ])("saves the $status card as built before it ends", async (row) => {
     const built: Findings[] = [];
     const text = answerWith(row.status, row.nextQuestion);
-    const end = await checkRound(checkRun(built), { kind: "answer", text });
+    const run = checkRun(built);
+    const turn = readTurn(run, { kind: "answer", text });
+    const end = await checkRound(run, turn);
     const card = {
       cardText: `A loop [s1](<${url}>).`,
       sources: [{ id: "s1", url, title: "Page one" }],

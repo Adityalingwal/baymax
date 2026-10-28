@@ -146,7 +146,7 @@ export function verdictReply(
     goalMet: true,
     claimsBacked: true,
     spokenLineBacked: true,
-    uncheckedPart: null,
+    gaps: [],
     ...fields,
   };
   return { ok: true, message: fakeMessage(JSON.stringify(verdict)) };

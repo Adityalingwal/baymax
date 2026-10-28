@@ -3,22 +3,30 @@ import { messageOf } from "./dev-log";
 import { dispatch } from "./dispatch";
 import type { DispatchDeps, DispatchJob } from "./dispatch";
 
-export type JudgeOutcome =
-  | { kind: "pass" }
-  | { kind: "fail"; uncheckedPart: string; failed: string } // failed names the false flags, for the dev log
-  | { kind: "broken"; reason: string } // the judge itself failed, so nothing is checked
-  | { kind: "limitHit" }
-  | { kind: "aborted" };
-
-const flags = {
+// The judge's three checks, each in the plain words the worker and the unchecked ending use.
+export const judgeFlags = {
   goalMet: "whether the answer meets the goal",
   claimsBacked: "whether the claims are backed by the read pages",
   spokenLineBacked: "whether the spoken line is backed by the card",
 } as const;
 
-type Flag = keyof typeof flags;
+export type JudgeFlag = keyof typeof judgeFlags;
 
-const flagNames = Object.keys(flags) as Flag[];
+// failed names the false flags, for the dev log; gaps are the judge's trimmed, non-empty phrases.
+export type JudgeOutcome =
+  | { kind: "pass" }
+  | {
+      kind: "fail";
+      uncheckedPart: string;
+      failed: string;
+      flags: JudgeFlag[];
+      gaps: string[];
+    }
+  | { kind: "broken"; reason: string } // the judge itself failed, so nothing is checked
+  | { kind: "limitHit" }
+  | { kind: "aborted" };
+
+const flagNames = Object.keys(judgeFlags) as JudgeFlag[];
 
 const verdictSchema = {
   type: "object",
@@ -26,13 +34,13 @@ const verdictSchema = {
     goalMet: { type: "boolean" },
     claimsBacked: { type: "boolean" },
     spokenLineBacked: { type: "boolean" },
-    uncheckedPart: { anyOf: [{ type: "null" }, { type: "string" }] },
+    gaps: { type: "array", items: { type: "string" } },
   },
-  required: [...flagNames, "uncheckedPart"],
+  required: [...flagNames, "gaps"],
   additionalProperties: false,
 };
 
-type Verdict = Record<Flag, boolean> & { uncheckedPart: string | null };
+type Verdict = Record<JudgeFlag, boolean> & { gaps: string[] };
 
 function verdictFrom(value: unknown): Verdict | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -40,11 +48,12 @@ function verdictFrom(value: unknown): Verdict | null {
   }
   const keys = Object.keys(value);
   const fields = value as Record<string, unknown>;
-  const part = fields.uncheckedPart;
+  const { gaps } = fields;
   const shaped =
     keys.length === flagNames.length + 1 &&
     flagNames.every((flag) => typeof fields[flag] === "boolean") &&
-    (part === null || typeof part === "string");
+    Array.isArray(gaps) &&
+    gaps.every((gap) => typeof gap === "string");
   return shaped ? (value as Verdict) : null;
 }
 
@@ -62,12 +71,14 @@ function readVerdict(message: Anthropic.Message): Verdict | null {
 function outcomeOf(verdict: Verdict): JudgeOutcome {
   const falseFlags = flagNames.filter((flag) => !verdict[flag]);
   if (falseFlags.length === 0) return { kind: "pass" };
-  const written = verdict.uncheckedPart?.trim() ?? "";
-  const fallback = falseFlags.map((flag) => flags[flag]).join("; ");
+  const gaps = verdict.gaps.map((gap) => gap.trim()).filter((gap) => gap);
+  const fallback = falseFlags.map((flag) => judgeFlags[flag]).join("; ");
   return {
     kind: "fail",
-    uncheckedPart: written === "" ? fallback : written,
+    uncheckedPart: gaps.length === 0 ? fallback : gaps.join("; "),
     failed: falseFlags.join(","),
+    flags: falseFlags,
+    gaps,
   };
 }
 

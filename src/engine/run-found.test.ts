@@ -133,27 +133,34 @@ const wholeAnswer = (findings: Findings): Incomplete => ({
 
 const endRows: EndRow[] = [
   {
-    name: "two malformed answers after a read",
+    name: "a malformed answer in every round after a read",
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
+      notJson(),
       notJson(),
       notJson(),
     ],
     ending: wholeAnswer(listOne),
   },
   {
-    name: "two cut-off answers after a read",
-    steps: () => [toolUseReply([{ read: pageUrl("one") }]), cutOff(), cutOff()],
+    name: "a cut-off answer in every round after a read",
+    steps: () => [
+      toolUseReply([{ read: pageUrl("one") }]),
+      cutOff(),
+      cutOff(),
+      cutOff(),
+    ],
     ending: wholeAnswer(listOne),
   },
   {
-    name: "a failed answer, then a malformed one",
+    name: "a failed answer, then malformed ones",
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
       workerAnswer({
         cardText: "A loop [s1] and memory [s7].",
         claims: claimOne,
       }),
+      notJson(),
       notJson(),
     ],
     ending: wholeAnswer(unreadCard),
