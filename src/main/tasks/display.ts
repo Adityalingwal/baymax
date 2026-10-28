@@ -4,6 +4,18 @@ import type { Model } from "./record";
 import { shownQuestion } from "./record";
 
 const RECENT_COUNT = 5;
+const CARD_COUNT = 2;
+const CARD_LIMIT = 1500;
+const citationLink = /\[(s\d+)\]\(<[^>]*>\)/g;
+
+// Links become labels so URLs do not use up the intake's card limit.
+function cardExcerpt(cardText: string): string {
+  const plain = cardText.replace(citationLink, "[$1]");
+  if (plain.length <= CARD_LIMIT) return plain;
+  const cut = plain.slice(0, CARD_LIMIT - 1);
+  // A cut inside a surrogate pair would leave half a character.
+  return `${/[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut}…`;
+}
 
 // A deep copy, so a changed snapshot never reaches the model or the source allowlist.
 function copyCard(card: TaskCard): TaskCard {
@@ -27,15 +39,24 @@ export function recentExchanges(
   model: Model,
   forTaskId: TaskId,
 ): RecentExchange[] {
-  return [...model.records.values()]
+  const records = [...model.records.values()]
     .filter((record) => record.card.taskId !== forTaskId)
-    .slice(-RECENT_COUNT)
-    .map(({ card, spokenLine }) => ({
-      taskId: card.taskId,
-      state: card.state,
-      question: card.words,
-      answer: card.state === "done" ? spokenLine : null,
-    }));
+    .slice(-RECENT_COUNT);
+  const carded = new Map<TaskId, string>();
+  for (const { card } of records
+    .filter((r) => r.card.answer !== null)
+    .slice(-CARD_COUNT)) {
+    if (card.answer !== null) {
+      carded.set(card.taskId, cardExcerpt(card.answer.cardText));
+    }
+  }
+  return records.map(({ card, spokenLine }) => ({
+    taskId: card.taskId,
+    state: card.state,
+    question: card.words,
+    answer: card.state === "done" ? spokenLine : null,
+    cardText: carded.get(card.taskId) ?? null,
+  }));
 }
 
 export function waitingQuestion(model: Model): WaitingQuestion | null {
