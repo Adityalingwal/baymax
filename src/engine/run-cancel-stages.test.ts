@@ -108,11 +108,24 @@ const stageRows: StageRow[] = [
       readOne(),
       answered("A loop [s1]."),
       verdictReply({ goalMet: false }),
+      toolUseReply([{ read: pageUrl("two") }]),
+      answered("A loop again [s1]."),
+      "waitForAbort",
+    ],
+    at: (sent) => sent.calls === 6,
+    found: card(`A loop again ${link}.`),
+  },
+  {
+    name: "the worker call after a nudge",
+    steps: () => [
+      readOne(),
+      answered("A loop [s1]."),
+      verdictReply({ goalMet: false }),
       answered("A loop again [s1]."),
       "waitForAbort",
     ],
     at: (sent) => sent.calls === 5,
-    found: card(`A loop again ${link}.`),
+    found: card(`A loop ${link}.`),
   },
 ];
 

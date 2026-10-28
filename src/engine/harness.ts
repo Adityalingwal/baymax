@@ -4,6 +4,7 @@ import type {
   ModelOutcome,
   ModelRequest,
 } from "../providers/anthropic";
+import type { ContentsFn } from "../providers/page-contents";
 import type { EngineCommand, EngineEvent } from "../shared/engine";
 import type { DevLogEntry } from "./core/dev-log";
 import { startEngine } from "./index";
@@ -95,6 +96,12 @@ function abortedWhen(signal: AbortSignal): Promise<ModelOutcome> {
   });
 }
 
+// Exa Contents has no text for any URL, so a read goes on to the fallback reader.
+export const noContents: ContentsFn = async () => ({
+  ok: false,
+  cause: "noUsableText",
+});
+
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 // A test that runs out of model steps fails in settle, so a missing step is never taken for the expected task error.
@@ -121,6 +128,7 @@ export function startTestEngine(steps: FakeStep[], fakes: EngineFakes = {}) {
   const port = startEngine(keys, {
     today: () => "2026-10-27",
     now: () => clock,
+    contents: noContents,
     ...fakes,
     model,
     log,

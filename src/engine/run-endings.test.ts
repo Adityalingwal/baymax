@@ -217,9 +217,9 @@ describe("runTask malformed answers", () => {
   });
 
   it.each(malformedAnswers)(
-    "ends error on $name twice when nothing was found",
+    "ends error on $name in every round when nothing was found",
     async (row) => {
-      const { last } = await runOf([row.step, row.step]);
+      const { last } = await runOf([row.step, row.step, row.step]);
       expect(last).toEqual([errorEnd]);
     },
   );

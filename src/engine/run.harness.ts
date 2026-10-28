@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ModelOutcome } from "../providers/anthropic";
+import type { ContentsFn } from "../providers/page-contents";
 import type { SearchFn, SearchOutcome } from "../providers/search";
 import type { Findings } from "../shared/cards";
 import type {
@@ -7,7 +8,7 @@ import type {
   EngineEvent,
   ParentResult,
 } from "../shared/engine";
-import { fakeMessage, startTestEngine } from "./harness";
+import { fakeMessage, noContents, startTestEngine } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   htmlPage,
@@ -145,7 +146,7 @@ export function verdictReply(
     goalMet: true,
     claimsBacked: true,
     spokenLineBacked: true,
-    uncheckedPart: null,
+    gaps: [],
     ...fields,
   };
   return { ok: true, message: fakeMessage(JSON.stringify(verdict)) };
@@ -182,17 +183,24 @@ function fakeSearch(steps: FakeSearchStep[]) {
 
 const networks: FakeNetwork[] = [];
 
-// One engine with the fake model, a fake search and the fake page network.
+// One engine with the fake model, a fake search, a fake Exa Contents and the fake page network.
+// By default Exa Contents has no text, so reads go on to the fake network's reader.
 export async function startRun(
   steps: FakeStep[],
   searches: FakeSearchStep[] = [],
   now?: () => number,
+  contents: ContentsFn = noContents,
 ) {
   const network = await startPages();
   networks.push(network);
   const searcher = fakeSearch(searches);
+  const contentsAsked: string[] = [];
   const engine = startTestEngine(steps, {
     search: searcher.search,
+    contents: (url, signal) => {
+      contentsAsked.push(url);
+      return contents(url, signal);
+    },
     lookup: network.lookup,
     connect: network.connect,
     ...(now === undefined ? {} : { now }),
@@ -213,6 +221,7 @@ export async function startRun(
     ended,
     queries: searcher.queries,
     searchesMissing: searcher.missing,
+    contentsAsked,
   };
 }
 
