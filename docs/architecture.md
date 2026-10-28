@@ -148,6 +148,7 @@ cards       <--IPC--  whole display state                         <--- task even
 
 - **What it is.** One Claude Haiku 5.5 call in main per final transcript or typed question, started at the same moment as the intake check. It gets the user's words, the recent questions and answers, the running and waiting tasks and the waiting clarifying question, and streams a short spoken line into TTS.
 - **What it says.** A short reply it can give from what it knows ("hi", "thanks", "what is 2 + 2") is the whole answer. For research it says a line that shows it understood the question ("I'll check tomorrow's Delhi forecast; the rain chance decides the umbrella."), with no time promise and no claim of progress. It never asks its own question and never decides what a task means: the intake routes, and binds answers to a waiting question.
+- **Warm connection.** A key press sends a key-less request to the Anthropic API, so the talker's call reuses an open connection instead of setting one up (about 0.15 s, measured with a 401 call on 28 Oct).
 - **Later lines.** The intake's clarifying question and the worker's result reach the user through the talker, in its own words, with the choices and the full answer on the card.
 - **Fallback.** If the talker has no words yet about 1.5 s after key release, code speaks "One moment." It never delays the talker: it is skipped when the talker already has words, and dropped when the talker's first words come before its audio starts. A talker failure never stops the intake.
 

@@ -13,7 +13,7 @@ import { createMainWindow } from "./main/window";
 import { wireMain } from "./main/wiring";
 import type { Wiring, WiringDeps } from "./main/wiring";
 import { startAura } from "./providers/aura";
-import { createTextStream } from "./providers/anthropic";
+import { createTextStream, createWarmUp } from "./providers/anthropic";
 import { synthesizeSpeech, transcribeClip } from "./providers/deepgram";
 import { startFlux } from "./providers/flux";
 import { openWebSocket } from "./providers/warm-socket";
@@ -26,6 +26,8 @@ let wiring: Wiring | null = null;
 let workStopped = false;
 // Current state is kept here so a renderer that mounts (or reloads) mid-hold can ask for it.
 let holdState: HoldState = "idle";
+// Set once the talker has a key: a key press opens its connection before the question needs it.
+let warmTalker = (): void => undefined;
 
 // Registered before anything else runs, so a failure during start-up is covered too.
 const restart = createRestart({
@@ -136,6 +138,7 @@ async function startEngineAndWiring(): Promise<Wiring> {
   if (keys.missing.length > 0) {
     console.info("[Keys] Missing:", keys.missing.join(", "));
   }
+  if (keys.engine.anthropicKey !== "") warmTalker = createWarmUp({});
   return wireMain({
     port: startEngine(keys.engine),
     talkerStream:
@@ -205,6 +208,7 @@ async function startApp(): Promise<void> {
   if (!isMac || accessibilityAtStartup) {
     startHoldKey((state, outcome) => {
       sendHoldState(state);
+      if (state === "listening") warmTalker();
       started.voice.holdChanged(state, outcome);
     });
   } else {

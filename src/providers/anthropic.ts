@@ -149,6 +149,18 @@ export function createTextStream(params: ClientParams): TextStream {
   };
 }
 
+// A key-less request opens a connection that the next model call reuses; its 401 answer is dropped.
+export function createWarmUp(params: { fetch?: typeof fetch }): () => void {
+  const send = params.fetch ?? fetch;
+  return () => {
+    send("https://api.anthropic.com/v1/models", {
+      headers: { "anthropic-version": "2023-06-01" },
+    })
+      .then((response) => response.arrayBuffer())
+      .catch(() => undefined);
+  };
+}
+
 export function createModelCall(params: ClientParams): ModelCall {
   const client = createClient(params);
   return async (request, options) => {
