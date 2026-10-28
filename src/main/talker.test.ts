@@ -29,6 +29,24 @@ describe("the front call's request", () => {
     expect(request.tool_choice).toBeUndefined();
     expect(request.system).toContain("Then call the decide tool once");
   });
+});
+
+describe("the front call's instructions", () => {
+  it("carry the prompt rules from the live tests: a bare greeting, an open question, an answer already written", () => {
+    const h = createHarness();
+    h.talker.talk(frontRequest());
+    const system = String(h.calls[0].request.system);
+    expect(system).toContain(
+      "A greeting gets a short greeting back, and the line ends there.",
+    );
+    expect(system).toContain(
+      'there is no request yet, such as "can you help me with a task?"',
+    );
+    expect(system).toContain(
+      "a question whose answer is already written in an earlier answer in this conversation",
+    );
+    expect(system).toContain("Never invent a task id or a question id.");
+  });
 
   it("sends the history as real turns before the current one, with the cache mark on the last history turn", () => {
     const h = createHarness();

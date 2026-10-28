@@ -5,7 +5,7 @@ import type {
   ModelRequest,
 } from "../providers/anthropic";
 import type { ContentsFn } from "../providers/page-contents";
-import type { EngineCommand, EngineEvent } from "../shared/engine";
+import type { EngineEvent } from "../shared/engine";
 import type { DevLogEntry } from "./core/dev-log";
 import { startEngine } from "./index";
 import type { EngineFakes } from "./index";
@@ -45,44 +45,6 @@ export function fakeMessage(
       ...parts.usage,
     },
   };
-}
-
-type ReplyFields = Record<string, unknown>;
-
-// A model answer to a question command; fields left out are null.
-export function questionReply(fields: ReplyFields): ModelOutcome {
-  const full = {
-    sayBack: "what was asked",
-    route: "newTask",
-    parentTaskId: null,
-    startLine: null,
-    brief: null,
-    clarify: null,
-    reply: null,
-    ...fields,
-  };
-  return { ok: true, message: fakeMessage(JSON.stringify(full)) };
-}
-
-// A model answer to a clarifying-answer command, whose schema has no clarify or reply.
-export function answerReply(fields: ReplyFields): ModelOutcome {
-  const full = {
-    sayBack: "what was asked",
-    route: "newTask",
-    parentTaskId: null,
-    startLine: null,
-    brief: null,
-    ...fields,
-  };
-  return { ok: true, message: fakeMessage(JSON.stringify(full)) };
-}
-
-export function question(
-  words: string,
-  extra: Partial<Extract<EngineCommand, { type: "question" }>> = {},
-): EngineCommand {
-  const base = { taskId: "task-1", utteranceId: null, words };
-  return { type: "question", ...base, recent: [], waiting: null, ...extra };
 }
 
 // "waitForAbort" answers only when the call's signal aborts, as the real call does.

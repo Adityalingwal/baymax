@@ -170,9 +170,6 @@ function receiveEvent(change: Change, event: EngineEvent): boolean {
   switch (event.type) {
     case "cancelled":
       return receiveUnaskedCancel(change, record, event.findings);
-    case "intake":
-    case "failure":
-      return dropped(change, `${event.type} for ${event.taskId}`);
     default:
       return receiveRunEvent(change, record, event);
   }

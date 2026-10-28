@@ -76,17 +76,6 @@ type SendRow = {
 
 const sendRows: SendRow[] = [
   {
-    name: "intake",
-    role: "intake",
-    activeMs: 0,
-    expected: {
-      model: "claude-sonnet-5-5",
-      max_tokens: 1024,
-      timeoutMs: 15_000,
-      deadlineMs: 35_000,
-    },
-  },
-  {
     name: "worker",
     role: "worker",
     activeMs: 0,
@@ -109,12 +98,12 @@ const sendRows: SendRow[] = [
     },
   },
   {
-    name: "intake with less active time left",
-    role: "intake",
+    name: "worker with less active time left",
+    role: "worker",
     activeMs: 110_000.7,
     expected: {
       model: "claude-sonnet-5-5",
-      max_tokens: 1024,
+      max_tokens: 2048,
       timeoutMs: 9_999,
       deadlineMs: 9_999,
     },
@@ -141,7 +130,7 @@ describe("dispatch limits", () => {
   it.each(limitRows)("refuses at a limit: $name", async (row) => {
     const { deps, sent, entries } = setup(okOutcome);
     const budget = { ...row.budget };
-    const outcome = await dispatch(deps, jobFor("intake", budget), request);
+    const outcome = await dispatch(deps, jobFor("worker", budget), request);
     expect(outcome).toEqual({
       ok: false,
       reason: "limitHit",
@@ -150,7 +139,7 @@ describe("dispatch limits", () => {
     expect(sent).toHaveLength(0);
     expect(budget).toEqual(row.budget);
     expect(entries).toEqual([
-      { event: "limitHit", taskId: "task-1", role: "intake", limit: row.limit },
+      { event: "limitHit", taskId: "task-1", role: "worker", limit: row.limit },
     ]);
   });
 });
@@ -189,7 +178,7 @@ describe("dispatch counting", () => {
     });
     const { deps, entries } = setup({ ok: true, message }, 1_234.5);
     const budget = createTaskBudget();
-    const outcome = await dispatch(deps, jobFor("intake", budget), request);
+    const outcome = await dispatch(deps, jobFor("worker", budget), request);
     expect(outcome).toEqual({ ok: true, message });
     expect(budget).toEqual({
       modelCalls: 1,
@@ -200,7 +189,7 @@ describe("dispatch counting", () => {
       {
         event: "modelCall",
         taskId: "task-1",
-        role: "intake",
+        role: "worker",
         model: "claude-sonnet-5-5",
         outcome: "ok",
         ms: 1_234.5,
@@ -263,7 +252,7 @@ describe("dispatch after cancel", () => {
     const controller = new AbortController();
     controller.abort();
     const budget = createTaskBudget();
-    const job = jobFor("intake", budget, controller.signal);
+    const job = jobFor("worker", budget, controller.signal);
     expect(await dispatch(deps, job, request)).toEqual({
       ok: false,
       reason: "failed",

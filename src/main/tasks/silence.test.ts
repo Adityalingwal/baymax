@@ -17,7 +17,7 @@ type SilenceRow = {
   silenced: string[];
 };
 
-function failedIntake(h: Harness): void {
+function failedFront(h: Harness): void {
   h.state.ask("hi", null, null);
   h.replyFailed("t1", "modelsUnreachable");
 }
@@ -35,7 +35,7 @@ const silenceRows: SilenceRow[] = [
   {
     name: "cancelling a thinking task with nothing sent",
     act: (h) => {
-      failedIntake(h);
+      failedFront(h);
       h.state.cancelTask("t1");
     },
     silenced: ["t1"],

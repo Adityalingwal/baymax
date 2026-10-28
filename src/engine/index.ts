@@ -4,7 +4,7 @@ import { readPageContents } from "../providers/page-contents";
 import type { ContentsFn } from "../providers/page-contents";
 import { searchWeb } from "../providers/search";
 import type { SearchFn } from "../providers/search";
-import type { Findings, TaskId } from "../shared/cards";
+import type { Findings } from "../shared/cards";
 import type {
   EngineCommand,
   EngineEvent,
@@ -16,9 +16,6 @@ import type { DevLog } from "./core/dev-log";
 import type { DispatchDeps } from "./core/dispatch";
 import { cancelHold, closeHolds, createHolds, startHold } from "./core/holds";
 import type { FoundSoFar, Holds } from "./core/holds";
-import { runIntake } from "./core/intake";
-import type { IntakeResult } from "./core/intake";
-import type { IntakeCommand } from "./core/intake-prompt";
 import { createTaskBudget } from "./core/limits";
 import { createPort } from "./core/port";
 import { runResearch } from "./plugs";
@@ -41,29 +38,6 @@ type Engine = {
   access: WebAccess;
   today: () => string;
 };
-
-function eventFor(taskId: TaskId, result: IntakeResult): EngineEvent | null {
-  if (result.kind === "intake") {
-    return { type: "intake", taskId, outcome: result.outcome };
-  }
-  if (result.kind === "failure") {
-    return { type: "failure", taskId, kind: result.failure };
-  }
-  return null;
-}
-
-function startIntake(engine: Engine, command: IntakeCommand): void {
-  const { taskId } = command;
-  startHold(engine.holds, taskId, {
-    start: async (signal) => {
-      const budget = createTaskBudget();
-      const job = { taskId, role: "intake" as const, budget, signal };
-      return eventFor(taskId, await runIntake(engine.deps, job, command));
-    },
-    found: () => null,
-    onThrow: () => ({ type: "failure", taskId, kind: "error" }),
-  });
-}
 
 function endOf(event: EngineEvent | null): string {
   if (event === null) return "cancelled";
@@ -114,10 +88,6 @@ function startRun(engine: Engine, command: RunTaskCommand): void {
 
 function receive(engine: Engine, command: EngineCommand): void {
   switch (command.type) {
-    case "question":
-    case "clarifyingAnswer":
-      startIntake(engine, command);
-      return;
     case "cancel":
       cancelHold(engine.holds, command.taskId);
       return;

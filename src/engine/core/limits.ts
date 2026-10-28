@@ -6,7 +6,6 @@ export const taskLimits = {
 } as const;
 
 export const roles = {
-  intake: { model: "claude-sonnet-5-5", maxTokens: 1024, timeoutMs: 15_000 },
   worker: { model: "claude-sonnet-5-5", maxTokens: 2048, timeoutMs: 60_000 },
   judge: { model: "claude-sonnet-5-5", maxTokens: 1024, timeoutMs: 30_000 },
 } as const;
