@@ -300,7 +300,10 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/speech-stream.ts` | A line on the Aura socket: clauses and flushes out, chunks and the end to the renderer, the REST backup when the socket drops |
 | `src/main/speech-rest.ts` | A line through the Aura-2 REST call, and voice-down reported from its failures |
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
-| `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line timing |
+| `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
+| `src/main/moment.ts` | The "One moment." timer: started at key release or submit, cancelled by the talker's first audio, a words-not-caught result or a new hold |
+| `src/main/talker.ts` | The talker: one Haiku 5.5 streaming call per question, and one per clarifying question or result in its own words; its words stream into speech |
+| `src/main/talker-prompt.ts` | The talker's instructions and the blocks it reads |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
 | `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
@@ -308,7 +311,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/restart.ts` | The restart path: the restarting line, work stopped, one relaunch after a short delay, and the loop guard |
 | `src/main/wiring.ts` | Connects main's state to voice, the engine port and the renderer actions; a state throw goes to the restart path |
 | `src/main/renderer-actions.ts` | The renderer -> main actions: sender and payload checks, then one state or voice call each |
-| `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime and the fixed lines, through one update path |
+| `src/main/tasks/` | Main's shown state: the task list and queue, the clarifying binding, the follow-up answer store, card lifetime, the chat route and the fixed lines, through one update path; it asks the talker through talk requests (`talk.ts`) |
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the intake, the worker loop, the done check, the dispatch function and limits |
 | `src/engine/plugs/research/` | The research plug: the web tool (safe page reads, pages kept by source id), its prompts and its done condition |
@@ -316,7 +319,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
-| `src/providers/` | Process-neutral provider code: the search call and its outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/` | Process-neutral provider code: the search call and its outcome types, the Anthropic call with its timeout and usage record, and its streamed form for the talker, the Deepgram calls. Imports nothing from a process folder |
 | `src/providers/deepgram.ts` | Deepgram calls: pre-recorded transcription and REST speech |
 | `src/providers/warm-socket.ts` | A socket kept open from start that reconnects with backoff, and the real WebSocket opener |
 | `src/providers/flux.ts` | The Flux socket: the listen URL, its messages, the silence keep-alive and ending a turn |

@@ -41,7 +41,14 @@ export const questionSchema = {
     sayBack: text,
     route: {
       type: "string",
-      enum: ["newTask", "followUp", "answer", "clarify", "outsideResearch"],
+      enum: [
+        "newTask",
+        "followUp",
+        "answer",
+        "clarify",
+        "chat",
+        "outsideResearch",
+      ],
     },
     parentTaskId: orNull(text),
     startLine: orNull(text),
@@ -201,6 +208,13 @@ function answerRoute(fields: Fields, command: IntakeCommand): IntakeCheck {
   return { ok: true, outcome };
 }
 
+function chatRoute(fields: Fields, command: IntakeCommand): IntakeCheck {
+  if (command.type !== "question") return malformed("routeNotAllowed");
+  const sayBack = filled(fields.sayBack);
+  if (!sayBack) return malformed("missingSayBack");
+  return { ok: true, outcome: { route: "chat", sayBack } };
+}
+
 function clarifyRoute(fields: Fields, command: IntakeCommand): IntakeCheck {
   if (command.type !== "question") return malformed("routeNotAllowed");
   const sayBack = filled(fields.sayBack);
@@ -250,6 +264,8 @@ export function checkIntakeReply(
       return answerRoute(fields, command);
     case "clarify":
       return clarifyRoute(fields, command);
+    case "chat":
+      return chatRoute(fields, command);
     case "outsideResearch":
       return { ok: true, outcome: { route: "outsideResearch" } };
     default:

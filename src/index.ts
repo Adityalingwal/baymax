@@ -13,6 +13,7 @@ import { createMainWindow } from "./main/window";
 import { wireMain } from "./main/wiring";
 import type { Wiring, WiringDeps } from "./main/wiring";
 import { startAura } from "./providers/aura";
+import { createTextStream } from "./providers/anthropic";
 import { synthesizeSpeech, transcribeClip } from "./providers/deepgram";
 import { startFlux } from "./providers/flux";
 import { openWebSocket } from "./providers/warm-socket";
@@ -137,6 +138,10 @@ async function startEngineAndWiring(): Promise<Wiring> {
   }
   return wireMain({
     port: startEngine(keys.engine),
+    talkerStream:
+      keys.engine.anthropicKey === ""
+        ? null
+        : createTextStream({ apiKey: keys.engine.anthropicKey }),
     ipc: ipcMain,
     isOwnSender: (sender) => sender === mainWindow?.webContents,
     publish: (display) => sendToWindow(ipcChannels.displayState, display),

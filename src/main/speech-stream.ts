@@ -1,10 +1,9 @@
 import { auraSampleRate } from "../providers/aura";
 import type { Aura, AuraEvent } from "../providers/aura";
 import { takeClauses } from "./clauses";
-import type { SpeechContext, StreamJob } from "./speech-model";
+import type { Line, SpeechContext, StreamJob } from "./speech-model";
 import { endPlaying, guarded, log, occupy, voiceBack } from "./speech-model";
 import { startRest } from "./speech-rest";
-import type { SaidLine } from "./tasks/state";
 
 // Every send is checked; false means the socket failed and the line takes the socket-failure path.
 function speak(aura: Aura, stream: StreamJob, clauses: string[]): boolean {
@@ -23,11 +22,16 @@ function flush(aura: Aura, stream: StreamJob): boolean {
   return aura.flush();
 }
 
-// Text goes out clause by clause; Flush only after the first clause and at the end, at most two per line.
-function feed(aura: Aura, stream: StreamJob, text: string): boolean {
-  const { clauses } = takeClauses(text, true);
+// Text goes out clause by clause as it arrives; Flush only after the first clause and at the end, at most two per line.
+// False when a send failed.
+function take(aura: Aura, stream: StreamJob, line: Line): boolean {
+  const { text, ended } = line.feed;
+  const { clauses, rest } = takeClauses(text.slice(stream.taken), ended);
+  stream.taken = text.length - rest.length;
   if (!speak(aura, stream, clauses)) return false;
+  if (!ended) return true;
   stream.textEnded = true;
+  line.feed.changed = null;
   return !stream.spokeSinceFlush || flush(aura, stream);
 }
 
@@ -42,21 +46,23 @@ function audioDone(ctx: SpeechContext): void {
 }
 
 // The line streams over the open socket; its audio goes to the renderer chunk by chunk.
-export function startStream(
-  ctx: SpeechContext,
-  aura: Aura,
-  line: SaidLine,
-): void {
+export function startStream(ctx: SpeechContext, aura: Aura, line: Line): void {
   const stream: StreamJob = {
     seq: 0,
+    taken: 0,
     flushesSent: 0,
     flushesDone: 0,
     spokeSinceFlush: false,
     textEnded: false,
   };
   if (occupy(ctx, line, stream) === null) return ctx.pump();
-  if (!feed(aura, stream, line.text)) return sendFailed(ctx, aura);
-  audioDone(ctx);
+  const next = () => {
+    if (ctx.state.playing?.stream !== stream) return;
+    if (!take(aura, stream, line)) return sendFailed(ctx, aura);
+    audioDone(ctx);
+  };
+  line.feed.changed = next;
+  next();
 }
 
 // Chunks and Flushed carry no line id, so they belong to the line streaming now.
@@ -71,12 +77,15 @@ export function auraHeard(ctx: SpeechContext, event: AuraEvent): void {
     stream.flushesDone += 1;
     return audioDone(ctx);
   }
-  const { lineId } = playing;
+  const { lineId, line } = playing;
   const chunk = { lineId, seq: stream.seq, pcm: event.pcm };
   stream.seq += 1;
   guarded("sendChunk", () =>
     ctx.deps.sendChunk({ ...chunk, sampleRate: auraSampleRate }),
   );
+  if (chunk.seq === 0) {
+    guarded("onAudioStarted", () => ctx.deps.onAudioStarted(line));
+  }
   voiceBack(ctx);
 }
 

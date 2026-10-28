@@ -12,7 +12,6 @@ import {
   endDone,
   endIncomplete,
   hold,
-  say,
   sendCancel,
   silence,
 } from "./record";
@@ -53,12 +52,12 @@ function parentResult(change: Change, record: TaskRecord): ParentResult | null {
   return null;
 }
 
-// Returns the fixed partial-parent line when it replaced the model's start line, else null.
+// The card's line is the fixed partial-parent line when the parent did not end done, else the model's start line.
 function startTask(
   change: Change,
   record: TaskRecord,
   admission: Admission,
-): string | null {
+): void {
   const { card } = record;
   const parent = parentResult(change, record);
   const parentId = card.parentTaskId;
@@ -80,7 +79,6 @@ function startTask(
     brief: admission.brief,
     parent,
   });
-  return partial;
 }
 
 // A parent created after the follow-up would let two thinking tasks name each other.
@@ -113,14 +111,13 @@ export function admit(
   card.parentTaskId = validParent(change, record, outcome);
   card.question = null;
   card.canRetry = false;
+  // The start line and the queued line show on the card only; the talker is the voice.
   if (!slotBusy(model) && canStart(model, record)) {
-    const line = startTask(change, record, admission) ?? admission.startLine;
-    say(change, card.taskId, line, "startLine");
+    startTask(change, record, admission);
   } else if (model.queue.length < QUEUE_LIMIT) {
     card.state = "queued";
     card.line = fixedLines.queued;
     model.queue.push(card.taskId);
-    say(change, card.taskId, fixedLines.queued, "startLine");
   } else {
     endCancelled(change, record, null, fixedLines.queueFull);
   }
@@ -137,8 +134,7 @@ export function startNext(change: Change): void {
     if (record === undefined || admission === null) continue;
     if (!canStart(model, record)) continue;
     model.queue = model.queue.filter((id) => id !== taskId);
-    const partial = startTask(change, record, admission);
-    if (partial !== null) say(change, taskId, partial, "startLine");
+    startTask(change, record, admission);
     return;
   }
 }
@@ -225,7 +221,6 @@ export function cancelTask(change: Change, taskId: TaskId): boolean {
       sendCancel(change, record);
       record.card.state = "cancelling";
       record.card.canRetry = false;
-      record.letMeCheckDue = false;
       return true;
     default:
       return dropped(change, `cancel ${taskId} in ${record.card.state}`);

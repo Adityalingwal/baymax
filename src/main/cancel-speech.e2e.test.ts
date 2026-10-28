@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { TaskId } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
-import { fixedLines } from "./tasks/lines";
-import { admitAs, wire } from "./wiring.harness";
+import { failureLine } from "./tasks/lines";
+import { wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
-const startLine = "Looking into hermes.";
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+// The intake never speaks, so each task's spoken line here is its fixed failure line.
+const firstLine = failureLine("modelsUnreachable");
+const secondLine = failureLine("searchDown");
 
 type SpeechRow = {
   name: string;
-  taskId: TaskId; // t1 runs and says its start line first; t2 waits and says the queued line
+  taskId: TaskId; // t1's line plays first; t2's waits behind it
   before: (w: Wired) => Promise<void>;
   spoken: string[];
   stopped: boolean;
@@ -20,14 +24,14 @@ const rows: SpeechRow[] = [
     name: "waiting behind another line",
     taskId: "t2",
     before: () => Promise.resolve(),
-    spoken: [startLine],
+    spoken: [firstLine],
     stopped: false,
   },
   {
     name: "being synthesized",
     taskId: "t1",
     before: () => Promise.resolve(),
-    spoken: [fixedLines.queued],
+    spoken: [secondLine],
     stopped: false,
   },
   {
@@ -36,7 +40,7 @@ const rows: SpeechRow[] = [
     before: async (w) => {
       await w.playNext();
     },
-    spoken: [startLine],
+    spoken: [firstLine],
     stopped: false,
   },
   {
@@ -45,21 +49,25 @@ const rows: SpeechRow[] = [
     before: async (w) => {
       await w.settleNext();
     },
-    spoken: [startLine, fixedLines.queued],
+    spoken: [firstLine, secondLine],
     stopped: true,
   },
 ];
 
-function twoAsked(): Wired {
+async function twoAsked(): Promise<Wired> {
   const w = wire();
-  admitAs(w, "t1", "hermes");
-  admitAs(w, "t2", "rust");
+  w.send(ipcChannels.submitQuestion, { text: "how does hermes work" });
+  w.send(ipcChannels.submitQuestion, { text: "what is new in rust" });
+  // Without an Anthropic key the talker's replies end empty and are dropped.
+  await flush();
+  w.port.emit({ type: "failure", taskId: "t1", kind: "modelsUnreachable" });
+  w.port.emit({ type: "failure", taskId: "t2", kind: "searchDown" });
   return w;
 }
 
 describe("cancel stops that task's speech", () => {
   it.each(rows)("drops its line $name", async (row) => {
-    const w = twoAsked();
+    const w = await twoAsked();
     await row.before(w);
     const playing = w.speeches.at(0)?.lineId;
     w.send(ipcChannels.cancelTask, { taskId: row.taskId });

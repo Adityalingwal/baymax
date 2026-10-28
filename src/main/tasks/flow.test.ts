@@ -44,6 +44,7 @@ function mainStateOn(port: EnginePort) {
     publish: (display) => published.push(display),
     say: (line) => said.push(line),
     silence: () => undefined,
+    talk: () => undefined,
     openUrl: () => Promise.resolve(),
     log: () => undefined,
     timers: { setTimer: () => () => undefined },
@@ -121,11 +122,8 @@ describe("main and the engine joined: a follow-up", () => {
       parentTaskId: "t1",
       line,
     });
-    expect(flow.said).toContainEqual({
-      taskId: "t2",
-      text: line,
-      kind: "startLine",
-    });
+    // The start line shows on the card; the talker is the only voice.
+    expect(flow.said.map((said) => said.text)).not.toContain(line);
     expect(sentOf(flow, "runTask", "t2")).toMatchObject({
       parent: { taskId: "t1", outcome: "incomplete", findings: null },
     });

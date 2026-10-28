@@ -118,8 +118,6 @@ describe("cancel and the card", () => {
       expect(h.sent.slice(sentBefore)).toEqual(
         sendsCancel ? [{ type: "cancel", taskId }] : [],
       );
-      h.advance(1500);
-      expect(h.said.filter((line) => line.kind === "letMeCheck")).toEqual([]);
     },
   );
 

@@ -1,5 +1,6 @@
 import type { DisplayState, TaskCard, TaskId } from "../../shared/cards";
 import type { RecentExchange, WaitingQuestion } from "../../shared/engine";
+import type { TaskSummary } from "./talk";
 import type { Model } from "./record";
 import { shownQuestion } from "./record";
 
@@ -47,4 +48,19 @@ export function waitingQuestion(model: Model): WaitingQuestion | null {
     taskId: record.card.taskId,
     question: { questionId, text, choices: [...choices] },
   };
+}
+
+const activeStates = new Set(["thinking", "clarifying", "queued", "running"]);
+
+// The tasks still running or waiting, apart from the one just asked.
+export function taskSummaries(model: Model, forTaskId: TaskId): TaskSummary[] {
+  return [...model.records.values()]
+    .filter(({ card }) => card.taskId !== forTaskId)
+    .filter(({ card }) => activeStates.has(card.state))
+    .map(({ card }) => ({
+      taskId: card.taskId,
+      state: card.state,
+      words: card.words,
+      sayBack: card.sayBack,
+    }));
 }

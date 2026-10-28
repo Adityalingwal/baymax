@@ -10,6 +10,7 @@ import type {
   OpenSource,
   SetCardFolded,
 } from "../../shared/ipc";
+import { receiveReply } from "./chat";
 import { buildDisplay, waitingQuestion } from "./display";
 import {
   applyIntakeOutcome,
@@ -38,6 +39,7 @@ import {
   showNextQuestion,
   silence,
 } from "./record";
+import type { TalkRequest, TalkerReply } from "./talk";
 import {
   admit,
   cancelTask,
@@ -59,6 +61,7 @@ export type MainStateDeps = {
   publish: (state: DisplayState) => void;
   say: (line: SaidLine) => void;
   silence: (taskId: TaskId) => void;
+  talk: (request: TalkRequest) => void;
   openUrl: (url: string) => Promise<void>;
   log: (message: string) => void;
   timers: Timers;
@@ -81,6 +84,7 @@ export type MainState = {
   setMuted: (muted: boolean) => void;
   setVoiceAvailable: (available: boolean) => void;
   showNotice: (notice: Notice) => void;
+  talkerReplied: (taskId: TaskId, reply: TalkerReply) => void;
   receive: (event: EngineEvent) => void;
   displayState: () => DisplayState;
 };
@@ -102,6 +106,8 @@ export function createMainState(deps: MainStateDeps): MainState {
     setVoiceAvailable: (available) =>
       update((c) => setVoiceAvailable(c, available)),
     showNotice: (notice) => update((c) => showNotice(c, notice)),
+    talkerReplied: (taskId, reply) =>
+      update((c) => receiveReply(c, taskId, reply)),
     receive: (event) => update((c) => receiveEvent(c, event)),
     displayState: () => buildDisplay(model),
   };
@@ -130,6 +136,8 @@ function createUpdatePath(
       guarded("say", () => deps.say(output.line));
     } else if (output.kind === "silence") {
       guarded("silence", () => deps.silence(output.taskId));
+    } else if (output.kind === "talk") {
+      guarded("talk", () => deps.talk(output.request));
     } else {
       guarded("timer", () =>
         deps.timers.setTimer(output.ms, () => update(output.fire)),

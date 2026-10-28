@@ -10,10 +10,11 @@ import type {
   WaitingQuestion,
 } from "../../shared/engine";
 import type { AnswerQuestion } from "../../shared/ipc";
-import { recentExchanges } from "./display";
+import { chat } from "./chat";
+import { recentExchanges, taskSummaries } from "./display";
 import { failureLine, fixedLines } from "./lines";
 import { clearOneOffNotice } from "./notices";
-import type { Change, Input, TaskRecord } from "./record";
+import type { Change, TaskRecord } from "./record";
 import {
   addRecord,
   closeIntakeStep,
@@ -22,11 +23,8 @@ import {
   hold,
   holdsIntake,
   say,
-  setTimer,
-  silence,
+  talk,
 } from "./record";
-
-const LET_ME_CHECK_MS = 1500;
 
 type AskWords = {
   words: string;
@@ -45,30 +43,27 @@ export function ask(
   clearOneOffNotice(model);
   const taskId = newTaskId();
   const record = addRecord(model, taskId, trimmed);
+  const recent = recentExchanges(model, taskId);
+  // The talker and the intake start on the same words at once; neither waits for the other.
   hold(change, record, {
     type: "question",
     taskId,
     utteranceId,
     words: trimmed,
-    recent: recentExchanges(model, taskId),
+    recent,
     waiting,
   });
-  record.letMeCheckDue = true;
-  setTimer(change, LET_ME_CHECK_MS, letMeCheck(taskId));
+  const tasks = taskSummaries(model, taskId);
+  talk(change, {
+    kind: "reply",
+    taskId,
+    utteranceId,
+    words: trimmed,
+    recent,
+    tasks,
+    waiting,
+  });
   return true;
-}
-
-function letMeCheck(taskId: TaskId): Input {
-  return (change) => {
-    const record = change.model.records.get(taskId);
-    if (record?.card.state !== "thinking" || !record.letMeCheckDue) {
-      return dropped(change, `let-me-check timer for ${taskId}`);
-    }
-    record.letMeCheckDue = false;
-    record.card.line = fixedLines.letMeCheck;
-    say(change, taskId, fixedLines.letMeCheck, "letMeCheck");
-    return true;
-  };
 }
 
 type OtherOutcome = Exclude<
@@ -88,6 +83,8 @@ export function applyIntakeOutcome(
     case "clarify":
       clarify(change, record, outcome.sayBack, outcome.question);
       return true;
+    case "chat":
+      return chat(change, record, outcome.sayBack);
     case "answer":
       removeThinkingCard(change, record);
       bindAnswer(change, {
@@ -116,10 +113,9 @@ function clarify(
   change.model.questions.push(card.taskId);
 }
 
-// Words that answer the waiting question are not a task, so their card goes at once.
+// Words that answer the waiting question are not a task, so their card goes at once; the talker's reply to them is still said.
 function removeThinkingCard(change: Change, record: TaskRecord): void {
   change.model.records.delete(record.card.taskId);
-  silence(change, record.card.taskId);
 }
 
 function validReply(

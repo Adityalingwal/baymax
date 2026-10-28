@@ -6,7 +6,7 @@ import type {
 } from "../../shared/engine";
 
 export const fixedLines = {
-  letMeCheck: "Let me check.",
+  oneMoment: "One moment.",
   queued: "Okay, I'll look at that after the current one.",
   queueFull: "I already have three waiting. Cancel one or ask again later.",
   outsideResearch: "I can't do that yet in this version.",

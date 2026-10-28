@@ -63,23 +63,16 @@ describe("five typed questions through the wiring", () => {
   });
 });
 
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 describe("speech for five typed questions", () => {
-  it("speaks one line at a time: the start line, three queued lines, the queue-full line", async () => {
+  it("says only the queue-full line; the start line and the queued lines show on the cards", async () => {
     const w = fiveAsked();
-    const order = [
-      "Looking into hermes.",
-      fixedLines.queued,
-      fixedLines.queued,
-      fixedLines.queued,
-      fixedLines.queueFull,
-    ];
-    for (let index = 0; index < order.length; index += 1) {
-      expect(w.syntheses.map((call) => call.input)).toEqual(
-        order.slice(0, index + 1),
-      );
-      await w.playNext();
-    }
-    expect(w.spoken()).toEqual(order);
+    // Without an Anthropic key the talker's replies end empty and are dropped.
+    await flush();
+    await w.playAll();
+    expect(w.spoken()).toEqual([fixedLines.queueFull]);
+    expect(w.card("t2")?.line).toBe(fixedLines.queued);
   });
 });
 

@@ -52,10 +52,8 @@ type Options = {
   aura?: FakeAura;
 };
 
-export function createHarness(options: Options = {}) {
-  const fake = fakeState();
-  const clock = createClock();
-  const seen = {
+function createSeen() {
+  return {
     recordings: [] as RecordingCommand[],
     speeches: [] as SpeechLine[],
     chunks: [] as SpeechChunk[],
@@ -66,6 +64,12 @@ export function createHarness(options: Options = {}) {
     syntheses: [] as Deferred<Synthesis>[],
     failures: [] as string[],
   };
+}
+
+export function createHarness(options: Options = {}) {
+  const fake = fakeState();
+  const clock = createClock();
+  const seen = createSeen();
   const control = { now: 0, recordingFails: false };
   const voice = createVoice({
     sendRecording: (command) => {
@@ -95,7 +99,14 @@ export function createHarness(options: Options = {}) {
     deepgramKeyPresent: options.deepgramKeyPresent ?? true,
   });
   if (options.started ?? true) voice.start(fake.state);
-  return { ...seen, ...fake, voice, waiting: fake.control, control };
+  return {
+    ...seen,
+    ...fake,
+    voice,
+    waiting: fake.control,
+    control,
+    advance: clock.advance,
+  };
 }
 
 export type Harness = ReturnType<typeof createHarness>;

@@ -11,6 +11,7 @@ import type {
   IntakeOutcome,
   WorkerBrief,
 } from "../../shared/engine";
+import type { TalkRequest } from "./talk";
 import type { MainState, MainStateDeps, SaidLine, Timers } from "./state";
 import { createMainState } from "./state";
 
@@ -52,6 +53,7 @@ export type Harness = {
   published: DisplayState[];
   sent: EngineCommand[];
   said: SaidLine[];
+  talked: TalkRequest[];
   silenced: TaskId[];
   logs: string[];
   opened: string[];
@@ -67,7 +69,14 @@ export type Harness = {
 
 type Seen = Pick<
   Harness,
-  "published" | "sent" | "said" | "silenced" | "logs" | "opened" | "timeline"
+  | "published"
+  | "sent"
+  | "said"
+  | "talked"
+  | "silenced"
+  | "logs"
+  | "opened"
+  | "timeline"
 >;
 type Controls = {
   reply: Reply;
@@ -104,6 +113,10 @@ function fakeDeps(
       seen.silenced.push(taskId);
       seen.timeline.push(`silence ${taskId}`);
     },
+    talk: (request) => {
+      seen.talked.push(request);
+      seen.timeline.push(`talk ${request.kind} ${request.taskId}`);
+    },
     openUrl: (url) => {
       seen.opened.push(url);
       const failure = controls.openFailure;
@@ -126,6 +139,7 @@ export function createHarness(): Harness {
     published: [],
     sent: [],
     said: [],
+    talked: [],
     silenced: [],
     logs: [],
     opened: [],

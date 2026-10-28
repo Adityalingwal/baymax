@@ -8,7 +8,6 @@ import {
   finish,
 } from "./harness";
 
-const queuedLine = "Okay, I'll look at that after the current one.";
 const modelStartLine = "Looking into more.";
 const label = "Built on the partial findings of an earlier question.";
 
@@ -73,9 +72,10 @@ const rows = parentEnds.flatMap((parentEnd) =>
   [afterEnded, queued].map((start) => ({ ...parentEnd, start })),
 );
 
-function startLines(h: Harness, taskId: string): string[] {
+// The start line and the queued line show on the card only; main's state says neither.
+function saidFor(h: Harness, taskId: string): string[] {
   return h.said
-    .filter((line) => line.taskId === taskId && line.kind === "startLine")
+    .filter((line) => line.taskId === taskId)
     .map((line) => line.text);
 }
 
@@ -98,11 +98,7 @@ describe("a follow-up of a parent that did not end done", () => {
         state: "running",
         line: line ?? modelStartLine,
       });
-      const expected =
-        start === afterEnded
-          ? [line ?? modelStartLine]
-          : [queuedLine, ...(line === null ? [] : [line])];
-      expect(startLines(h, child)).toEqual(expected);
+      expect(saidFor(h, child)).toEqual([]);
       finish(h, child);
       expect(h.card(child)).toMatchObject({
         state: "done",
@@ -118,6 +114,6 @@ describe("a follow-up of a parent that did not end done", () => {
     const child = askFollowUp(h, "t1", "more");
     const line = "The earlier question was cancelled before it found anything.";
     expect(h.card(child)).toMatchObject({ state: "running", line });
-    expect(startLines(h, child)).toEqual([line]);
+    expect(saidFor(h, child)).toEqual([]);
   });
 });

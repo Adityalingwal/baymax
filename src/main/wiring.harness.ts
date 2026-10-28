@@ -1,3 +1,8 @@
+import type {
+  TextOutcome,
+  TextRequest,
+  TextStream,
+} from "../providers/anthropic";
 import type { Synthesis, Transcription } from "../providers/deepgram";
 import type { DisplayState, TaskId } from "../shared/cards";
 import type { EngineCommand, EngineEvent, EnginePort } from "../shared/engine";
@@ -13,7 +18,24 @@ type Options = {
   deepgramKeyPresent?: boolean;
   voiceFails?: boolean; // transcription and synthesis answer a Deepgram failure
   port?: EnginePort; // a real engine; the fake port records around it
+  talker?: boolean; // a fake talker model the test answers; without it there is no Anthropic key
 };
+
+type TalkerCall = {
+  request: TextRequest;
+  onText: (text: string) => void;
+  resolve: (outcome: TextOutcome) => void;
+};
+
+// The talker's model call faked: each call waits until a test streams its text and settles it.
+function fakeTalker() {
+  const calls: TalkerCall[] = [];
+  const stream: TextStream = (request, _options, onText) =>
+    new Promise<TextOutcome>((resolve) =>
+      calls.push({ request, onText, resolve }),
+    );
+  return { calls, stream };
+}
 
 type Pending<T> = { input: string; resolve: (result: T) => void };
 
@@ -173,6 +195,7 @@ export function fakeSender() {
 function fakesFor(options: Options) {
   return {
     clock: createClock(),
+    talker: fakeTalker(),
     port: fakePort(options.sendFails ?? (() => false), options.port ?? null),
     ipc: fakeIpc(),
     own: fakeSender(),
@@ -184,7 +207,7 @@ function fakesFor(options: Options) {
 }
 
 export function wire(options: Options = {}) {
-  const { clock, port, ipc, own, voice } = fakesFor(options);
+  const { clock, port, ipc, own, voice, talker } = fakesFor(options);
   const seen = {
     published: [] as DisplayState[],
     opened: [] as string[],
@@ -194,6 +217,7 @@ export function wire(options: Options = {}) {
   let ids = 0;
   const wiring = wireMain({
     port: port.port,
+    talkerStream: options.talker === true ? talker.stream : null,
     ipc: ipc.ipc,
     isOwnSender: (sender) => sender === own.sender,
     publish: (display) => seen.published.push(display),
@@ -221,6 +245,7 @@ export function wire(options: Options = {}) {
     ...voice.seen,
     ...speech,
     advance: clock.advance,
+    talkerCalls: talker.calls,
     wiring,
     port,
     ipc,

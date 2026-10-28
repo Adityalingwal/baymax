@@ -87,16 +87,70 @@ function describeError(error: unknown, apiKey: string): string {
   return apiKey === "" ? line : line.split(apiKey).join("[key]");
 }
 
-export function createModelCall(params: {
-  apiKey: string;
-  fetch?: typeof fetch;
-}): ModelCall {
-  const client = new Anthropic({
+type ClientParams = { apiKey: string; fetch?: typeof fetch };
+
+function createClient(params: ClientParams): Anthropic {
+  return new Anthropic({
     apiKey: params.apiKey,
     fetch: params.fetch,
     maxRetries: 1,
     logLevel: "off", // ANTHROPIC_LOG=debug would print request bodies, user words included
   });
+}
+
+function failed(
+  error: unknown,
+  signal: AbortSignal,
+  apiKey: string,
+): { ok: false; failure: ModelFailure; detail: string } {
+  const failure = signal.aborted ? "aborted" : mapError(error);
+  return { ok: false, failure, detail: describeError(error, apiKey) };
+}
+
+export type TextRequest = Omit<
+  Anthropic.MessageCreateParamsStreaming,
+  "stream"
+>;
+
+export type TextOutcome =
+  | { ok: true; text: string }
+  | { ok: false; failure: ModelFailure; detail: string }; // detail goes only to the dev log
+
+// Streams one reply's text; onText gets each piece as it arrives.
+export type TextStream = (
+  request: TextRequest,
+  options: { timeoutMs: number; signal: AbortSignal },
+  onText: (text: string) => void,
+) => Promise<TextOutcome>;
+
+export function createTextStream(params: ClientParams): TextStream {
+  const client = createClient(params);
+  return async (request, options, onText) => {
+    let text = "";
+    try {
+      const stream = client.messages.stream(request, {
+        timeout: options.timeoutMs,
+        signal: options.signal,
+      });
+      for await (const event of stream) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta.type === "text_delta"
+        ) {
+          text += event.delta.text;
+          onText(event.delta.text);
+        }
+      }
+      await stream.finalMessage();
+      return { ok: true, text };
+    } catch (error) {
+      return failed(error, options.signal, params.apiKey);
+    }
+  };
+}
+
+export function createModelCall(params: ClientParams): ModelCall {
+  const client = createClient(params);
   return async (request, options) => {
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(), options.deadlineMs);
