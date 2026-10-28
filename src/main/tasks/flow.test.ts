@@ -1,41 +1,75 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { TextOutcome, TextStream } from "../../providers/anthropic";
 import type { DisplayState, TaskCard } from "../../shared/cards";
 import type { EngineCommand, EnginePort } from "../../shared/engine";
+import { createTalker } from "../talker";
+import { finished } from "../talker.harness";
 import type { ModelRequest, Outcome } from "./flow.harness";
 import {
-  briefParts,
   closePorts,
-  questionReply,
-  reply,
   startFakeEngine,
   until,
   unreachable,
 } from "./flow.harness";
+import {
+  briefParts,
+  chat,
+  clarify,
+  decision,
+  followUp,
+  newTask,
+  outsideResearch,
+} from "./harness";
 import type { MainState, SaidLine } from "./state";
 import { createMainState } from "./state";
 
-const clarify = questionReply({
-  sayBack: "a good laptop",
-  route: "clarify",
-  clarify: { text: "For what use?", choices: ["Office", "Gaming"] },
-});
-
-const laptopTask = reply({
-  sayBack: "a good office laptop",
-  route: "newTask",
-  parentTaskId: null,
-  startLine: "Okay, looking at office laptops.",
-  brief: briefParts("Find a good office laptop"),
-});
-
 afterEach(closePorts);
 
-// Main's state with recording deps; send records each command and forwards it to the engine.
-function mainStateOn(port: EnginePort) {
+// What the front call says and decides for one utterance; the model stream is faked, the talker is real.
+type Front = { line: string; decision: unknown };
+
+const front = (line: string, input: unknown): Front => ({
+  line,
+  decision: input,
+});
+
+function fakeFront(script: Front[]): { stream: TextStream; asked: string[] } {
+  const asked: string[] = [];
+  const stream: TextStream = (request, _options, onText, onToolStart) => {
+    const content = request.messages.at(-1)?.content;
+    asked.push(typeof content === "string" ? content : "");
+    const next = script.shift();
+    if (next === undefined) throw new Error("no fake front call left");
+    onText(next.line);
+    onToolStart?.();
+    const outcome: TextOutcome = finished(next.line, [
+      { name: "decide", input: next.decision },
+    ]);
+    return Promise.resolve(outcome);
+  };
+  return { stream, asked };
+}
+
+// Main's state with recording deps, the real talker on a fake model stream, and the real engine behind a recording port.
+function mainStateOn(port: EnginePort, script: Front[]) {
   const sent: EngineCommand[] = [];
   const said: SaidLine[] = [];
   const published: DisplayState[] = [];
+  const logs: string[] = [];
+  const fake = fakeFront(script);
   let ids = 0;
+  const talker = createTalker({
+    stream: fake.stream,
+    talk: () => ({
+      push: () => undefined,
+      end: () => undefined,
+      cut: () => undefined,
+    }),
+    onReply: (taskId, attemptId, reply) =>
+      state.talkerReplied(taskId, attemptId, reply),
+    timers: { setTimer: () => () => undefined },
+    log: (message) => logs.push(message),
+  });
   const state: MainState = createMainState({
     send: (command) => {
       sent.push(structuredClone(command));
@@ -44,9 +78,10 @@ function mainStateOn(port: EnginePort) {
     publish: (display) => published.push(display),
     say: (line) => said.push(line),
     silence: () => undefined,
-    talk: () => undefined,
+    talk: talker.talk,
+    cancelAttempt: talker.cancel,
     openUrl: () => Promise.resolve(),
-    log: () => undefined,
+    log: (message) => logs.push(message),
     timers: { setTimer: () => () => undefined },
     newTaskId: () => {
       ids += 1;
@@ -54,7 +89,7 @@ function mainStateOn(port: EnginePort) {
     },
   });
   port.onMessage(state.receive);
-  return { state, sent, said, published };
+  return { state, sent, said, published, logs, asked: fake.asked };
 }
 
 function firstText(request: ModelRequest): string {
@@ -62,10 +97,10 @@ function firstText(request: ModelRequest): string {
   return typeof content === "string" ? content : "";
 }
 
-// Main's state wired to the real engine; only the model is fake.
-function startFlow(steps: Outcome[]) {
+// Main's state wired to the real engine and the real talker; only the models are fake.
+function startFlow(script: Front[], steps: Outcome[] = []) {
   const { port, requests } = startFakeEngine(steps);
-  const main = mainStateOn(port);
+  const main = mainStateOn(port, script);
   const card = (taskId: string): TaskCard | undefined =>
     main.state.displayState().tasks.find((task) => task.taskId === taskId);
   const workerAsked = (goal: string) =>
@@ -78,34 +113,93 @@ function startFlow(steps: Outcome[]) {
   return { ...main, requests, card, shown, until, firstText, workerAsked };
 }
 
-type Flow = ReturnType<typeof startFlow>;
-
-const sentOf = (flow: Flow, type: EngineCommand["type"], taskId: string) =>
+const sentOf = (
+  flow: ReturnType<typeof startFlow>,
+  type: EngineCommand["type"],
+  taskId: string,
+) =>
   flow.sent.find(
     (command) => command.type === type && command.taskId === taskId,
   );
 
-// Both workers fail, so the first card ends incomplete with nothing found.
-const demoPairSteps = (): Outcome[] => [
-  questionReply({
-    sayBack: "how Hermes agent works inside, from its docs",
-    startLine: "Okay, looking at how Hermes works.",
-    brief: briefParts("How the Hermes agent works inside"),
-  }),
-  unreachable,
-  questionReply({
-    sayBack: "how Hermes differs from Claude Code",
-    route: "followUp",
-    parentTaskId: "t1",
-    startLine: "Okay, comparing them.",
-    brief: briefParts("How Hermes differs from Claude Code"),
-  }),
-  unreachable,
-];
+describe("main and the engine joined: the routes", () => {
+  it("answers a greeting in the front call alone, with no engine command", async () => {
+    const flow = startFlow([front("Hi, I'm Baymax.", chat())]);
+    flow.state.ask("hi", null, null);
+    await flow.until("the done card", () => flow.card("t1")?.state === "done");
+    expect(flow.card("t1")).toMatchObject({
+      reply: "Hi, I'm Baymax.",
+      answer: { cardText: "Hi, I'm Baymax." },
+      sayBack: null,
+    });
+    expect(flow.sent).toEqual([]);
+    expect(flow.requests).toEqual([]);
+    expect(flow.said).toEqual([]);
+  });
+
+  it("starts the worker with the decision's brief and the user's words", async () => {
+    const flow = startFlow(
+      [front("I'll check the forecast.", newTask("the forecast"))],
+      [unreachable],
+    );
+    flow.state.ask("will it rain in Delhi?", null, null);
+    await flow.until("the worker", () => flow.workerAsked("the forecast"));
+    expect(sentOf(flow, "runTask", "t1")).toMatchObject({
+      brief: {
+        ...briefParts("the forecast"),
+        userWords: "will it rain in Delhi?",
+      },
+    });
+    expect(firstText(flow.requests[0])).toContain("will it rain in Delhi?");
+    expect(flow.shown("t1", "running")).toMatchObject({
+      reply: "I'll check the forecast.",
+      line: null,
+    });
+  });
+});
+
+describe("main and the engine joined: routes that start no worker", () => {
+  it("ends outside research without a worker and leaves the line to speech", async () => {
+    const flow = startFlow([front("I can't book a cab.", outsideResearch())]);
+    flow.state.ask("book me a cab", null, null);
+    await flow.until(
+      "the cancelled card",
+      () => flow.card("t1")?.state === "cancelled",
+    );
+    expect(flow.card("t1")).toMatchObject({
+      reply: "I can't book a cab.",
+      line: null,
+    });
+    expect(flow.sent).toEqual([]);
+    expect(flow.said).toEqual([]);
+  });
+
+  it("rejects a decision that fails its check and starts no worker", async () => {
+    const flow = startFlow([
+      front("On it.", decision({ route: "newTask", topic: "x" })),
+    ]);
+    flow.state.ask("find me a laptop", null, null);
+    await flow.until("the failure", () => flow.card("t1")?.canRetry === true);
+    expect(flow.sent).toEqual([]);
+    expect(flow.logs).toContain("decision rejected for t1: missingBrief");
+  });
+});
 
 describe("main and the engine joined: a follow-up", () => {
   it("runs the typed demo pair over an incomplete parent", async () => {
-    const flow = startFlow(demoPairSteps());
+    const flow = startFlow(
+      [
+        front(
+          "I'll look at how Hermes works.",
+          newTask("how Hermes agent works inside"),
+        ),
+        front(
+          "I'll compare them.",
+          followUp("t1", "how Hermes differs from Claude Code"),
+        ),
+      ],
+      [unreachable, unreachable],
+    );
     flow.state.ask("How does Hermes agent work inside?", null, null);
     await flow.until(
       "card 1 to end",
@@ -121,65 +215,68 @@ describe("main and the engine joined: a follow-up", () => {
     expect(flow.shown("t2", "running")).toMatchObject({
       parentTaskId: "t1",
       line,
+      reply: "I'll compare them.",
     });
-    // The start line shows on the card; the talker is the only voice.
     expect(flow.said.map((said) => said.text)).not.toContain(line);
     expect(sentOf(flow, "runTask", "t2")).toMatchObject({
       parent: { taskId: "t1", outcome: "incomplete", findings: null },
     });
+    // The second front call saw the first task and its line in its history.
+    expect(flow.asked[1]).toContain("task t1 (incomplete)");
     await flow.until("card 2's worker request", () =>
-      flow.workerAsked("How Hermes differs from Claude Code"),
+      flow.workerAsked("how Hermes differs from Claude Code"),
     );
-    const worker = flow.firstText(flow.requests[3]);
-    expect(worker).toContain("<parent_result>");
-    expect(worker).toContain(
-      "The earlier task ended incomplete before it found anything usable",
-    );
+    expect(flow.firstText(flow.requests[1])).toContain("<parent_result>");
   });
 });
 
 describe("main and the engine joined: a clarifying answer", () => {
-  it("continues a clarifying task answered by a click", async () => {
-    const flow = startFlow([clarify, laptopTask, unreachable]);
+  const clarifyFront = front(
+    "Which kind of laptop?",
+    clarify(["Office", "Gaming"]),
+  );
+  const laptop = (answerTo: string | null) =>
+    front("Checking office laptops.", newTask("office laptops", answerTo));
+
+  it("continues a clarifying task answered by a click, in one front call", async () => {
+    const flow = startFlow([clarifyFront, laptop(null)], [unreachable]);
     flow.state.ask("find me a good laptop", null, null);
     await flow.until(
       "the question",
       () => flow.state.waitingQuestion() !== null,
     );
+    expect(flow.card("t1")?.question?.text).toBe("Which kind of laptop?");
     const waiting = flow.state.waitingQuestion();
     flow.state.answerQuestion({
       taskId: "t1",
       questionId: waiting?.question.questionId ?? "",
       reply: { kind: "choice", index: 0 },
     });
-    await flow.until("the worker", () =>
-      flow.workerAsked("Find a good office laptop"),
-    );
-    expect(sentOf(flow, "clarifyingAnswer", "t1")).toMatchObject({
-      reply: { kind: "choice", index: 0 },
+    await flow.until("the worker", () => flow.workerAsked("office laptops"));
+    expect(flow.asked).toHaveLength(2);
+    expect(flow.asked[1]).toContain("<words>\nOffice\n</words>");
+    expect(sentOf(flow, "runTask", "t1")).toMatchObject({
+      brief: {
+        userWords:
+          'find me a good laptop\nAnswer to "Which kind of laptop?": Office',
+      },
     });
-    expect(sentOf(flow, "runTask", "t1")).toBeDefined();
   });
 
-  it("continues a clarifying task answered by typed words", async () => {
-    const answer = questionReply({
-      route: "answer",
-      reply: { choiceIndex: 1, text: null },
-    });
-    const flow = startFlow([clarify, answer, laptopTask, unreachable]);
+  it("continues a clarifying task answered by typed words, removing the new card", async () => {
+    const flow = startFlow(
+      [clarifyFront, laptop("t1:question")],
+      [unreachable],
+    );
     flow.state.ask("find me a good laptop", null, null);
     await flow.until(
       "the question",
       () => flow.state.waitingQuestion() !== null,
     );
-    flow.state.ask("the second one", null, flow.state.waitingQuestion());
-    await flow.until("the worker", () =>
-      flow.workerAsked("Find a good office laptop"),
-    );
+    flow.state.ask("the first one", null, flow.state.waitingQuestion());
+    await flow.until("the worker", () => flow.workerAsked("office laptops"));
     expect(flow.card("t2")).toBeUndefined();
-    expect(sentOf(flow, "clarifyingAnswer", "t1")).toMatchObject({
-      reply: { kind: "choice", index: 1 },
-    });
     expect(sentOf(flow, "runTask", "t1")).toBeDefined();
+    expect(flow.sent.map((command) => command.type)).toEqual(["runTask"]);
   });
 });

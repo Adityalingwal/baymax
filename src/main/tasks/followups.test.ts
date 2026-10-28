@@ -9,8 +9,8 @@ import {
   findings,
   finish,
   followUp,
-  intake,
   newTask,
+  questionIdOf,
 } from "./harness";
 
 function lastRun(h: Harness, taskId: string) {
@@ -130,7 +130,7 @@ describe("invalid and closed parents", () => {
       const h = createHarness();
       h.state.ask("first", null, null);
       setup(h);
-      h.state.receive(intake("t1", followUp(parentId, "more")));
+      h.reply("t1", followUp(parentId, "more"));
       expect(parentOf(h, "t1")).toBeNull();
       expect(h.card("t1")?.parentTaskId).toBeNull();
       expect(h.logs.some((line) => line.includes(`parent ${parentId}`))).toBe(
@@ -163,17 +163,17 @@ describe("invalid and closed parents", () => {
 describe("follow-ups that wait for their parent", () => {
   it("keeps waiting while a later new task runs, and runs after a clarifying parent ends", () => {
     const h = createHarness();
-    askClarify(h, "q1");
+    askClarify(h);
     const child = askFollowUp(h, "t1", "more");
     const later = askNew(h, "rust");
     expect(h.card(child)?.state).toBe("queued");
     expect(h.card(later)?.state).toBe("running");
     h.state.answerQuestion({
       taskId: "t1",
-      questionId: "q1",
+      questionId: questionIdOf("t1"),
       reply: { kind: "choice", index: 0 },
     });
-    h.state.receive(intake("t1", newTask("about q1")));
+    h.reply("t1", newTask("about it"));
     finish(h, later);
     expect(h.card("t1")?.state).toBe("running");
     expect(h.card(child)?.state).toBe("queued");
@@ -183,7 +183,7 @@ describe("follow-ups that wait for their parent", () => {
 
   it("starts a waiting follow-up when its clarifying parent is cancelled with the slot free", () => {
     const h = createHarness();
-    askClarify(h, "q1");
+    askClarify(h);
     const child = askFollowUp(h, "t1", "more");
     expect(h.card(child)?.state).toBe("queued");
     h.state.cancelTask("t1");
@@ -198,19 +198,14 @@ describe("follow-ups that wait for their parent", () => {
 describe("a deleted parent", () => {
   it("runs with parent null when the parent's thinking card is deleted by the answer route", () => {
     const h = createHarness();
-    askClarify(h, "q1");
-    h.state.ask("the first one", null, null);
+    askClarify(h);
+    h.state.ask("the first one", null, h.state.waitingQuestion());
     const child = askFollowUp(h, "t2", "more");
     expect(h.card(child)?.state).toBe("queued");
-    h.state.receive(
-      intake("t2", {
-        route: "answer",
-        waitingTaskId: "t1",
-        questionId: "q1",
-        reply: { kind: "choice", index: 0 },
-      }),
-    );
+    h.reply("t2", newTask("about it", questionIdOf("t1")));
     expect(h.card("t2")).toBeUndefined();
+    // The answered task runs first; the follow-up starts once the slot frees.
+    finish(h, "t1");
     expect(parentOf(h, child)).toBeNull();
     expect(h.card(child)?.parentTaskId).toBeNull();
   });
@@ -241,9 +236,9 @@ describe("recent exchanges", () => {
     h.state.ask("e", null, null);
     h.state.ask("f", null, null);
     h.state.ask("g", null, null);
-    const command = h.sent.at(-1);
-    expect(command).toMatchObject({ type: "question", taskId: "t7" });
-    expect(command?.type === "question" ? command.recent : null).toEqual([
+    const request = h.talked.at(-1);
+    expect(request).toMatchObject({ kind: "front", taskId: "t7" });
+    expect(request?.recent).toEqual([
       exchange("t2", "done", "tell me b", "Done. spoken", "Done."),
       exchange("t3", "incomplete", "tell me c", null, null),
       exchange("t4", "running", "tell me d", null, null),

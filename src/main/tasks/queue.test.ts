@@ -17,7 +17,7 @@ function runTaskIds(h: Harness): string[] {
 }
 
 describe("the run slot and the queue", () => {
-  it("runs the first new task at once and shows its start line without saying it", () => {
+  it("runs the first new task at once, showing its spoken line without saying anything", () => {
     const h = createHarness();
     askNew(h, "hermes");
     expect(h.sent.at(-1)).toEqual({
@@ -25,13 +25,14 @@ describe("the run slot and the queue", () => {
       taskId: "t1",
       goalVersion: 1,
       depth: "normal",
-      brief: brief("hermes"),
+      brief: brief("hermes", "tell me hermes"),
       parent: null,
     });
     expect(h.card("t1")).toMatchObject({
       state: "running",
-      sayBack: "hermes",
-      line: "Looking into hermes.",
+      sayBack: null,
+      line: null,
+      reply: "Checking hermes.",
     });
     expect(h.said).toEqual([]);
   });
@@ -72,17 +73,19 @@ describe("the queue", () => {
 });
 
 describe("leaving the queue", () => {
-  it("starts the oldest queued task when the running one finishes, without saying its line", () => {
+  it("starts the oldest queued task when the running one finishes, saying only the result", () => {
     const h = fourTasks();
     const saidBefore = h.said.length;
     finish(h, "t1");
     expect(runTaskIds(h)).toEqual(["t1", "t2"]);
     expect(h.card("t2")).toMatchObject({
       state: "running",
-      line: "Looking into rust.",
+      line: null,
+      reply: "Checking rust.",
     });
-    expect(h.said.slice(saidBefore)).toEqual([]);
-    expect(h.talked.at(-1)).toMatchObject({ kind: "result", taskId: "t1" });
+    expect(h.said.slice(saidBefore)).toEqual([
+      { taskId: "t1", text: "Done. spoken", kind: "answer" },
+    ]);
   });
 
   it("cancels a queued task without a message and keeps the others' order", () => {

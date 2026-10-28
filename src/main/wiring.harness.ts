@@ -1,4 +1,5 @@
 import type {
+  ModelFailure,
   TextOutcome,
   TextRequest,
   TextStream,
@@ -9,7 +10,8 @@ import type { EngineCommand, EngineEvent, EnginePort } from "../shared/engine";
 import { ipcChannels } from "../shared/ipc";
 import type { RecordingCommand, SpeechLine, StopPlayback } from "../shared/ipc";
 import type { RendererListener, RendererSender } from "./renderer-actions";
-import { createClock, findings, intake, newTask } from "./tasks/harness";
+import { finished } from "./talker.harness";
+import { createClock, findings, newTask } from "./tasks/harness";
 import { wireMain } from "./wiring";
 
 type Options = {
@@ -18,22 +20,36 @@ type Options = {
   deepgramKeyPresent?: boolean;
   voiceFails?: boolean; // transcription and synthesis answer a Deepgram failure
   port?: EnginePort; // a real engine; the fake port records around it
-  talker?: boolean; // a fake talker model the test answers; without it there is no Anthropic key
 };
 
 type TalkerCall = {
   request: TextRequest;
   onText: (text: string) => void;
+  onToolStart: () => void;
   resolve: (outcome: TextOutcome) => void;
+  settled: boolean;
 };
 
-// The talker's model call faked: each call waits until a test streams its text and settles it.
+// The front call's model faked: each call waits until a test streams its text and settles it.
 function fakeTalker() {
   const calls: TalkerCall[] = [];
-  const stream: TextStream = (request, _options, onText) =>
-    new Promise<TextOutcome>((resolve) =>
-      calls.push({ request, onText, resolve }),
-    );
+  const stream: TextStream = (request, options, onText, onToolStart) =>
+    new Promise<TextOutcome>((resolve) => {
+      const call: TalkerCall = {
+        request,
+        onText,
+        onToolStart: onToolStart ?? (() => undefined),
+        resolve: (outcome) => {
+          call.settled = true;
+          resolve(outcome);
+        },
+        settled: false,
+      };
+      calls.push(call);
+      options.signal.addEventListener("abort", () =>
+        resolve({ ok: false, failure: "aborted", detail: "aborted" }),
+      );
+    });
   return { calls, stream };
 }
 
@@ -217,14 +233,11 @@ export function wire(options: Options = {}) {
   let ids = 0;
   const wiring = wireMain({
     port: port.port,
-    talkerStream: options.talker === true ? talker.stream : null,
+    talkerStream: talker.stream,
     ipc: ipc.ipc,
     isOwnSender: (sender) => sender === own.sender,
     publish: (display) => seen.published.push(display),
-    openUrl: (url) => {
-      seen.opened.push(url);
-      return Promise.resolve();
-    },
+    openUrl: (url) => Promise.resolve(void seen.opened.push(url)),
     log: (message) => seen.logs.push(message),
     timers: { setTimer: clock.setTimer },
     newTaskId: () => {
@@ -263,13 +276,47 @@ export function submit(w: Wired): void {
   w.send(ipcChannels.submitQuestion, { text: "  how does Hermes work?  " });
 }
 
-export function admitTask(w: Wired): void {
-  submit(w);
-  w.port.emit(intake("t1", newTask("how Hermes works")));
+// The first front call a test has not settled yet, or the one at the index.
+function callAt(w: Wired, index: number | undefined) {
+  const call =
+    index === undefined
+      ? w.talkerCalls.find((other) => !other.settled)
+      : w.talkerCalls[index];
+  if (call === undefined) throw new Error("no front call to settle");
+  return call;
 }
 
-export function runToDone(w: Wired): void {
-  admitTask(w);
+// Answers a front call through the talker, as the model would: the line streams, then the decision.
+export async function streamFront(
+  w: Wired,
+  decision: unknown,
+  line = "Okay.",
+  index?: number,
+): Promise<void> {
+  const call = callAt(w, index);
+  call.onText(line);
+  call.onToolStart();
+  call.resolve(finished(line, [{ name: "decide", input: decision }]));
+  await flush();
+}
+
+// A front call that fails the way the model call reports it.
+export async function failFront(
+  w: Wired,
+  failure: ModelFailure = "unreachable",
+  index?: number,
+): Promise<void> {
+  callAt(w, index).resolve({ ok: false, failure, detail: "x" });
+  await flush();
+}
+
+export async function admitTask(w: Wired): Promise<void> {
+  submit(w);
+  await streamFront(w, newTask("how Hermes works"));
+}
+
+export async function runToDone(w: Wired): Promise<void> {
+  await admitTask(w);
   w.port.emit({
     type: "result",
     taskId: "t1",
@@ -278,8 +325,8 @@ export function runToDone(w: Wired): void {
   });
 }
 
-// Asks by the text box and admits the new card as a new task; taskId is the id the ask mints.
-export function admitAs(w: Wired, taskId: TaskId, sayBack: string): void {
-  w.send(ipcChannels.submitQuestion, { text: `tell me ${sayBack}` });
-  w.port.emit(intake(taskId, newTask(sayBack)));
+// Asks by the text box and admits the new card as a new task.
+export async function admitAs(w: Wired, topic: string): Promise<void> {
+  w.send(ipcChannels.submitQuestion, { text: `tell me ${topic}` });
+  await streamFront(w, newTask(topic), `Checking ${topic}.`);
 }

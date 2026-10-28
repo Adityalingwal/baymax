@@ -1,6 +1,6 @@
 import type { Synthesis, Transcription } from "../providers/deepgram";
 import type { UtteranceId } from "../shared/cards";
-import type { WaitingQuestion } from "../shared/engine";
+import type { WaitingQuestion } from "./tasks/talk";
 import type {
   RecordingCommand,
   SpeechChunk,
@@ -160,6 +160,7 @@ export function failed(cause: "unreachable" | "keyRejected" | "noCredit") {
 export function waitingQuestion(questionId: string): WaitingQuestion {
   return {
     taskId: "t1",
+    words: "find me a laptop",
     question: { questionId, text: `${questionId}?`, choices: ["a", "b"] },
   };
 }

@@ -5,66 +5,9 @@ import type { EngineFakes } from "../../engine/index";
 type ModelCall = NonNullable<EngineFakes["model"]>;
 export type ModelRequest = Parameters<ModelCall>[0];
 export type Outcome = Awaited<ReturnType<ModelCall>>;
-type Message = Extract<Outcome, { ok: true }>["message"];
 
 // A step answers one model call: a fixed outcome, or a call that decides when and what to answer.
 type Step = Outcome | ModelCall;
-
-// A Messages API response with one JSON text block, as the SDK returns it.
-export function reply(fields: Record<string, unknown>): Outcome {
-  const message: Message = {
-    id: "msg_fake",
-    type: "message",
-    role: "assistant",
-    model: "claude-sonnet-5-5",
-    container: null,
-    diagnostics: null,
-    content: [{ type: "text", text: JSON.stringify(fields), citations: null }],
-    stop_reason: "end_turn",
-    stop_details: null,
-    stop_sequence: null,
-    usage: {
-      input_tokens: 100,
-      output_tokens: 50,
-      cache_creation: null,
-      cache_creation_input_tokens: null,
-      cache_read_input_tokens: null,
-      inference_geo: null,
-      output_tokens_details: null,
-      server_tool_use: null,
-      service_tier: null,
-      speed: null,
-    },
-  };
-  return { ok: true, message };
-}
-
-export const briefParts = (goal: string) => ({
-  goal,
-  resultShape: "a short answer",
-  sources: "the web",
-  limits: "normal",
-});
-
-// An intake reply to a question command: all seven fields, unused ones null.
-export const questionReply = (fields: Record<string, unknown>): Outcome =>
-  reply({
-    sayBack: "what was asked",
-    route: "newTask",
-    parentTaskId: null,
-    startLine: null,
-    brief: null,
-    clarify: null,
-    reply: null,
-    ...fields,
-  });
-
-export const newTaskReply = (sayBack: string): Outcome =>
-  questionReply({
-    sayBack,
-    startLine: `Okay, looking at ${sayBack}.`,
-    brief: briefParts(sayBack),
-  });
 
 // How the real model call reports a network failure.
 export const unreachable: Outcome = {

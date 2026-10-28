@@ -10,7 +10,7 @@ export type Source = {
   title: string;
 };
 
-// Two to four choices, the first recommended; the screen adds "something else" itself.
+// No choices (an open question) or two to four, the first recommended; the screen adds "something else" itself.
 export type ClarifyingQuestion = {
   questionId: QuestionId;
   text: string;
@@ -44,9 +44,9 @@ export type TaskCard = {
   state: TaskState;
   words: string; // the user's words as asked
   parentTaskId: TaskId | null;
-  sayBack: string | null;
-  line: string | null; // the start line, or a fixed status or failure line
-  reply: string | null; // the talker's spoken reply to the words, so what was said is also on screen
+  sayBack: string | null; // always null since the front call's spoken line replaced the say-back
+  line: string | null; // a fixed status or failure line
+  reply: string | null; // the front call's spoken line, so what was said is also on screen
   step: string | null; // latest progress, e.g. "searching: how Hermes works"
   sourcesRead: number;
   question: (ClarifyingQuestion & { answered: boolean }) | null;

@@ -1,5 +1,5 @@
 import type { UtteranceId } from "../shared/cards";
-import type { WaitingQuestion } from "../shared/engine";
+import type { WaitingQuestion } from "./tasks/talk";
 import type { MainState } from "./tasks/state";
 
 export type VoiceState = Pick<

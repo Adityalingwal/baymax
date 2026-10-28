@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { TaskId } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
 import { failureLine } from "./tasks/lines";
-import { wire } from "./wiring.harness";
+import { failFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-// The intake never speaks, so each task's spoken line here is its fixed failure line.
+// Each task's spoken line here is its fixed failure line.
 const firstLine = failureLine("modelsUnreachable");
-const secondLine = failureLine("searchDown");
+const secondLine = failureLine("keyRejected");
 
 type SpeechRow = {
   name: string;
@@ -58,10 +58,9 @@ async function twoAsked(): Promise<Wired> {
   const w = wire();
   w.send(ipcChannels.submitQuestion, { text: "how does hermes work" });
   w.send(ipcChannels.submitQuestion, { text: "what is new in rust" });
-  // Without an Anthropic key the talker's replies end empty and are dropped.
   await flush();
-  w.port.emit({ type: "failure", taskId: "t1", kind: "modelsUnreachable" });
-  w.port.emit({ type: "failure", taskId: "t2", kind: "searchDown" });
+  await failFront(w, "unreachable", 0);
+  await failFront(w, "keyRejected", 1);
   return w;
 }
 

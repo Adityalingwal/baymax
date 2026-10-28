@@ -1,43 +1,54 @@
 import type {
   ClarifyingQuestion,
-  Findings,
+  QuestionId,
   TaskCard,
   TaskId,
   TaskState,
 } from "../../shared/cards";
 import type {
   EngineCommand,
-  Incomplete,
   ParentResult,
   WorkerBrief,
 } from "../../shared/engine";
-import { fixedLines, incompleteLines } from "./lines";
-import type { TalkRequest, TalkerReply } from "./talk";
+import type { Exchange } from "./history";
+import type { TalkRequest } from "./talk";
 
-// Main's state says only fixed lines (failure, notice); the talker and voice say the rest.
+// Main's state says fixed lines (failure, notice, queue), results and the waiting question as given; the front call says the rest.
 export type SaidKind = "talk" | "question" | "answer" | "failure" | "notice";
 export type SaidLine = { taskId: TaskId | null; text: string; kind: SaidKind };
 
-export type Admission = { startLine: string; brief: WorkerBrief };
+export type Admission = { brief: WorkerBrief };
+
+// Everything a front call is asked except its id; a retry makes a fresh call from the same parts.
+export type FrontParts = Omit<TalkRequest, "kind" | "attemptId">;
+
+// One front call in flight or failed; submitted is the question a card answer claimed when it started.
+export type Attempt = {
+  id: string;
+  parts: FrontParts;
+  submitted: QuestionId | null;
+};
 
 export type TaskRecord = {
   card: TaskCard;
   shown: boolean;
   created: number;
   admission: Admission | null;
+  topic: string | null; // the front call's short name for the request; never on the card
   spokenLine: string | null;
   hiddenQuestion: ClarifyingQuestion | null;
   builtOnPartial: boolean;
-  chat: boolean; // the intake said chat; the card waits for the talker's reply
-  reply: TalkerReply | null;
+  attempt: Attempt | null;
+  failedAttempt: Attempt | null;
+  attempts: number;
   sent: EngineCommand | null;
-  failed: EngineCommand | null;
 };
 
 export type Model = {
   records: Map<TaskId, TaskRecord>;
   created: number;
   answers: Map<TaskId, ParentResult>;
+  exchanges: Exchange[];
   queue: TaskId[];
   questions: TaskId[];
   notice: string | null;
@@ -50,6 +61,7 @@ export type Output =
   | { kind: "send"; command: EngineCommand }
   | { kind: "say"; line: SaidLine }
   | { kind: "talk"; request: TalkRequest }
+  | { kind: "cancelAttempt"; attemptId: string }
   | { kind: "silence"; taskId: TaskId }
   | { kind: "timer"; ms: number; fire: Input };
 
@@ -61,13 +73,12 @@ export type Change = {
 
 export type Input = (change: Change) => boolean;
 
-const LEAVE_MS = 3000;
-
 export function createModel(): Model {
   return {
     records: new Map(),
     created: 0,
     answers: new Map(),
+    exchanges: [],
     queue: [],
     questions: [],
     notice: null,
@@ -102,13 +113,14 @@ export function addRecord(
     shown: true,
     created: model.created,
     admission: null,
+    topic: null,
     spokenLine: null,
     hiddenQuestion: null,
     builtOnPartial: false,
-    chat: false,
-    reply: null,
+    attempt: null,
+    failedAttempt: null,
+    attempts: 0,
     sent: null,
-    failed: null,
   };
   model.records.set(taskId, record);
   return record;
@@ -143,12 +155,21 @@ export function talk(change: Change, request: TalkRequest): void {
   change.outputs.push({ kind: "talk", request });
 }
 
+// Aborts the record's front call, if any; the late result of that call changes nothing.
+export function abandonAttempt(change: Change, record: TaskRecord): boolean {
+  const { attempt } = record;
+  if (attempt === null) return false;
+  record.attempt = null;
+  change.outputs.push({ kind: "cancelAttempt", attemptId: attempt.id });
+  return true;
+}
+
 // Drops the task's pending and playing speech; never pushed in a change that then says a line for that task.
 export function silence(change: Change, taskId: TaskId): void {
   change.outputs.push({ kind: "silence", taskId });
 }
 
-function setTimer(change: Change, ms: number, fire: Input): void {
+export function setTimer(change: Change, ms: number, fire: Input): void {
   change.outputs.push({ kind: "timer", ms, fire });
 }
 
@@ -159,133 +180,4 @@ export function dropped(change: Change, reason: string): false {
 
 export function isEnded(state: TaskState): boolean {
   return state === "done" || state === "incomplete" || state === "cancelled";
-}
-
-export function holdsIntake(record: TaskRecord): boolean {
-  const { state } = record.card;
-  const sent = record.sent?.type;
-  return (
-    (state === "thinking" && sent === "question") ||
-    (state === "clarifying" && sent === "clarifyingAnswer")
-  );
-}
-
-export function closeIntakeStep(record: TaskRecord): void {
-  record.sent = null;
-}
-
-function closeTask(
-  change: Change,
-  record: TaskRecord,
-  outcome: ParentResult["outcome"],
-  findings: Findings | null,
-): void {
-  const { model } = change;
-  const { taskId } = record.card;
-  model.answers.set(taskId, { taskId, outcome, findings });
-  model.queue = model.queue.filter((id) => id !== taskId);
-  model.questions = model.questions.filter((id) => id !== taskId);
-  record.sent = null;
-  record.failed = null;
-  record.hiddenQuestion = null;
-  record.card.state = outcome;
-  record.card.step = null;
-}
-
-export function endDone(
-  change: Change,
-  record: TaskRecord,
-  spokenLine: string,
-  findings: Findings,
-): void {
-  closeTask(change, record, "done", findings);
-  record.spokenLine = spokenLine;
-  record.card.answer = findings;
-  record.card.line = record.builtOnPartial ? fixedLines.builtOnPartial : null;
-  talk(change, {
-    kind: "result",
-    taskId: record.card.taskId,
-    text: spokenLine,
-  });
-}
-
-// The talker's line was the whole answer, so the card shows it as a done answer.
-export function endChat(change: Change, record: TaskRecord, text: string) {
-  const findings: Findings = { cardText: text, sources: [], openPoints: [] };
-  closeTask(change, record, "done", findings);
-  record.spokenLine = text;
-  record.card.answer = findings;
-  record.card.line = null;
-}
-
-export function endIncomplete(
-  change: Change,
-  record: TaskRecord,
-  incomplete: Incomplete,
-): void {
-  const lines = incompleteLines(incomplete, record.card.sayBack);
-  closeTask(change, record, "incomplete", incomplete.findings);
-  record.card.answer = incomplete.findings;
-  record.card.line = lines.line;
-  record.card.missing = lines.missing;
-  const { taskId } = record.card;
-  // The worker's next question is model text, so the talker says it; fixed lines are said as written.
-  if (incomplete.kind === "needsUser") {
-    talk(change, { kind: "result", taskId, text: lines.spoken });
-  } else {
-    say(change, taskId, lines.spoken, "failure");
-  }
-}
-
-export function endCancelled(
-  change: Change,
-  record: TaskRecord,
-  findings: Findings | null,
-  line: string | null,
-): void {
-  closeTask(change, record, "cancelled", findings);
-  const { card } = record;
-  card.line = line;
-  card.question = null;
-  card.answer = null;
-  card.missing = null;
-  card.canRetry = false;
-  if (line === null) silence(change, card.taskId);
-  else say(change, card.taskId, line, "failure");
-  setTimer(change, LEAVE_MS, leave(card.taskId));
-}
-
-function leave(taskId: TaskId): Input {
-  return (change) => {
-    const record = change.model.records.get(taskId);
-    if (record?.card.state !== "cancelled" || !record.shown) {
-      return dropped(change, `leave timer for ${taskId}`);
-    }
-    record.shown = false;
-    return true;
-  };
-}
-
-export function shownQuestion(model: Model): TaskRecord | null {
-  for (const record of model.records.values()) {
-    if (record.card.question?.answered === false) return record;
-  }
-  return null;
-}
-
-// Runs after every accepted change, so a hidden question shows whatever made the shown one go.
-export function showNextQuestion(change: Change): void {
-  const { model } = change;
-  if (shownQuestion(model) !== null) return;
-  for (const taskId of [...model.questions]) {
-    model.questions = model.questions.filter((id) => id !== taskId);
-    const record = model.records.get(taskId);
-    const question = record?.hiddenQuestion ?? null;
-    if (record?.card.state !== "clarifying" || question === null) continue;
-    record.card.question = { ...question, answered: false };
-    record.hiddenQuestion = null;
-    const { text, choices } = question;
-    talk(change, { kind: "question", taskId, question: text, choices });
-    return;
-  }
 }

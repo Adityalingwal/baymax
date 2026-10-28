@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ipcChannels } from "../shared/ipc";
-import { intake, question } from "./tasks/harness";
+import { clarify } from "./tasks/harness";
 import {
+  failFront,
   fakeSender,
   admitTask,
   runToDone,
   source,
+  streamFront,
   submit,
   wire,
 } from "./wiring.harness";
@@ -13,7 +15,7 @@ import type { Wired } from "./wiring.harness";
 
 type ActionRow = {
   name: string;
-  prepare: (w: Wired) => void;
+  prepare: (w: Wired) => void | Promise<void>;
   channel: string;
   payload: unknown;
   check: (w: Wired) => void;
@@ -29,18 +31,17 @@ const actionRows: ActionRow[] = [
       expect(w.port.sent.at(-1)).toEqual({ type: "cancel", taskId: "t1" }),
   },
   {
-    name: "retry asks the engine again after a failed intake",
-    prepare: (w) => {
+    name: "retry asks the front call again after a failed one",
+    prepare: async (w) => {
       submit(w);
-      w.port.emit({ type: "failure", taskId: "t1", kind: "modelsUnreachable" });
+      await failFront(w);
     },
     channel: ipcChannels.retryTask,
     payload: { taskId: "t1" },
-    check: (w) =>
-      expect(w.port.sent.map((command) => command.type)).toEqual([
-        "question",
-        "question",
-      ]),
+    check: (w) => {
+      expect(w.talkerCalls).toHaveLength(2);
+      expect(w.port.sent).toEqual([]);
+    },
   },
   {
     name: "close removes the done card",
@@ -71,29 +72,24 @@ const actionRows: ActionRow[] = [
     check: (w) => expect(w.published.at(-1)?.muted).toBe(true),
   },
   {
-    name: "an answer to the shown question goes to the engine",
-    prepare: (w) => {
+    name: "an answer to the shown question runs the front call with the choice as the words",
+    prepare: async (w) => {
       submit(w);
-      w.port.emit(
-        intake("t1", {
-          route: "clarify",
-          sayBack: "about Hermes",
-          question: question("q1"),
-        }),
-      );
+      await streamFront(w, clarify(["Office", "Gaming"]), "Which kind?");
     },
     channel: ipcChannels.answerQuestion,
     payload: {
       taskId: "t1",
-      questionId: "q1",
-      reply: { kind: "choice", index: 0 },
+      questionId: "t1:question",
+      reply: { kind: "choice", index: 1 },
     },
-    check: (w) =>
-      expect(w.port.sent.at(-1)).toMatchObject({
-        type: "clarifyingAnswer",
-        taskId: "t1",
-        reply: { kind: "choice", index: 0 },
-      }),
+    check: (w) => {
+      expect(w.talkerCalls).toHaveLength(2);
+      expect(JSON.stringify(w.talkerCalls[1].request.messages)).toContain(
+        "<words>\\nGaming\\n</words>",
+      );
+      expect(w.port.sent).toEqual([]);
+    },
   },
 ];
 
@@ -165,28 +161,31 @@ const dropRows = [
 ];
 
 describe("renderer actions", () => {
-  it.each(actionRows)("$name", ({ prepare, channel, payload, check }) => {
+  it.each(actionRows)("$name", async ({ prepare, channel, payload, check }) => {
     const w = wire();
-    prepare(w);
+    await prepare(w);
     w.send(channel, payload);
     check(w);
     expect(w.failures).toEqual([]);
   });
 
-  it.each(dropRows)("drops $name", ({ channel, payload, foreign, reason }) => {
-    const w = wire();
-    runToDone(w);
-    const other = fakeSender();
-    const before = [w.port.sent.length, w.published.length, w.opened.length];
-    expect(() =>
-      w.send(channel, payload, foreign ? other.sender : w.own.sender),
-    ).not.toThrow();
-    expect([w.port.sent.length, w.published.length, w.opened.length]).toEqual(
-      before,
-    );
-    expect(other.received).toEqual([]);
-    expect(w.own.received).toEqual([]);
-    expect(w.failures).toEqual([]);
-    expect(w.logs.at(-1)).toBe(`${channel} dropped: ${reason}`);
-  });
+  it.each(dropRows)(
+    "drops $name",
+    async ({ channel, payload, foreign, reason }) => {
+      const w = wire();
+      await runToDone(w);
+      const other = fakeSender();
+      const before = [w.port.sent.length, w.published.length, w.opened.length];
+      expect(() =>
+        w.send(channel, payload, foreign ? other.sender : w.own.sender),
+      ).not.toThrow();
+      expect([w.port.sent.length, w.published.length, w.opened.length]).toEqual(
+        before,
+      );
+      expect(other.received).toEqual([]);
+      expect(w.own.received).toEqual([]);
+      expect(w.failures).toEqual([]);
+      expect(w.logs.at(-1)).toBe(`${channel} dropped: ${reason}`);
+    },
+  );
 });

@@ -8,13 +8,12 @@ import {
   finish,
 } from "./harness";
 
-const modelStartLine = "Looking into more.";
 const label = "Built on the partial findings of an earlier question.";
 
 type ParentEnd = {
   name: string;
   end: (h: Harness) => void;
-  line: string | null; // the partial-parent line; null for a done parent
+  line: string | null; // the partial-parent line; null for a done parent, which shows no line
   labelled: boolean;
 };
 
@@ -72,7 +71,7 @@ const rows = parentEnds.flatMap((parentEnd) =>
   [afterEnded, queued].map((start) => ({ ...parentEnd, start })),
 );
 
-// The start line and the queued line show on the card only; main's state says neither.
+// The partial-parent line and the queued line show on the card only; main's state says neither.
 function saidFor(h: Harness, taskId: string): string[] {
   return h.said
     .filter((line) => line.taskId === taskId)
@@ -81,7 +80,7 @@ function saidFor(h: Harness, taskId: string): string[] {
 
 describe("a follow-up of a parent that did not end done", () => {
   it.each(rows)(
-    "parent $name, $start: start line, said lines and done label",
+    "parent $name, $start: card line, said lines and done label",
     ({ end, line, labelled, start }) => {
       const h = createHarness();
       askNew(h, "hermes");
@@ -96,7 +95,7 @@ describe("a follow-up of a parent that did not end done", () => {
       }
       expect(h.card(child)).toMatchObject({
         state: "running",
-        line: line ?? modelStartLine,
+        line,
       });
       expect(saidFor(h, child)).toEqual([]);
       finish(h, child);
@@ -107,7 +106,7 @@ describe("a follow-up of a parent that did not end done", () => {
     },
   );
 
-  it("names the parent 'The earlier question' when it was cancelled before its say-back", () => {
+  it("names the parent 'The earlier question' when it was cancelled before it had a topic", () => {
     const h = createHarness();
     h.state.ask("first", null, null);
     cancelled(h, false);

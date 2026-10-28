@@ -69,7 +69,7 @@ const rows: Row[] = [
     line: null,
     missing: "Which version?",
     said: "Which version?",
-    kind: "question",
+    kind: "answer",
   },
 ];
 
@@ -94,16 +94,9 @@ describe("an incomplete task", () => {
         step: null,
         sourcesRead: 2,
       });
-      // The worker's next question is model text, so the talker says it; fixed lines are said as written.
-      if (kind === "question") {
-        expect(h.talked.at(-1)).toEqual({
-          kind: "result",
-          taskId: "t1",
-          text: said,
-        });
-      } else {
-        expect(h.said.at(-1)).toEqual({ taskId: "t1", text: said, kind });
-      }
+      // The worker's next question is said as given; fixed lines are said as written.
+      expect(h.said.at(-1)).toEqual({ taskId: "t1", text: said, kind });
+      expect(h.talked).toHaveLength(1);
     },
   );
 });

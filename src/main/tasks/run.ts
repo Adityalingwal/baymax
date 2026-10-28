@@ -1,20 +1,10 @@
 import type { Findings, TaskId } from "../../shared/cards";
-import type {
-  EngineEvent,
-  IntakeOutcome,
-  ParentResult,
-} from "../../shared/engine";
+import type { EngineEvent, ParentResult } from "../../shared/engine";
+import type { Decision } from "./decision";
+import { endCancelled, endDone, endIncomplete } from "./end";
 import { fixedLines, partialParentLine, stepText } from "./lines";
 import type { Admission, Change, Model, TaskRecord } from "./record";
-import {
-  dropped,
-  endCancelled,
-  endDone,
-  endIncomplete,
-  hold,
-  sendCancel,
-  silence,
-} from "./record";
+import { abandonAttempt, dropped, hold, sendCancel, silence } from "./record";
 
 const QUEUE_LIMIT = 3;
 
@@ -22,10 +12,7 @@ type RunEvent = Extract<
   EngineEvent,
   { type: "progress" } | { type: "result" } | { type: "incomplete" }
 >;
-type AdmittedOutcome = Extract<
-  IntakeOutcome,
-  { route: "newTask" } | { route: "followUp" }
->;
+type Admitted = Extract<Decision, { route: "newTask" | "followUp" }>;
 
 function slotBusy(model: Model): boolean {
   for (const record of model.records.values()) {
@@ -52,7 +39,7 @@ function parentResult(change: Change, record: TaskRecord): ParentResult | null {
   return null;
 }
 
-// The card's line is the fixed partial-parent line when the parent did not end done, else the model's start line.
+// The card's line is the fixed partial-parent line when the parent did not end done, else none.
 function startTask(
   change: Change,
   record: TaskRecord,
@@ -61,16 +48,16 @@ function startTask(
   const { card } = record;
   const parent = parentResult(change, record);
   const parentId = card.parentTaskId;
-  const parentSayBack =
+  const parentTopic =
     parentId === null
       ? null
-      : (change.model.records.get(parentId)?.card.sayBack ?? null);
+      : (change.model.records.get(parentId)?.topic ?? null);
   const partial =
-    parent === null ? null : partialParentLine(parent, parentSayBack);
+    parent === null ? null : partialParentLine(parent, parentTopic);
   if (parent === null) card.parentTaskId = null;
   record.builtOnPartial = partial !== null && parent?.findings !== null;
   card.state = "running";
-  card.line = partial ?? admission.startLine;
+  card.line = partial;
   hold(change, record, {
     type: "runTask",
     taskId: card.taskId,
@@ -81,39 +68,27 @@ function startTask(
   });
 }
 
-// A parent created after the follow-up would let two thinking tasks name each other.
-function validParent(
-  change: Change,
-  record: TaskRecord,
-  outcome: AdmittedOutcome,
-): TaskId | null {
-  if (outcome.route !== "followUp") return null;
-  const parent = change.model.records.get(outcome.parentTaskId);
-  if (parent !== undefined && parent.created < record.created) {
-    return outcome.parentTaskId;
-  }
-  change.log(
-    `${record.card.taskId} names parent ${outcome.parentTaskId}; admitted as a new task`,
-  );
-  return null;
-}
-
+// The decision check already kept a follow-up's parent to tasks created before this one.
 export function admit(
   change: Change,
   record: TaskRecord,
-  outcome: AdmittedOutcome,
+  decision: Admitted,
+  line: string,
 ): boolean {
   const { model } = change;
   const { card } = record;
-  const admission = { startLine: outcome.startLine, brief: outcome.brief };
-  record.admission = admission;
-  card.sayBack = outcome.sayBack;
-  card.parentTaskId = validParent(change, record, outcome);
+  record.admission = { brief: decision.brief };
+  record.topic = decision.topic;
+  card.sayBack = null;
+  card.reply = line;
+  card.parentTaskId =
+    decision.route === "followUp" ? decision.parentTaskId : null;
   card.question = null;
   card.canRetry = false;
-  // The start line and the queued line show on the card only; the talker is the voice.
+  card.line = null;
+  // The spoken line shows on the card; the queued line is fixed and shown only.
   if (!slotBusy(model) && canStart(model, record)) {
-    startTask(change, record, admission);
+    startTask(change, record, record.admission);
   } else if (model.queue.length < QUEUE_LIMIT) {
     card.state = "queued";
     card.line = fixedLines.queued;
@@ -212,7 +187,8 @@ export function cancelTask(change: Change, taskId: TaskId): boolean {
     case "thinking":
     case "clarifying":
     case "running":
-      if (record.sent === null) {
+      // A front call in flight is aborted here, so the card is cancelled at once and no late result can change it.
+      if (abandonAttempt(change, record) || record.sent === null) {
         endCancelled(change, record, null, null);
         return true;
       }

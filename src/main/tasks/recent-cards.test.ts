@@ -59,8 +59,7 @@ describe("recent exchanges with card text", () => {
     const h = createHarness();
     row.run(h);
     h.state.ask("next", null, null);
-    const command = h.sent.at(-1);
-    const recent = command?.type === "question" ? command.recent : [];
+    const recent = h.talked.at(-1)?.recent ?? [];
     expect(recent.map((exchange) => exchange.cardText)).toEqual(row.cards);
     expect(recent.map((exchange) => exchange.taskId)).toEqual(
       row.cards.map((_, i) => `t${i + 1}`),
