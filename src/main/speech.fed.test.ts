@@ -112,10 +112,12 @@ describe('"One moment." and its talker line', () => {
     const h = createHarness();
     const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     h.speech.sayMoment("k1");
+    line.push(" ");
+    expect(h.calls[0].signal.aborted).toBe(false);
     line.push("Hello there.");
     line.end();
     expect(h.calls[0].signal.aborted).toBe(true);
-    expect(h.texts()).toEqual(["One moment.", "Hello there."]);
+    expect(h.texts()).toEqual(["One moment.", " Hello there."]);
   });
 });
 

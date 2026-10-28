@@ -107,10 +107,11 @@ function speakFed(ctx: SpeechContext, spoken: Spoken): LineFeed {
   return {
     push: (text) => {
       if (line.feed.ended || text === "") return;
-      const first = line.feed.text === "";
+      const hadWords = line.feed.text.trim() !== "";
       line.feed.text += text;
+      const words = !hadWords && line.feed.text.trim() !== "";
       // A "One moment." with no audio yet gives way to its talker's first words.
-      if (first && line.key !== null) dropMoment(ctx, line.key);
+      if (words && line.key !== null) dropMoment(ctx, line.key);
       changed();
     },
     end: () => {

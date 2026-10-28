@@ -8,7 +8,7 @@ function talkerHasWords(ctx: SpeechContext, key: string): boolean {
   const lines = [...pending, synthesizing?.line, playing?.line];
   return lines.some(
     (line) =>
-      line?.kind === "talk" && line.key === key && line.feed.text !== "",
+      line?.kind === "talk" && line.key === key && line.feed.text.trim() !== "",
   );
 }
 
