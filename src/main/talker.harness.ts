@@ -34,6 +34,7 @@ export function createHarness(options: { noKey?: boolean } = {}) {
       return {
         push: (text) => line.parts.push(text),
         end: () => line.parts.push("<end>"),
+        cut: () => line.parts.push("<cut>"),
       };
     },
     onReply: (taskId, reply) => replies.push({ taskId, reply }),

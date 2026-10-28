@@ -95,10 +95,13 @@ describe("a talker rewrite that fails after its words started, or has no key", (
       expect(h.calls[0].signal.aborted).toBe(false);
       settle(h);
       await flush();
-      expect(h.lines[0].parts).toEqual([
-        "Hermes runs",
-        " Hermes runs a loop of 3 agents.",
-        "<end>",
+      expect(h.lines).toEqual([
+        { taskId: "t1", kind: "answer", parts: ["Hermes runs", "<cut>"] },
+        {
+          taskId: "t1",
+          kind: "answer",
+          parts: ["Hermes runs a loop of 3 agents.", "<end>"],
+        },
       ]);
     },
   );

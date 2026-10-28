@@ -73,12 +73,9 @@ describe('no "One moment."', () => {
     expect(texts(second)).toEqual([]);
   });
 
-  it("is not said for a discarded hold, nor once a new hold starts", () => {
+  it("is not said for a discarded hold", () => {
     const h = createHarness();
     hold(h, "discard");
-    h.advance(1500);
-    hold(h);
-    h.voice.holdChanged("listening", null);
     h.advance(1500);
     expect(texts(h)).toEqual([]);
   });
@@ -93,15 +90,41 @@ describe('no "One moment."', () => {
   });
 });
 
-describe("an older utterance's talker line", () => {
-  it("is dropped when its words come after a newer key-down", () => {
+describe("an older generation during a newer hold", () => {
+  it('keeps its timer: its "One moment." waits while the key is held and plays after release', () => {
+    const h = createHarness();
+    hold(h);
+    h.voice.holdChanged("listening", null);
+    h.advance(1500);
+    expect(texts(h)).toEqual([]);
+    h.voice.holdChanged("idle", "discard");
+    expect(texts(h)).toEqual(["One moment."]);
+  });
+
+  it("keeps its talker line, which waits while the key is held", () => {
     const h = createHarness();
     const id = hold(h);
-    const line = h.voice.talk({ taskId: "t1", kind: "talk", key: id });
     h.voice.holdChanged("listening", null);
-    line.push("Late reply.");
-    line.end();
-    h.voice.holdChanged("idle", "discard");
+    talkerSays(h, "Late reply.", id);
     expect(texts(h)).toEqual([]);
+    h.voice.holdChanged("idle", "discard");
+    expect(texts(h)).toEqual(["Late reply."]);
+  });
+});
+
+describe("a generation that ends", () => {
+  it('drops its "One moment." that waits behind another line, when its words were not caught', async () => {
+    const h = createHarness();
+    const id = hold(h);
+    sendAudio(h, id);
+    h.voice.say({ taskId: "t9", text: "Blocker.", kind: "failure" });
+    await synthesized(h, 0, audio);
+    h.advance(1500);
+    await transcribed(h, 0, { kind: "empty" });
+    h.voice.playbackFinished({
+      lineId: h.speeches[0].lineId,
+      outcome: "ended",
+    });
+    expect(texts(h)).toEqual(["Blocker."]);
   });
 });

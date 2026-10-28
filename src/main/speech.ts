@@ -9,20 +9,25 @@ import type {
   Spoken,
 } from "./speech-model";
 import { endPlaying, log, stopPlaying } from "./speech-model";
-import { sayMoment } from "./speech-moment";
+import { dropMoment, sayMoment } from "./speech-moment";
 import { startRest } from "./speech-rest";
 import { auraClosed, auraHeard, startStream } from "./speech-stream";
 import type { SaidLine } from "./tasks/state";
 
 export type { VoiceDownCause } from "./speech-model";
 
-// A line the talker writes as its reply streams in; end() closes it.
-export type LineFeed = { push: (text: string) => void; end: () => void };
+// A line the talker writes as its reply streams in; end() closes it, cut() drops it wherever it is.
+export type LineFeed = {
+  push: (text: string) => void;
+  end: () => void;
+  cut: () => void;
+};
 
 type Speech = {
   speak(line: SaidLine): void;
   speakFed(spoken: Spoken): LineFeed;
   sayMoment(key: string): void;
+  dropMoment(key: string): void;
   holdStarted(): void;
   holdEnded(): void;
   setMuted(muted: boolean): void;
@@ -110,6 +115,13 @@ function speakFed(ctx: SpeechContext, spoken: Spoken): LineFeed {
       line.feed.ended = true;
       changed();
     },
+    cut: () => {
+      line.feed.ended = true;
+      line.feed.changed = null;
+      const matches: Matches = (other) => other === line;
+      clearSpeech(ctx, { matches, why: "line cut", sendStop: true });
+      pump(ctx);
+    },
   };
 }
 
@@ -189,6 +201,7 @@ export function createSpeech(deps: SpeechDeps): Speech {
     },
     speakFed: (spoken) => speakFed(ctx, spoken),
     sayMoment: (key) => sayMoment(ctx, key),
+    dropMoment: (key) => dropMoment(ctx, key),
     holdStarted: () => startHold(ctx),
     holdEnded: () => endHold(ctx),
     setMuted: (muted) => changeMuted(ctx, muted),

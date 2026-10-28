@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakeAura,
   createHarness,
+  finish,
+  play,
   resolveCall,
   said,
 } from "./speech.harness";
@@ -107,7 +109,9 @@ describe('"One moment." and its talker line', () => {
     });
     expect(h.texts()).toEqual(["Hello there.", "One moment.", "Hello there."]);
   });
+});
 
+describe('"One moment." and other lines', () => {
   it("leaves another generation's talker line where it is", () => {
     const h = createHarness();
     const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k2" });
@@ -127,5 +131,50 @@ describe('"One moment." and its talker line', () => {
     h.speech.sayMoment("k1");
     expect(aura.sent).toEqual(["speak Hi,", "flush", "restart"]);
     expect(h.texts()).toEqual(["One moment."]);
+  });
+
+  it("is dropped by its generation's end while it waits or synthesizes, never once playing", async () => {
+    const h = createHarness();
+    const blocker = await play(h, said("blocker", "t2"));
+    h.speech.sayMoment("k1");
+    h.speech.dropMoment("k1");
+    finish(h, blocker);
+    expect(h.texts()).toEqual(["blocker"]);
+    h.speech.sayMoment("k2");
+    h.speech.dropMoment("k2");
+    expect(h.calls[1].signal.aborted).toBe(true);
+    h.speech.sayMoment("k3");
+    await resolveCall(h, 2);
+    h.speech.dropMoment("k3");
+    expect(h.stops).toEqual([]);
+  });
+});
+
+describe("a talker line cut or failing mid-stream", () => {
+  it("cut() stops its playback and lets the next line play", async () => {
+    const h = createHarness();
+    const line = h.speech.speakFed({ taskId: "t1", kind: "answer", key: null });
+    line.push("Partial words.");
+    line.end();
+    h.speech.speak(said("Given text, whole."));
+    await resolveCall(h, 0);
+    const lineId = h.speeches[0].lineId;
+    line.cut();
+    expect(h.stops).toEqual([{ lineId }]);
+    expect(h.texts()).toEqual(["Partial words.", "Given text, whole."]);
+  });
+
+  it("restarts the socket and ends the line where it is when a later send fails after audio, never replaying it", () => {
+    const aura = createFakeAura();
+    const h = createHarness(aura);
+    aura.open();
+    const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
+    line.push("Sure, ");
+    aura.audio(1);
+    aura.failSends();
+    line.push("more words. ");
+    expect(aura.sent).toEqual(["speak Sure,", "flush", "restart"]);
+    expect(h.ends).toEqual([{ lineId: h.chunks[0].lineId }]);
+    expect(h.synthesize).not.toHaveBeenCalled();
   });
 });

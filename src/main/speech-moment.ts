@@ -21,6 +21,23 @@ function takeBack(ctx: SpeechContext, key: string): Line | null {
   return playing.line;
 }
 
+// A generation ended (its talker audio began, or it was discarded or not caught): its "One moment." not yet playing goes.
+export function dropMoment(ctx: SpeechContext, key: string): void {
+  const { state } = ctx;
+  const ours = (line: Line) => line.kind === "moment" && line.key === key;
+  const before = state.pending.length;
+  state.pending = state.pending.filter((line) => !ours(line));
+  const job = state.synthesizing;
+  const synthesizing = job !== null && ours(job.line);
+  if (job !== null && synthesizing) {
+    state.synthesizing = null;
+    job.abort.abort();
+  }
+  if (!synthesizing && state.pending.length === before) return;
+  log('"One moment." dropped: its generation ended');
+  ctx.pump();
+}
+
 // "One moment." plays ahead of the lines waiting, its generation's talker line right after it.
 export function sayMoment(ctx: SpeechContext, key: string): void {
   const { state } = ctx;

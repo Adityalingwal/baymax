@@ -165,7 +165,6 @@ function holdChanged(
     model.releasedAt = null;
     // Recording discards a hold still open when a new one starts.
     if (model.current !== null) model.admitted.delete(model.current);
-    flows.moment.cancel();
     flows.speech.holdStarted();
     flows.recording.holdStarted();
     return;
@@ -191,6 +190,7 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
   const moment = createMoment({
     setTimer: deps.timers.setTimer,
     sayMoment: (key) => contained(deps, "say", () => speech.sayMoment(key)),
+    dropMoment: (key) => contained(deps, "drop", () => speech.dropMoment(key)),
   });
   const recording = createRecording({
     sendRecording: (command) => sendRecording(model, deps, command),

@@ -120,8 +120,9 @@ function rewriteDeadline(
 }
 
 async function rewrite(deps: TalkerDeps, talk: Rewrite): Promise<void> {
-  const kind = talk.kind === "result" ? "answer" : "question";
-  const line = deps.talk({ taskId: talk.taskId, kind, key: null });
+  const kind: SaidKind = talk.kind === "result" ? "answer" : "question";
+  const spoken = { taskId: talk.taskId, kind };
+  const line = deps.talk({ ...spoken, key: null });
   const abort = new AbortController();
   let started = false;
   const deadline = rewriteDeadline(deps, abort, () => started);
@@ -136,12 +137,14 @@ async function rewrite(deps: TalkerDeps, talk: Rewrite): Promise<void> {
   const outcome = await Promise.race([answered, deadline.passed]);
   deadline.cancel();
   abort.abort();
-  if (!outcome.ok || !started) {
-    if (!outcome.ok) deps.log(`talker rewrite failed: ${outcome.detail}`);
-    // A failed or stalled rewrite gives way to the given text, whole, so no choice or number is lost.
-    line.push(started ? ` ${givenText(talk)}` : givenText(talk));
-  }
-  line.end();
+  if (outcome.ok && started) return line.end();
+  if (!outcome.ok) deps.log(`talker rewrite failed: ${outcome.detail}`);
+  // A failed or stalled rewrite gives way to the given text, whole, so no choice or number is lost;
+  // words already spoken are stopped first and the text comes as a fresh line.
+  const given = started ? deps.talk({ ...spoken, key: null }) : line;
+  if (started) line.cut();
+  given.push(givenText(talk));
+  given.end();
 }
 
 // The talker is Baymax's only voice for model text: its reply to new words, and the clarifying question and the result in its own words.
