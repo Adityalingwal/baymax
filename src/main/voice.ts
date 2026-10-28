@@ -1,3 +1,4 @@
+import type { Aura, AuraListener } from "../providers/aura";
 import type { Synthesis, Transcription } from "../providers/deepgram";
 import type { Flux, FluxListener } from "../providers/flux";
 import type { TaskId } from "../shared/cards";
@@ -6,6 +7,8 @@ import type {
   MicAudio,
   PlaybackFinished,
   RecordingCommand,
+  SpeechChunk,
+  SpeechEnd,
   SpeechLine,
   StopPlayback,
 } from "../shared/ipc";
@@ -22,10 +25,13 @@ export type { VoiceState } from "./voice-model";
 export type VoiceDeps = {
   sendRecording: (command: RecordingCommand) => void;
   sendSpeech: (line: SpeechLine) => void;
+  sendChunk: (chunk: SpeechChunk) => void;
+  sendEnd: (end: SpeechEnd) => void;
   sendStop: (payload: StopPlayback) => void;
   transcribe: (audio: ArrayBuffer, mimeType: string) => Promise<Transcription>;
   startFlux: (listener: FluxListener) => Flux | null; // null when there is no Deepgram key
   synthesize: (text: string, signal: AbortSignal) => Promise<Synthesis>;
+  startAura: (listener: AuraListener) => Aura | null; // null when there is no Deepgram key
   timers: Timers;
   now: () => number;
   log: (message: string) => void;
@@ -82,14 +88,13 @@ function sendRecording(
   contained(deps, "sendRecording", () => deps.sendRecording(command));
 }
 
-function sendSpeech(model: VoiceModel, deps: VoiceDeps, line: SpeechLine) {
+// The first audio after a release, a whole clip or a streamed chunk, times the first spoken line.
+function firstAudio(model: VoiceModel, deps: VoiceDeps): void {
   const releasedAt = model.releasedAt;
-  if (releasedAt !== null) {
-    model.releasedAt = null;
-    const ms = Math.round(deps.now() - releasedAt);
-    deps.log(`first spoken line ${ms} ms after release`);
-  }
-  deps.sendSpeech(line);
+  if (releasedAt === null) return;
+  model.releasedAt = null;
+  const ms = Math.round(deps.now() - releasedAt);
+  deps.log(`first spoken line ${ms} ms after release`);
 }
 
 function notCaught(
@@ -174,7 +179,16 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
   });
   const speech = createSpeech({
     synthesize: deps.synthesize,
-    sendSpeech: (line) => sendSpeech(model, deps, line),
+    startAura: deps.startAura,
+    sendSpeech: (line) => {
+      firstAudio(model, deps);
+      deps.sendSpeech(line);
+    },
+    sendChunk: (chunk) => {
+      firstAudio(model, deps);
+      deps.sendChunk(chunk);
+    },
+    sendEnd: deps.sendEnd,
     sendStop: deps.sendStop,
     onVoiceAvailable: (available) => {
       model.ttsUp = available;

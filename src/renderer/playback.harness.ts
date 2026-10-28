@@ -1,7 +1,13 @@
 import { vi } from "vitest";
-import type { PlaybackFinished, SpeechLine, StopPlayback } from "../shared/ipc";
+import type {
+  PlaybackFinished,
+  SpeechChunk,
+  SpeechEnd,
+  SpeechLine,
+  StopPlayback,
+} from "../shared/ipc";
 import { startPlayback } from "./playback";
-import type { AudioOutput, Player } from "./playback";
+import type { AudioOutput, Player } from "./web-audio";
 
 type PlayCall = {
   audio: ArrayBuffer;
@@ -12,6 +18,9 @@ type PlayCall = {
 
 function createFakePlayer() {
   const plays: PlayCall[] = [];
+  // Each queued chunk by its first byte; drained fires the callback the line waits on.
+  const queued: number[] = [];
+  const waiting: { onDrained: (() => void) | null } = { onDrained: null };
   const player = {
     play: vi.fn(
       (audio: ArrayBuffer, onEnded: () => void) =>
@@ -19,25 +28,42 @@ function createFakePlayer() {
           plays.push({ audio, onEnded, resolve, reject });
         }),
     ),
+    queue: vi.fn((pcm: ArrayBuffer) => {
+      queued.push(new Uint8Array(pcm)[0]);
+    }),
+    whenDrained: vi.fn((onDrained: () => void) => {
+      waiting.onDrained = onDrained;
+    }),
     stop: vi.fn(),
     dispose: vi.fn(),
   } satisfies Player;
-  return { player, plays };
+  const drain = () => waiting.onDrained?.();
+  return { player, plays, queued, drain };
 }
 
-export function createHarness() {
-  const holder: {
-    onSpeech?: (line: SpeechLine) => void;
-    onStop?: (payload: StopPlayback) => void;
-  } = {};
-  const reports: PlaybackFinished[] = [];
+type Holder = {
+  onSpeech?: (line: SpeechLine) => void;
+  onChunk?: (chunk: SpeechChunk) => void;
+  onEnd?: (end: SpeechEnd) => void;
+  onStop?: (payload: StopPlayback) => void;
+};
+
+// The bridge's callbacks land in the holder, so a test can play main's side.
+function createFakeBridge(holder: Holder, reports: PlaybackFinished[]) {
   const unsubscribeSpeech = vi.fn();
   const unsubscribeStop = vi.fn();
-  const { player, plays } = createFakePlayer();
   const bridge = {
     onSpeech: (callback: (line: SpeechLine) => void) => {
       holder.onSpeech = callback;
       return unsubscribeSpeech;
+    },
+    onSpeechChunk: (callback: (chunk: SpeechChunk) => void) => {
+      holder.onChunk = callback;
+      return vi.fn();
+    },
+    onSpeechEnd: (callback: (end: SpeechEnd) => void) => {
+      holder.onEnd = callback;
+      return vi.fn();
     },
     onStopPlayback: (callback: (payload: StopPlayback) => void) => {
       holder.onStop = callback;
@@ -47,6 +73,15 @@ export function createHarness() {
       reports.push(payload);
     }),
   };
+  return { bridge, unsubscribeSpeech, unsubscribeStop };
+}
+
+export function createHarness() {
+  const holder: Holder = {};
+  const reports: PlaybackFinished[] = [];
+  const { player, plays, queued, drain } = createFakePlayer();
+  const fake = createFakeBridge(holder, reports);
+  const { bridge, unsubscribeSpeech, unsubscribeStop } = fake;
   const cleanup = startPlayback(bridge, player);
   const speak = (lineId: string, bytes = [1]) =>
     holder.onSpeech?.({
@@ -55,9 +90,21 @@ export function createHarness() {
       mimeType: "audio/mpeg",
     });
   const stopLine = (lineId: string) => holder.onStop?.({ lineId });
+  const chunk = (lineId: string, seq: number, mark = seq + 1) =>
+    holder.onChunk?.({
+      lineId,
+      seq,
+      pcm: bytesOf([mark, 0]),
+      sampleRate: 24_000,
+    });
+  const end = (lineId: string) => holder.onEnd?.({ lineId });
   return {
     speak,
     stopLine,
+    chunk,
+    end,
+    queued,
+    drain,
     cleanup,
     reports,
     plays,
@@ -110,9 +157,16 @@ export function createStubOutput(state: "running" | "suspended") {
   const resumes: Deferred<void>[] = [];
   const sources: ReturnType<typeof createStubSource>[] = [];
   const faults: Faults = { start: false, stop: false };
+  const buffers: Float32Array[] = [];
   const output = {
     state,
     destination: { node: "destination" },
+    currentTime: 0,
+    createBuffer: vi.fn((_channels: number, length: number) => {
+      const samples = new Float32Array(length);
+      buffers.push(samples);
+      return { getChannelData: () => samples };
+    }),
     decodeAudioData: vi.fn(
       (audio: ArrayBuffer) =>
         new Promise<object>((resolve, reject) => {
@@ -133,5 +187,5 @@ export function createStubOutput(state: "running" | "suspended") {
     close: vi.fn(() => Promise.resolve()),
   } satisfies AudioOutput;
   const createOutput = vi.fn(() => output);
-  return { output, createOutput, decodes, resumes, sources, faults };
+  return { output, createOutput, decodes, resumes, sources, faults, buffers };
 }

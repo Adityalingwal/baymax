@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createWebAudioPlayer } from "./playback";
+import { createWebAudioPlayer } from "./web-audio";
 import { bytesIn, bytesOf, createStubOutput, flush } from "./playback.harness";
 
 beforeEach(() => {

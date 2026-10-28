@@ -12,6 +12,7 @@ import { createRestart } from "./main/restart";
 import { createMainWindow } from "./main/window";
 import { wireMain } from "./main/wiring";
 import type { Wiring, WiringDeps } from "./main/wiring";
+import { startAura } from "./providers/aura";
 import { synthesizeSpeech, transcribeClip } from "./providers/deepgram";
 import { startFlux } from "./providers/flux";
 import { openWebSocket } from "./providers/warm-socket";
@@ -99,16 +100,22 @@ function voiceLog(message: string): void {
 
 function voiceDeps(deepgramKey: string): WiringDeps["voice"] {
   const deepgram = { key: deepgramKey, fetch };
-  const flux = { key: deepgramKey, openSocket: openWebSocket, setTimer };
+  const socket = { key: deepgramKey, openSocket: openWebSocket, setTimer };
   return {
     sendRecording: (command) => sendToWindow(ipcChannels.recording, command),
     sendSpeech: (line) => sendToWindow(ipcChannels.speech, line),
+    sendChunk: (chunk) => sendToWindow(ipcChannels.speechChunk, chunk),
+    sendEnd: (end) => sendToWindow(ipcChannels.speechEnd, end),
     sendStop: (payload) => sendToWindow(ipcChannels.stopPlayback, payload),
     transcribe: (audio, mimeType) => transcribeClip(deepgram, audio, mimeType),
     startFlux: (listener) =>
       deepgramKey === ""
         ? null
-        : startFlux({ ...flux, log: voiceLog }, listener),
+        : startFlux({ ...socket, log: voiceLog }, listener),
+    startAura: (listener) =>
+      deepgramKey === ""
+        ? null
+        : startAura({ ...socket, log: voiceLog }, listener),
     synthesize: (text, signal) => synthesizeSpeech(deepgram, text, signal),
     now: () => performance.now(),
     log: voiceLog,

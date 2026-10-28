@@ -2,121 +2,32 @@ import type {
   BaymaxApi,
   LineId,
   PlaybackFinished,
+  SpeechChunk,
+  SpeechEnd,
   SpeechLine,
 } from "../shared/ipc";
-
-// Our own small adapter over Web Audio, so tests need no DOM.
-export type Player = {
-  play(audio: ArrayBuffer, onEnded: () => void): Promise<void>; // resolves once started; rejects when the audio cannot be decoded or started
-  stop(): void; // stops the current source or cancels a play still decoding
-  dispose(): void;
-};
-
-type AudioSource = {
-  buffer: object | null;
-  onended: ((event: Event) => void) | null;
-  connect(destination: object): void;
-  disconnect(): void;
-  start(): void;
-  stop(): void;
-};
-
-// The slice of AudioContext the default player uses, so tests can stub it.
-export type AudioOutput = {
-  readonly state: string;
-  readonly destination: object;
-  decodeAudioData(audio: ArrayBuffer): Promise<object>;
-  createBufferSource(): AudioSource;
-  resume(): Promise<void>;
-  close(): Promise<void>;
-};
-
-type WebAudio = {
-  createOutput: () => AudioOutput;
-  output: AudioOutput | null;
-  source: AudioSource | null;
-  // Bumped by every play and stop, so a play that was stopped or replaced never starts audio.
-  generation: number;
-};
+import { createWebAudioPlayer } from "./web-audio";
+import type { Player } from "./web-audio";
 
 type Bridge = Pick<
   BaymaxApi,
-  "onSpeech" | "onStopPlayback" | "reportPlaybackFinished"
+  | "onSpeech"
+  | "onSpeechChunk"
+  | "onSpeechEnd"
+  | "onStopPlayback"
+  | "reportPlaybackFinished"
 >;
 
 type Playback = {
   bridge: Bridge;
   player: Player;
   active: LineId | null;
+  nextSeq: number; // the seq the active streamed line's next chunk must carry
+  finished: LineId[]; // recent lines that ended or were stopped, whose late chunks are ignored
   disposed: boolean;
 };
 
-function stopSource(web: WebAudio): void {
-  web.generation += 1;
-  const source = web.source;
-  web.source = null;
-  if (source === null) return;
-  try {
-    source.stop();
-  } finally {
-    source.disconnect();
-  }
-}
-
-async function playAudio(
-  web: WebAudio,
-  audio: ArrayBuffer,
-  onEnded: () => void,
-): Promise<void> {
-  stopSource(web);
-  const generation = web.generation;
-  web.output ??= web.createOutput();
-  const output = web.output;
-  const decoded = await output.decodeAudioData(audio);
-  if (generation !== web.generation) return;
-  if (output.state === "suspended") {
-    await output.resume();
-    if (generation !== web.generation) return;
-  }
-  const source = output.createBufferSource();
-  source.buffer = decoded;
-  source.connect(output.destination);
-  source.onended = () => onEnded();
-  try {
-    source.start();
-  } catch (error) {
-    source.disconnect();
-    throw error;
-  }
-  // Kept only once started, so a later stop never meets a source that never ran.
-  web.source = source;
-}
-
-function disposeOutput(web: WebAudio): void {
-  const output = web.output;
-  web.output = null;
-  try {
-    stopSource(web);
-  } finally {
-    output?.close().catch((error: unknown) => {
-      console.log(`[Playback] closing the output failed: ${errorName(error)}`);
-    });
-  }
-}
-
-export function createWebAudioPlayer(createOutput: () => AudioOutput): Player {
-  const web: WebAudio = {
-    createOutput,
-    output: null,
-    source: null,
-    generation: 0,
-  };
-  return {
-    play: (audio, onEnded) => playAudio(web, audio, onEnded),
-    stop: () => stopSource(web),
-    dispose: () => disposeOutput(web),
-  };
-}
+const finishedLimit = 16;
 
 function errorName(error: unknown): string {
   return error instanceof Error ? error.name : String(error);
@@ -135,6 +46,22 @@ function isActive(playback: Playback, lineId: LineId): boolean {
   return !playback.disposed && playback.active === lineId;
 }
 
+function remember(playback: Playback, lineId: LineId): void {
+  playback.finished.push(lineId);
+  if (playback.finished.length > finishedLimit) playback.finished.shift();
+}
+
+function report(
+  playback: Playback,
+  lineId: LineId,
+  outcome: PlaybackFinished["outcome"],
+): void {
+  remember(playback, lineId);
+  logged("reporting", () =>
+    playback.bridge.reportPlaybackFinished({ lineId, outcome }),
+  );
+}
+
 // The one way a line ends, so each line is reported exactly once.
 function finish(
   playback: Playback,
@@ -144,9 +71,7 @@ function finish(
   if (!isActive(playback, lineId)) return;
   playback.active = null;
   if (outcome === "stopped") logged("stopping", () => playback.player.stop());
-  logged("reporting", () =>
-    playback.bridge.reportPlaybackFinished({ lineId, outcome }),
-  );
+  report(playback, lineId, outcome);
 }
 
 function playFailed(playback: Playback, lineId: LineId, error: unknown) {
@@ -155,16 +80,53 @@ function playFailed(playback: Playback, lineId: LineId, error: unknown) {
   finish(playback, lineId, "failed");
 }
 
+function begin(playback: Playback, lineId: LineId): void {
+  if (playback.active !== null) finish(playback, playback.active, "stopped");
+  playback.active = lineId;
+  playback.nextSeq = 0;
+}
+
 function playLine(playback: Playback, line: SpeechLine): void {
   if (playback.disposed) return;
-  if (playback.active !== null) finish(playback, playback.active, "stopped");
   const { lineId } = line;
-  playback.active = lineId;
+  begin(playback, lineId);
   const ended = () => finish(playback, lineId, "ended");
   // Wrapped so a synchronous throw takes the same path as a rejection.
   new Promise<void>((resolve) =>
     resolve(playback.player.play(line.audio, ended)),
   ).catch((error: unknown) => playFailed(playback, lineId, error));
+}
+
+// A chunk of a stopped line, or one out of seq order, is ignored.
+function playChunk(playback: Playback, chunk: SpeechChunk): void {
+  const { lineId, seq } = chunk;
+  if (playback.disposed || playback.finished.includes(lineId)) return;
+  if (playback.active !== lineId) {
+    if (seq !== 0) return;
+    begin(playback, lineId);
+  }
+  if (seq !== playback.nextSeq) return;
+  playback.nextSeq += 1;
+  logged("queueing", () => playback.player.queue(chunk.pcm, chunk.sampleRate));
+}
+
+// The line is finished once its end came and its last scheduled chunk has played.
+function endStream(playback: Playback, { lineId }: SpeechEnd): void {
+  if (playback.disposed || playback.finished.includes(lineId)) return;
+  if (playback.active !== lineId) {
+    if (playback.active === null) report(playback, lineId, "ended");
+    return;
+  }
+  logged("waiting for the end", () =>
+    playback.player.whenDrained(() => finish(playback, lineId, "ended")),
+  );
+}
+
+function stopLine(playback: Playback, lineId: LineId): void {
+  if (!playback.finished.includes(lineId) && playback.active !== lineId) {
+    remember(playback, lineId);
+  }
+  finish(playback, lineId, "stopped");
 }
 
 function closePlayback(playback: Playback): void {
@@ -178,15 +140,23 @@ export function startPlayback(
   bridge: Bridge,
   player: Player = createWebAudioPlayer(() => new AudioContext()),
 ): () => void {
-  const playback: Playback = { bridge, player, active: null, disposed: false };
-  const unsubscribeSpeech = bridge.onSpeech((line) => playLine(playback, line));
-  const unsubscribeStop = bridge.onStopPlayback(({ lineId }) =>
-    finish(playback, lineId, "stopped"),
-  );
+  const playback: Playback = {
+    bridge,
+    player,
+    active: null,
+    nextSeq: 0,
+    finished: [],
+    disposed: false,
+  };
+  const unsubscribes = [
+    bridge.onSpeech((line) => playLine(playback, line)),
+    bridge.onSpeechChunk((chunk) => playChunk(playback, chunk)),
+    bridge.onSpeechEnd((end) => endStream(playback, end)),
+    bridge.onStopPlayback(({ lineId }) => stopLine(playback, lineId)),
+  ];
   return () => {
     if (playback.disposed) return;
-    unsubscribeSpeech();
-    unsubscribeStop();
+    unsubscribes.forEach((unsubscribe) => unsubscribe());
     // The page is going away, so nothing is reported.
     closePlayback(playback);
   };

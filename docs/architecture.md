@@ -284,8 +284,9 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/renderer.ts`, `src/renderer/` | The screen (React): text box, cards, mic recording, playback |
 | `src/renderer/microphone.ts` | The microphone while the key is held: PCM frames to main, then one end or failure |
 | `src/renderer/capture.ts` | The Web Audio capture: an AudioWorklet, loaded as a data URL, that posts 16 kHz PCM frames |
-| `src/renderer/pcm.ts` | Microphone samples to 16 kHz mono 16-bit PCM; pure |
-| `src/renderer/playback.ts` | Playback of spoken lines (Web Audio) |
+| `src/renderer/pcm.ts` | Microphone samples to 16 kHz mono 16-bit PCM, and streamed speech PCM back to samples; pure |
+| `src/renderer/playback.ts` | Playback of spoken lines: a whole REST clip, or one line's streamed chunks in seq order until its end |
+| `src/renderer/web-audio.ts` | The Web Audio player: decodes a whole clip, or schedules PCM chunks back to back on one timeline |
 | `src/renderer/notch/` | The shell that unfolds from the notch: its modes, outline, pointer and click capture, and the dot that reopens the last folded answer |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
@@ -294,7 +295,11 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/recording.ts` | One utterance: recording commands, the mic audio, the transcript in hold order; discarded holds and late transcripts dropped |
 | `src/main/flux-turns.ts` | Flux turns bound to held utterances: sending order, `ForceEndTurn`, the final-transcript deadline and the Nova-3 batch fallback |
 | `src/main/flux-turns-model.ts` | The held utterance and its end: delivery once, the turn ended on the socket, the batch call |
-| `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, voice-down reported |
+| `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel; a line streams over the open Aura socket, else goes to REST |
+| `src/main/speech-model.ts` | The speech state and the playback slot with its deadline, shared by the two paths |
+| `src/main/speech-stream.ts` | A line on the Aura socket: clauses and flushes out, chunks and the end to the renderer, the REST backup when the socket drops |
+| `src/main/speech-rest.ts` | A line through the Aura-2 REST call, and voice-down reported from its failures |
+| `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line timing |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
 | `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |
@@ -315,6 +320,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/providers/deepgram.ts` | Deepgram calls: pre-recorded transcription and REST speech |
 | `src/providers/warm-socket.ts` | A socket kept open from start that reconnects with backoff, and the real WebSocket opener |
 | `src/providers/flux.ts` | The Flux socket: the listen URL, its messages, the silence keep-alive and ending a turn |
+| `src/providers/aura.ts` | The Aura-2 speak socket: its URL, `Speak`, `Flush` and `Clear`, and its messages |
 | `src/providers/wav.ts` | A WAV header in front of held PCM for the batch call |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.

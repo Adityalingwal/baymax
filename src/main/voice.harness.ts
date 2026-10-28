@@ -1,8 +1,14 @@
 import type { Synthesis, Transcription } from "../providers/deepgram";
 import type { UtteranceId } from "../shared/cards";
 import type { WaitingQuestion } from "../shared/engine";
-import type { RecordingCommand, SpeechLine, StopPlayback } from "../shared/ipc";
+import type {
+  RecordingCommand,
+  SpeechChunk,
+  SpeechLine,
+  StopPlayback,
+} from "../shared/ipc";
 import type { HoldOutcome } from "./hold";
+import type { FakeAura } from "./speech.harness";
 import { createClock } from "./tasks/harness";
 import type { VoiceState } from "./voice";
 import { createVoice } from "./voice";
@@ -40,7 +46,11 @@ function fakeState() {
   return { state, calls, asked, control };
 }
 
-type Options = { deepgramKeyPresent?: boolean; started?: boolean };
+type Options = {
+  deepgramKeyPresent?: boolean;
+  started?: boolean;
+  aura?: FakeAura;
+};
 
 export function createHarness(options: Options = {}) {
   const fake = fakeState();
@@ -48,6 +58,7 @@ export function createHarness(options: Options = {}) {
   const seen = {
     recordings: [] as RecordingCommand[],
     speeches: [] as SpeechLine[],
+    chunks: [] as SpeechChunk[],
     stops: [] as StopPlayback[],
     logs: [] as string[],
     timeline: [] as string[],
@@ -63,6 +74,9 @@ export function createHarness(options: Options = {}) {
       seen.recordings.push(command);
     },
     sendSpeech: (line) => seen.speeches.push(line),
+    sendChunk: (chunk) => seen.chunks.push(chunk),
+    sendEnd: () => undefined,
+    startAura: (listener) => options.aura?.startAura(listener) ?? null,
     sendStop: (payload) => {
       seen.timeline.push("stop playback");
       seen.stops.push(payload);

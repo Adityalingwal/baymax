@@ -24,6 +24,8 @@ export const ipcChannels = {
   recording: "recording",
   micAudio: "mic-audio",
   speech: "speech",
+  speechChunk: "speech-chunk",
+  speechEnd: "speech-end",
   stopPlayback: "stop-playback",
   playbackFinished: "playback-finished",
   windowShape: "window-shape",
@@ -60,11 +62,21 @@ export type MicAudio =
   | { type: "end"; utteranceId: UtteranceId }
   | { type: "failed"; utteranceId: UtteranceId; reason: MicFailure };
 
+// A whole clip from the REST call.
 export type SpeechLine = {
   lineId: LineId;
   audio: ArrayBuffer;
   mimeType: string;
 };
+
+// Streamed speech: 16-bit mono PCM chunks of one line in seq order, then its end.
+export type SpeechChunk = {
+  lineId: LineId;
+  seq: number;
+  pcm: ArrayBuffer;
+  sampleRate: number;
+};
+export type SpeechEnd = { lineId: LineId };
 
 export type SubmitQuestion = { text: string };
 export type AnswerQuestion = {
@@ -107,6 +119,8 @@ export type MainToRenderer = {
   [ipcChannels.displayState]: DisplayState;
   [ipcChannels.recording]: RecordingCommand;
   [ipcChannels.speech]: SpeechLine;
+  [ipcChannels.speechChunk]: SpeechChunk;
+  [ipcChannels.speechEnd]: SpeechEnd;
   [ipcChannels.stopPlayback]: StopPlayback;
   [ipcChannels.windowShape]: WindowShape;
 };
@@ -127,6 +141,8 @@ export type BaymaxApi = {
   onRecording: (callback: (command: RecordingCommand) => void) => () => void;
   sendMicAudio: (audio: MicAudio) => void;
   onSpeech: (callback: (line: SpeechLine) => void) => () => void;
+  onSpeechChunk: (callback: (chunk: SpeechChunk) => void) => () => void;
+  onSpeechEnd: (callback: (end: SpeechEnd) => void) => () => void;
   onStopPlayback: (callback: (payload: StopPlayback) => void) => () => void;
   reportPlaybackFinished: (payload: PlaybackFinished) => void;
   onWindowShape: (callback: (shape: WindowShape) => void) => () => void;

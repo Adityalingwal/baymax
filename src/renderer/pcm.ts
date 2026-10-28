@@ -26,3 +26,13 @@ export function toPcm16(
   }
   return { bytes, next: start + count * step - input.length };
 }
+
+// Streamed speech arrives as 16-bit little-endian PCM; Web Audio plays floats from -1 to 1.
+export function fromPcm16(pcm: ArrayBuffer): Float32Array {
+  const view = new DataView(pcm);
+  const samples = new Float32Array(Math.floor(pcm.byteLength / 2));
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = view.getInt16(index * 2, true) / 0x8000;
+  }
+  return samples;
+}

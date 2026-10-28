@@ -36,6 +36,9 @@ function fakeVoice(deepgramKeyPresent: boolean, fails: boolean) {
   const deps = {
     sendRecording: (command: RecordingCommand) => seen.recordings.push(command),
     sendSpeech: (line: SpeechLine) => seen.speeches.push(line),
+    sendChunk: () => undefined,
+    sendEnd: () => undefined,
+    startAura: () => null,
     sendStop: (payload: StopPlayback) => seen.stops.push(payload),
     // The input is the mime type and the PCM after the 44-byte WAV header.
     transcribe: (audio: ArrayBuffer, mimeType: string) =>

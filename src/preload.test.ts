@@ -190,6 +190,20 @@ const subscriptionRows: SubscriptionRow[] = [
     replay: [],
   },
   {
+    name: "onSpeechChunk",
+    subscribe: (callback) => api.onSpeechChunk(callback),
+    channel: ipcChannels.speechChunk,
+    payload: { lineId: "l1", seq: 0, pcm, sampleRate: 24_000 },
+    replay: [],
+  },
+  {
+    name: "onSpeechEnd",
+    subscribe: (callback) => api.onSpeechEnd(callback),
+    channel: ipcChannels.speechEnd,
+    payload: { lineId: "l1" },
+    replay: [],
+  },
+  {
     name: "onStopPlayback",
     subscribe: (callback) => api.onStopPlayback(callback),
     channel: ipcChannels.stopPlayback,

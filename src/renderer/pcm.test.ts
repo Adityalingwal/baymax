@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toPcm16 } from "./pcm";
+import { fromPcm16, toPcm16 } from "./pcm";
 
 function samplesOf(bytes: Uint8Array): number[] {
   const view = new DataView(bytes.buffer);
@@ -84,5 +84,23 @@ describe("PCM conversion to 16 kHz 16-bit", () => {
       total += result.bytes.byteLength / 2;
     }
     expect(total).toBe(162);
+  });
+});
+
+describe("PCM conversion from 16-bit for playback", () => {
+  it.each([
+    {
+      name: "full scale and zero",
+      bytes: [0x00, 0x80, 0x00, 0x00, 0xff, 0x7f],
+      samples: [-1, 0, 32767 / 32768],
+    },
+    { name: "a half sample", bytes: [0x00, 0x40], samples: [0.5] },
+    {
+      name: "an odd last byte is dropped",
+      bytes: [0x00, 0x40, 0x01],
+      samples: [0.5],
+    },
+  ])("$name", ({ bytes, samples }) => {
+    expect([...fromPcm16(new Uint8Array(bytes).buffer)]).toEqual(samples);
   });
 });

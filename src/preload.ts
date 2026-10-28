@@ -67,6 +67,8 @@ const api: BaymaxApi = {
   onRecording: (callback) => subscribe(ipcChannels.recording, callback),
   sendMicAudio: (audio) => send(ipcChannels.micAudio, audio),
   onSpeech: (callback) => subscribe(ipcChannels.speech, callback),
+  onSpeechChunk: (callback) => subscribe(ipcChannels.speechChunk, callback),
+  onSpeechEnd: (callback) => subscribe(ipcChannels.speechEnd, callback),
   onStopPlayback: (callback) => subscribe(ipcChannels.stopPlayback, callback),
   reportPlaybackFinished: (payload) =>
     send(ipcChannels.playbackFinished, payload),
