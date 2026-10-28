@@ -1,5 +1,7 @@
 import { createModelCall } from "../providers/anthropic";
 import type { ModelCall } from "../providers/anthropic";
+import { readPageContents } from "../providers/page-contents";
+import type { ContentsFn } from "../providers/page-contents";
 import { searchWeb } from "../providers/search";
 import type { SearchFn } from "../providers/search";
 import type { Findings, TaskId } from "../shared/cards";
@@ -27,6 +29,7 @@ export type EngineFakes = {
   now?: () => number; // milliseconds; replaces performance.now
   log?: DevLog; // replaces the dev log
   search?: SearchFn; // replaces the real search call (src/providers/search.ts)
+  contents?: ContentsFn; // replaces the real page-contents call (src/providers/page-contents.ts)
   lookup?: WebAccess["lookup"]; // replaces DNS for page reads
   connect?: WebAccess["connect"]; // replaces sockets for page reads
   today?: () => string; // ISO date, such as 2026-10-27
@@ -150,10 +153,15 @@ export function startEngine(
     fakes.search ??
     ((query, signal) =>
       searchWeb({ query, key: options.searchKey, fetch, signal }));
+  // Exa is the one search provider, so its key also reads page contents.
+  const contents: ContentsFn =
+    fakes.contents ??
+    ((url, signal) =>
+      readPageContents({ url, key: options.searchKey, fetch, signal }));
   const engine: Engine = {
     deps,
     holds: createHolds(log, side),
-    access: { search, lookup: fakes.lookup, connect: fakes.connect },
+    access: { search, contents, lookup: fakes.lookup, connect: fakes.connect },
     today: fakes.today ?? (() => new Date().toISOString().slice(0, 10)),
   };
   return side.port;

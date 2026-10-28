@@ -123,6 +123,7 @@ describe("runTask invalid answer status", () => {
     expect(run.entries).toContainEqual({
       event: "retryRound",
       taskId: "task-1",
+      round: 1,
       stage: "answer",
       rule: "malformed",
     });
