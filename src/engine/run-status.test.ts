@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { ModelOutcome } from "../providers/anthropic";
 import type { Incomplete } from "../shared/engine";
 import {
   closeRuns,
@@ -127,5 +128,92 @@ describe("runTask invalid answer status", () => {
       stage: "answer",
       rule: "malformed",
     });
+  });
+});
+
+const thinNudgeText =
+  'You chose "sourcesThin" without reading any page in this task. Search for the brief and read pages first; choose "sourcesThin" only when the pages you read do not answer it. Then write the whole answer again as the JSON object.';
+
+const thin = () => workerAnswer({ status: "sourcesThin" });
+const readOne = () => toolUseReply([{ read: pageUrl("one") }]);
+
+type ThinRow = {
+  name: string;
+  steps: () => ModelOutcome[];
+  nudges: number;
+  codeChecks: number;
+  ending: string;
+};
+
+const thinRows: ThinRow[] = [
+  {
+    name: "a zero-read sourcesThin in round 0, then research and a complete answer",
+    steps: () => [thin(), readOne(), workerAnswer(cited), verdictReply()],
+    nudges: 1,
+    codeChecks: 1,
+    ending: "result",
+  },
+  {
+    name: "a zero-read sourcesThin twice: only the first is held back",
+    steps: () => [thin(), thin()],
+    nudges: 1,
+    codeChecks: 0,
+    ending: "sourcesThin",
+  },
+  {
+    name: "a sourcesThin after only a failed read",
+    steps: () => [toolUseReply([{ read: pageUrl("missing") }]), thin(), thin()],
+    nudges: 1,
+    codeChecks: 0,
+    ending: "sourcesThin",
+  },
+  {
+    name: "a sourcesThin after a read page",
+    steps: () => [readOne(), thin()],
+    nudges: 0,
+    codeChecks: 0,
+    ending: "sourcesThin",
+  },
+  {
+    name: "a zero-read needsUser with a next question",
+    steps: () => [
+      workerAnswer({ status: "needsUser", nextQuestion: "Which one?" }),
+    ],
+    nudges: 0,
+    codeChecks: 0,
+    ending: "needsUser",
+  },
+  {
+    name: "a zero-read sourcesThin in a retry round, then a zero-research complete answer",
+    steps: () => [workerAnswer(cited), thin(), workerAnswer(cited), thin()],
+    nudges: 1,
+    codeChecks: 2,
+    ending: "sourcesThin",
+  },
+];
+
+describe("runTask zero-read sourcesThin", () => {
+  it.each(thinRows)("handles $name", async (row) => {
+    const run = await startRun(row.steps());
+    run.port.send(runTask());
+    const last = (await run.ended()).at(-1);
+    const ending =
+      last?.type === "incomplete" ? last.incomplete.kind : last?.type;
+    expect(ending).toBe(row.ending);
+    const count = (event: string) =>
+      run.entries.filter((entry) => entry.event === event).length;
+    expect(count("thinNudge")).toBe(row.nudges);
+    expect(count("retryNudge")).toBe(0);
+    const codeChecks = run.entries.filter(
+      (entry) => entry.event === "doneCheck" && entry.stage === "code",
+    );
+    expect(codeChecks).toHaveLength(row.codeChecks);
+    const held = run.requests.filter(
+      (request) => request.messages.at(-1)?.content === thinNudgeText,
+    );
+    expect(held).toHaveLength(row.nudges);
+    for (const request of held) {
+      expect(request.messages.at(-2)?.role).toBe("assistant");
+    }
   });
 });

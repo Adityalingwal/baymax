@@ -26,6 +26,7 @@ export type RecentExchange = {
   state: TaskState;
   question: string;
   answer: string | null; // the spoken line; null until the task ends
+  cardText: string | null;
 };
 
 export type WaitingQuestion = {
