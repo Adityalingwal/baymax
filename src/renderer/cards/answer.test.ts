@@ -4,9 +4,7 @@ import { describe, expect, it } from "vitest";
 import { Answer } from "./Answer";
 
 function render(markdown: string): string {
-  return renderToStaticMarkup(
-    createElement(Answer, { markdown }),
-  );
+  return renderToStaticMarkup(createElement(Answer, { markdown }));
 }
 
 const cases: [string, string, (html: string) => void][] = [
