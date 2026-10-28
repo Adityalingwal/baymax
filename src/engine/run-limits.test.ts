@@ -57,10 +57,10 @@ const still = () => 0;
 const limitRows: LimitRow[] = [
   {
     name: "model calls",
-    steps: () => Array.from({ length: 16 }, readOne),
+    steps: () => Array.from({ length: 26 }, readOne),
     searches: [],
     clock: still,
-    calls: 15,
+    calls: 25,
     found: listOne,
   },
   {

@@ -49,7 +49,7 @@ async function finalEvent(steps: FakeStep[]): Promise<EngineEvent> {
   return terminal[0];
 }
 
-const unchecked = (uncheckedPart: string, findings: Findings) => ({
+const unchecked = (uncheckedPart: string, findings: Findings): EngineEvent => ({
   type: "incomplete",
   taskId: "task-1",
   incomplete: { kind: "unchecked", uncheckedPart, findings },
@@ -126,19 +126,27 @@ const codeRows: CodeRow[] = [
   },
 ];
 
-// The retry round's answer fails the same way, so the second check ends the run.
+// Each retry round researches nothing, so its first answer gets the nudge and its second fails the same way; the third check ends the run.
+const everyRound = (answer: ModelOutcome, verdict: FakeStep[] = []) =>
+  readTwo(
+    answer,
+    ...verdict,
+    ...[answer, answer, ...verdict],
+    ...[answer, answer, ...verdict],
+  );
+
 describe("runTask code check", () => {
   it.each(codeRows)(
-    "fails rule $name twice, without calling the judge",
+    "fails rule $name in every round, without calling the judge",
     async (row) => {
-      const failing = workerAnswer(row.answer);
-      const event = await finalEvent(readTwo(failing, failing));
+      const event = await finalEvent(everyRound(workerAnswer(row.answer)));
       expect(event).toEqual(unchecked(row.part, row.findings));
     },
   );
 });
 
 type JudgeRow = { name: string; verdict: FakeStep; part: string };
+type FailedRow = { name: string; verdict: () => FakeStep; ending: EngineEvent };
 
 // Handled here so it only rejects where the engine awaits it.
 function thrown(): Promise<ModelOutcome> {
@@ -155,21 +163,37 @@ const withText = (
   message: fakeMessage(text, { stopReason }),
 });
 
-const failedVerdicts: JudgeRow[] = [
+// Only a goal left unmet ends as a result, its gap named on the card; an unbacked part stays unchecked.
+const failedVerdicts: FailedRow[] = [
   {
-    name: "goalMet false with its part",
-    verdict: verdictReply({ goalMet: false, uncheckedPart: "the price" }),
-    part: "the price",
+    name: "goalMet false with its gap",
+    verdict: () => verdictReply({ goalMet: false, gaps: ["the price"] }),
+    ending: {
+      type: "result",
+      taskId: "task-1",
+      spokenLine: goodAnswer.spokenLine,
+      findings: {
+        ...goodFindings,
+        cardText: `${goodFindings.cardText}\n\n**Not found:** the price`,
+        openPoints: [...goodAnswer.openPoints, "the price"],
+      },
+    },
   },
   {
-    name: "claimsBacked false with no part",
-    verdict: verdictReply({ claimsBacked: false }),
-    part: "whether the claims are backed by the read pages",
+    name: "claimsBacked false with no gap",
+    verdict: () => verdictReply({ claimsBacked: false }),
+    ending: unchecked(
+      "whether the claims are backed by the read pages",
+      goodFindings,
+    ),
   },
   {
-    name: "spokenLineBacked false with an empty part",
-    verdict: verdictReply({ spokenLineBacked: false, uncheckedPart: " " }),
-    part: "whether the spoken line is backed by the card",
+    name: "spokenLineBacked false with an empty gap",
+    verdict: () => verdictReply({ spokenLineBacked: false, gaps: [" "] }),
+    ending: unchecked(
+      "whether the spoken line is backed by the card",
+      goodFindings,
+    ),
   },
 ];
 
@@ -204,10 +228,9 @@ const brokenJudges: JudgeRow[] = [
 ];
 
 describe("runTask judge", () => {
-  it.each(failedVerdicts)("ends unchecked on $name twice", async (row) => {
-    const steps = readTwo(workerAnswer(), row.verdict, workerAnswer());
-    const event = await finalEvent([...steps, row.verdict]);
-    expect(event).toEqual(unchecked(row.part, goodFindings));
+  it.each(failedVerdicts)("ends on $name in every round", async (row) => {
+    const event = await finalEvent(everyRound(workerAnswer(), [row.verdict()]));
+    expect(event).toEqual(row.ending);
   });
 
   it.each(brokenJudges)("ends unchecked at once on $name", async (row) => {

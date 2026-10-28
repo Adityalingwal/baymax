@@ -1,5 +1,5 @@
 export const taskLimits = {
-  modelCalls: 15,
+  modelCalls: 25,
   searches: 8,
   activeMs: 120_000,
   dollars: 0.5,

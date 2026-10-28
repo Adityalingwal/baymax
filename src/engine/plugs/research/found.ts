@@ -2,9 +2,9 @@ import type { Findings } from "../../../shared/cards";
 import { linkable } from "./answer-check";
 import type { ReadPage } from "./page-text";
 
-// A page title is page text: one line, with every Markdown mark escaped, so it can never form a link or a block.
-function titleLine(title: string): string {
-  return title
+// Page or model text on a card: one line, with every Markdown mark escaped, so it can never form a link or a block.
+function markdownLine(text: string): string {
+  return text
     .replace(/\s+/g, " ")
     .trim()
     .replace(/[\\`*_[\]()<>#!|~]/g, "\\$&");
@@ -12,7 +12,21 @@ function titleLine(title: string): string {
 
 function pageLine(page: ReadPage): string {
   const label = linkable(page.url) ? `[${page.id}](<${page.url}>)` : page.id;
-  return `- ${label} ${titleLine(page.title)}`.trimEnd();
+  return `- ${label} ${markdownLine(page.title)}`.trimEnd();
+}
+
+// A checked card whose gaps stayed open after the last round: they join its open points, and one code-written line names them.
+export function withNotFound(findings: Findings, gaps: string[]): Findings {
+  const openPoints = [...findings.openPoints];
+  for (const gap of gaps.map((text) => text.trim())) {
+    if (!openPoints.some((point) => point.trim() === gap)) openPoints.push(gap);
+  }
+  const named = [...new Set(gaps.map(markdownLine))].join("; ");
+  return {
+    ...findings,
+    cardText: `${findings.cardText}\n\n**Not found:** ${named}`,
+    openPoints,
+  };
 }
 
 function pageList(pages: ReadPage[]): Findings {

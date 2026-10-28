@@ -59,21 +59,27 @@ function htmlParts(html: string): { title: string; text: string } | null {
 }
 
 // Fewer than minChars visible characters means no usable text, which is how a JavaScript-only page is caught.
+// A plain body may bring its title from elsewhere, such as Exa Contents.
 export function pageTextFrom(params: {
   body: string;
   kind: BodyKind;
   url: string;
   hostname: string;
   limits: TextLimits;
+  title?: string;
 }): PageTextResult {
   const { body, kind, url, hostname, limits } = params;
-  const parts = kind === "html" ? htmlParts(body) : { title: "", text: body };
+  const parts =
+    kind === "html"
+      ? htmlParts(body)
+      : { title: params.title ?? "", text: body };
   if (parts === null) return { ok: false, cause: "noUsableText" };
   const text = collapseWhitespace(parts.text);
   if (text.replace(/\s/g, "").length < limits.minChars) {
     return { ok: false, cause: "noUsableText" };
   }
-  const title = parts.title.slice(0, maxTitleChars).trim() || hostname;
+  const oneLine = parts.title.replace(/\s+/g, " ");
+  const title = oneLine.slice(0, maxTitleChars).trim() || hostname;
   return {
     ok: true,
     page: { url, title, text: text.slice(0, limits.maxChars) },

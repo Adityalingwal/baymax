@@ -109,7 +109,7 @@ cards       <--IPC--  whole display state                         <--- task even
 | Intake check | Claude Sonnet 5.5 |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
-| Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and plain page reads |
+| Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and page reads through Exa Contents, with Baymax's own plain reader as the fallback |
 | Agent runtime | Our own loop on the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), in the engine |
 | Storage | Memory only |
 | Keys | Our own keys from `.env` ([Processes and the port](#processes-and-the-port)) |
@@ -164,11 +164,11 @@ cards       <--IPC--  whole display state                         <--- task even
 ### Worker and research
 
 - **The brief.** The intake writes it in four parts (the goal, the result shape, the tools or sources, the limits) plus the user's exact words, because a restated goal can lose a nuance ("an office laptop, not gaming"). The worker gets only the web tool and never the whole conversation. Text in a page is never an instruction to it.
-- **One profile.** The worker decides while it works how much to search: a simple question ("today's weather in Delhi") stops after one or two searches, a bigger one ("how does Hermes work inside") reads six to eight pages, within one set of [limits](#limits-and-cost). This is checked on the first integrated path with a simple current fact and a moderately detailed product question (time to a useful answer, needless searches, source support, the incomplete outcome at a limit); if the worker over-searches or is too slow, the intake's quick or normal choice comes back through the depth value.
+- **One profile.** The worker decides while it works how much to search, within one set of [limits](#limits-and-cost): a question that is a single simple fact (a date, a number, a definition, "today's weather in Delhi") may stop after one or two good sources; any other question ("how does Hermes work inside") reads at least 5 different sources, from different sites, before the answer, and more when they disagree or leave part of the brief open. A failed read does not count. This floor is a prompt rule; code enforces no minimum. Each tool result tells the worker how many pages it has read. This is checked on the first integrated path with a simple current fact and a moderately detailed product question (time to a useful answer, needless searches, source support, the incomplete outcome at a limit); if the worker over-searches or is too slow, the intake's quick or normal choice comes back through the depth value.
 - **The answer.** The worker writes the answer itself and maps each important claim to the source ids that support it; there is no separate writer. One output holds both parts: a one- or two-line spoken summary and the full card text in Markdown (headings, points, source links). There is no separate model call for the spoken line. A near match is never called a full match: with no exact match it names the closest alternatives and the unmet constraints. An ambiguity that needs the user ends the task incomplete with one focused next question on the card.
 - **Prompt cache.** The prompt start (instructions and tool list) stays fixed during a run.
 - **Context.** If the prompt fills up despite the capped page text, the task ends incomplete, limit hit, and shows what it found.
-- **Incomplete.** Baymax never calls a short result done. The card shows what was found and one line on what is missing, with one of three kinds: limit hit, sources thin, or a tool or provider error. A cancel by the user is "cancelled", not incomplete.
+- **Incomplete.** Baymax never calls a short result done, with one bounded exception: an answer whose claims and spoken line are backed but that still misses part of the goal after the last retry round ends as a result that names the missing part ([Done check](#done-check)). Otherwise the card shows what was found and one line on what is missing, with one of three kinds: limit hit, sources thin, or a tool or provider error. A cancel by the user is "cancelled", not incomplete.
 
 ### Done check
 
@@ -178,13 +178,16 @@ It checks support and completion, not truth.
 - **Code check first:** an answer exists, it cites sources, and every cited id is a page that was really read; an id from a search snippet only cannot pass.
 - **Then the judge** gets the intake's goal, constraints and expected result, the answer and the code-kept excerpts. It checks that the answer meets the goal and that the important claims are backed by a page; a well-supported answer to the wrong question fails. It also checks that the spoken line is backed by the card text; a spoken line that is not counts as a failed check. The judge fetches nothing itself.
 - Only a done result shows and speaks the pair. An incomplete result shows its findings, labelled, with its failure line, and its spoken summary is not played.
-- If the check fails, the worker gets one more round. If it still fails, or the judge itself fails, the task ends incomplete with the unchecked part named, never done.
+- A failed judge names what is missing or unbacked as a list of gaps, each short enough to look up.
+- **Retry rounds.** If the check fails, the worker gets up to two retry rounds in the same conversation: at most three judged answers in all. A judge or code-check fault sends the worker the failed checks and the gaps, and asks it to research each gap (a search and at least one new page read) before it writes again; a cut-off or malformed answer only gets a rewrite. In a round opened by a judge or code-check fault, an answer that comes without new research (a search that returned results, or a newly kept page) is not judged: the worker gets one fixed message to research the gaps first, once per round, and its next answer is judged as it is. A sources-thin or needs-user answer in any round ends as it is, without the judge.
+- **After the last round.** If the judge fails only the goal (the claims and the spoken line are backed), the task ends as a result: that answer's spoken line and card, with the gaps added to the open points and one code-written "Not found" line at the end of the card. If a claim or the spoken line is still unbacked, the code check still fails, the answer never parsed, or the judge itself fails, the task ends incomplete with the unchecked part named, never done.
 - Baymax closes a task itself once the check passes and the result is shown.
 
 ### Web tool
 
 - Searches and page reads need no approval; the task's limits and cancel hold them in check.
-- A page is read plainly with HTML-to-text. A JavaScript-only page or a PDF counts as no usable text, and the worker moves on.
+- A page is read through Exa Contents first, with up to 20,000 characters of text; Exa's crawler also gives text for JavaScript-built pages and PDFs. When Exa gives no usable text for that URL, or its call fails for any reason except a cancel, Baymax's own reader reads the page plainly with HTML-to-text, where a JavaScript-only page or a PDF counts as no usable text and the worker moves on. Kept text is capped at 20,000 characters on both paths.
+- **Exa as a hosted reader.** The URL rules run first, for both paths, so localhost, `.local`, literal private addresses, a URL with credentials and the refused sites never reach Exa. Exa fetches from its own servers, which cannot reach the user's local network, so the rule that protects the local network holds for it; the connection-time address check below belongs to Baymax's own reader, which keeps every rule. The kept page's URL is the checked URL that was asked for; Exa's own URL is used only to match its result. Exa's call has its own timeout, and its reply is refused when its declared size is over 1 MB; its text counts only when Exa marks that URL as a success.
 - **Safety.** Only http and https. Only public destinations: the address the HTTP client actually connects to is checked at connection time (its own DNS lookup, IPv4 and IPv6), on every redirect and every retry, so localhost, `.local`, private and link-local ranges are refused even when a public-looking name resolves to them. A NAT64 address (`64:ff9b::/96`, which macOS returns for IPv4-only sites on a NAT64 network) is judged by the IPv4 address it carries. If that cannot be built and verified in V1, the reader route is narrowed rather than the gap called harmless. x.com, linkedin.com and reddit.com are refused. A URL that carries credentials is refused, and no cookies or credentials are forwarded. TLS is verified. Download size and time are capped before parsing. A hosted reader is used only if it keeps the same rules.
 - **Page text is untrusted** for both the worker and the judge. The worker cannot act outside, but an injected page could still skew an answer or steer later searches and fetches, so page text never changes the instructions or the tool list. Offline tests cover injected instructions, private addresses (including a name that resolves to one) and redirects.
 - X, Reddit and LinkedIn appear only as links and snippets from a normal search, and Baymax says it did not read the full thread.
@@ -192,7 +195,7 @@ It checks support and completion, not truth.
 ### Cancel
 
 - Cancel is a screen control: the user hovers a task's card or agent icon and clicks cancel. Main serves it in code, so it works when no model or Deepgram is reachable. There is no spoken "stop" in V1.
-- It covers the whole task: its intake call, its waiting question, its worker, the judge, the retry round and its speech. It blocks every later step and every late result, and nothing starts on its own afterwards.
+- It covers the whole task: its intake call, its waiting question, its worker, the judge, the retry rounds and its speech. It blocks every later step and every late result, and nothing starts on its own afterwards.
 - The card shows "cancelling", then "cancelled" only after the loop has really ended. A request already sent may still finish and be billed.
 - Each queued card has its own cancel; cancelling one task leaves the others.
 
@@ -207,9 +210,9 @@ It checks support and completion, not truth.
 
 ### Limits and cost
 
-- Each task has limits on model calls, searches, active time and dollars ([Starting values](#starting-values)). Active time counts the time the task's calls, tools or retry waits run, not the time it waits for the user. At a limit the task ends incomplete, limit hit, and shows what it found.
-- Every paid call (intake, worker, judge, the retry round, paid web calls) goes through one dispatch function that checks the limits before sending, sets an output-token ceiling per role, and writes usage and dollar cost to the dev log for the team. The user never sees cost. Without a reservation ledger the dollar limit is a conservative estimate, not an exact guarantee.
-- In V1 a task's limits count its run (worker, judge, retry round). Its intake calls, at most two of about a cent each, are checked against limits of their own and logged under the task id, because the engine keeps nothing between commands.
+- Each task has limits on model calls, searches, active time and dollars ([Starting values](#starting-values)). Active time counts the time the task's calls, tools or retry waits run, not the time it waits for the user. At a limit the task ends incomplete, limit hit, and shows what it found. The model-call limit is a ceiling, not a promise that every retry round fits: worker steps and judge calls share it, and the time or dollar limit can end a task first. The dollar limit counts model calls only; Exa search and contents calls are not added to it in V1.
+- Every model call (intake, worker, judge, the retry rounds) goes through one dispatch function that checks the limits before sending, sets an output-token ceiling per role, and writes usage and dollar cost to the dev log for the team. Exa search and contents calls go through the web tool, with their own timeouts and the search limit, and are not dispatched. The user never sees cost. Without a reservation ledger the dollar limit is a conservative estimate, not an exact guarantee.
+- In V1 a task's limits count its run (worker, judge, retry rounds). Its intake calls, at most two of about a cent each, are checked against limits of their own and logged under the task id, because the engine keeps nothing between commands.
 - Retries use the Anthropic SDK's own retry with a small `maxRetries` and an explicit timeout on every call. That it may resend a request after a timeout is an accepted V1 cost.
 
 ### Failures the user hears
@@ -251,9 +254,9 @@ It checks support and completion, not truth.
 | Final transcript deadline after key release | about 2 s, then the latest `Update` |
 | Searches per task | about 8 |
 | Active time per task | about 2 minutes |
-| Model calls per task | about 15 |
+| Model calls per task | about 25 |
 | Dollars per task | about 50 cents |
-| Done check retry rounds | 1 |
+| Done check retry rounds | 2 |
 | Shortest hold that counts as a question | about 0.3 s |
 | Tasks waiting while one runs | 3 |
 | Cancelled card stays | about 3 s |
@@ -311,7 +314,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
-| `src/providers/` | Process-neutral provider code: the search call and its outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
+| `src/providers/` | Process-neutral provider code: the Exa search and page-contents calls and their outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
 | `src/providers/deepgram.ts` | Deepgram calls: pre-recorded transcription and REST speech |
 | `src/providers/warm-socket.ts` | A socket kept open from start that reconnects with backoff, and the real WebSocket opener |
 | `src/providers/flux.ts` | The Flux socket: the listen URL, its messages, the silence keep-alive and ending a turn |
