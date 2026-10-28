@@ -34,8 +34,9 @@ export type TalkerDeps = {
 type Reply = Extract<TalkRequest, { kind: "reply" }>;
 type Rewrite = Exclude<TalkRequest, Reply>;
 
-const talkerModel = "claude-haiku-5-5";
-const maxTokens = 256;
+const talkerModel = "claude-fable-5-1";
+// Adaptive thinking counts against the ceiling, so it leaves room beyond the short spoken line.
+const maxTokens = 1024;
 const replyTimeoutMs = 10_000;
 // A rewrite with no words after about 3 s, or not finished after about 6 s, gives way to the given text.
 const firstWordsMs = 3000;
@@ -49,12 +50,11 @@ const failureKinds: Record<ModelFailure, FailureKind> = {
   error: "error",
 };
 
-// Thinking off and low effort: the first words are what the user waits for.
+// Fable rejects disabled thinking, so the thinking field is left out; at low effort it measured about 0.75 s to the first words.
 function request(system: string, content: string): TextRequest {
   return {
     model: talkerModel,
     max_tokens: maxTokens,
-    thinking: { type: "disabled" },
     output_config: { effort: "low" },
     system,
     messages: [{ role: "user", content }],

@@ -2,7 +2,7 @@
 
 Voice-first personal AI assistant: hold one key, speak, and your work goes to the agent you choose.
 
-Status: streaming voice and the talker (28 Oct 2026). Hold the hold-key (Option on macOS), ask a question and release, or type it in the window. While the key is held the microphone streams to Deepgram Flux over a socket kept open from start; when that socket is down, the held clip goes to Deepgram's pre-recorded call instead. Spoken lines stream from a warm Deepgram Aura-2 socket and play as the audio arrives; when that socket is down, a line goes to the Aura-2 REST call. A Haiku talker is Baymax's only voice: it answers small talk itself and says a short line showing it understood a research question, and later says the clarifying question and the result in its own words; Baymax researches the question on the web: a card shows the start line, the progress, and then the checked answer with its sources.
+Status: streaming voice and the talker (28 Oct 2026). Hold the hold-key (Option on macOS), ask a question and release, or type it in the window. While the key is held the microphone streams to Deepgram Flux over a socket kept open from start; when that socket is down, the held clip goes to Deepgram's pre-recorded call instead. Spoken lines stream from a warm Deepgram Aura-2 socket and play as the audio arrives; when that socket is down, a line goes to the Aura-2 REST call. A Fable talker is Baymax's only voice: it answers small talk itself and says a short line showing it understood a research question, and later says the clarifying question and the result in its own words. Baymax researches the question on the web: a card shows the start line, the progress, and then the checked answer with its sources.
 
 ## Requirements
 

@@ -41,7 +41,7 @@ Asking by voice and receiving an answer never take the focus away from the user'
 - Answers live in memory while the app is open; no database, no crash resume.
 - The engine runs inside the main process behind a port.
 - Cancel from the screen; speech silenced by the key or the mute switch.
-- Streaming voice: Deepgram Flux STT and Aura-2 TTS over WebSockets, and a Haiku talker that is Baymax's only voice ([Voice](#voice), [Talker](#talker)).
+- Streaming voice: Deepgram Flux STT and Aura-2 TTS over WebSockets, and a Fable talker that is Baymax's only voice ([Voice](#voice), [Talker](#talker)).
 - Friendly fixed failure lines; raw errors only in the dev log.
 
 ### V1 if time remains
@@ -91,7 +91,7 @@ Not planned now, not "never".
 renderer                          main                                      engine (in main, behind the port)
 text box    --IPC-->  -------------------------------------------+
 PCM frames  --IPC-->  Flux WebSocket -> final transcript --------+--> intake check -> worker -> done check
-                                         \-> talker (Haiku) first line
+                                         \-> talker (Fable) first line
 playback    <--IPC--  Aura-2 WebSocket <- speak() <- talker       <--- say-back, question, result, failure
 cards       <--IPC--  whole display state                         <--- task events
 ```
@@ -105,7 +105,7 @@ cards       <--IPC--  whole display state                         <--- task even
 | --- | --- |
 | STT | Deepgram Flux (`flux-general-en`) over one warm WebSocket; backup Nova-3 pre-recorded for one utterance when the socket cannot reconnect |
 | TTS | Deepgram Aura-2 over one warm WebSocket (24 kHz PCM), fed the talker's text clause by clause; backup the Aura-2 REST call |
-| Talker | Claude Haiku 5.5, in main |
+| Talker | Claude Fable 5.1 at low effort, in main |
 | Intake check | Claude Sonnet 5.5 |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
@@ -146,7 +146,7 @@ cards       <--IPC--  whole display state                         <--- task even
 
 ### Talker
 
-- **What it is.** One Claude Haiku 5.5 call in main per final transcript or typed question, started at the same moment as the intake check. It gets the user's words, the recent questions and answers, the running and waiting tasks and the waiting clarifying question, and streams a short spoken line into TTS.
+- **What it is.** One Claude Fable 5.1 call (low effort; its thinking cannot be turned off) in main per final transcript or typed question, started at the same moment as the intake check. It gets the user's words, the recent questions and answers, the running and waiting tasks and the waiting clarifying question, and streams a short spoken line into TTS.
 - **What it says.** A short reply it can give from what it knows ("hi", "thanks", "what is 2 + 2") is the whole answer. For research it says a line that shows it understood the question ("I'll check tomorrow's Delhi forecast; the rain chance decides the umbrella."), with no time promise and no claim of progress. It never asks its own question and never decides what a task means: the intake routes, and binds answers to a waiting question.
 - **Warm connection.** A key press sends a key-less request to the Anthropic API, so the talker's call reuses an open connection instead of setting one up (about 0.15 s, measured with a 401 call on 28 Oct).
 - **Later lines.** The intake's clarifying question and the worker's result reach the user through the talker, in its own words, with the choices and the full answer on the card.
@@ -305,7 +305,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
 | `src/main/talker-timing.ts` | Logs each generation's talker reply steps in ms after its release |
-| `src/main/talker.ts` | The talker: one Haiku 5.5 streaming call per question, and one per clarifying question or result in its own words; its words stream into speech |
+| `src/main/talker.ts` | The talker: one Fable 5.1 streaming call per question, and one per clarifying question or result in its own words; its words stream into speech |
 | `src/main/talker-prompt.ts` | The talker's instructions and the blocks it reads |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
 | `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |

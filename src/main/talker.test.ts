@@ -28,15 +28,16 @@ const reply: TalkRequest = {
 };
 
 describe("the talker's reply (L12)", () => {
-  it("asks Haiku 5.5 with a 256-token ceiling and the words, the recent answers and the running tasks", () => {
+  it("asks Fable 5.1 at low effort with no thinking field and the words, the recent answers and the running tasks", () => {
     const h = createHarness();
     h.talker.talk(reply);
     const [{ request }] = h.calls;
     expect(request).toMatchObject({
-      model: "claude-haiku-5-5",
-      max_tokens: 256,
-      thinking: { type: "disabled" },
+      model: "claude-fable-5-1",
+      max_tokens: 1024,
+      output_config: { effort: "low" },
     });
+    expect(request.thinking).toBeUndefined();
     expect(request.system).toContain("never claim progress");
     const text = userText(request);
     expect(text).toContain(
