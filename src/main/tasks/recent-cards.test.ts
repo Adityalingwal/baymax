@@ -15,8 +15,6 @@ type CardRow = {
   cards: (string | null)[];
 };
 
-const link = "[s1](<https://a.example/x_(y)>)";
-
 const cardRows: CardRow[] = [
   {
     name: "only the newest two with findings, a done and an incomplete one",
@@ -37,11 +35,6 @@ const cardRows: CardRow[] = [
       askNew(h, "c");
     },
     cards: ["Kept.", null, null],
-  },
-  {
-    name: "a citation link reduced to its label",
-    run: (h) => finish(h, askNew(h, "a"), `Fact ${link} and (more).`),
-    cards: ["Fact [s1] and (more)."],
   },
   {
     name: "2000 characters cut to exactly 1500 ending in an ellipsis",

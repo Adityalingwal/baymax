@@ -49,3 +49,15 @@ describe("worker depth rule", () => {
     );
   });
 });
+
+describe("worker answer rule", () => {
+  it("keeps source ids and links out of the card text and takes sources from the claims", () => {
+    const text = workerInstructions(workerThinking);
+    expect(text).toContain(
+      "Write no source ids, citation markers, links or URLs in it; the card lists its sources below the answer, taken from your claims.",
+    );
+    expect(text).toContain("The card's sources come only from these ids.");
+    expect(text).toContain("still write what you found, with its claims.");
+    expect(text).not.toContain("the markers become links");
+  });
+});

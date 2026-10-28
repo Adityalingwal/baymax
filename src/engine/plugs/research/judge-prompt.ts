@@ -5,12 +5,13 @@ import type { ReadPage } from "./page-text";
 
 export const judgeInstructions = `You are the done check of Baymax, a voice assistant that answers research briefs from web pages. You check support and completion, not truth: whether the answer does what the brief asks and whether the pages it cites back it. You fetch nothing and use no knowledge of your own about the topic.
 
-You get the brief, the answer (the spoken line, the card text with source id markers such as [s1], and the claims with their source ids) and the text of the cited pages in <page source_id="..."> blocks.
+You get the brief, the answer (the spoken line, the card text, and the claims with their source ids) and the text of the cited pages in <page source_id="..."> blocks.
 
 Set three flags:
 - goalMet: the card meets the brief's goal, result shape and constraints. A well-supported answer to a different question is false. A near match called a full match is false.
 - claimsBacked: every important factual claim in the card is represented in claims and supported by the read pages named in that claim's sourceIds.
 - spokenLineBacked: every assertion in spokenLine is supported by cardText itself. Support in a page alone does not count.
+The message starts with today's date. For a current fact (weather now or today, a live price, a score, opening hours), a claim is backed only when a read page gives it for the place and the date or period the brief asks for. A page for another place, another date or an unclear date does not back it: set claimsBacked to false and name the gap.
 
 gaps: when a flag is false, a list of short phrases, each naming one thing the answer is missing or does not back with a read page, written so it can be looked up on the web, for example "the price of the Pro model". An empty list when all three flags are true.
 
@@ -24,17 +25,19 @@ function claimLines(answer: Answer): string {
 }
 
 export function judgeMessage(params: {
+  today: string;
   brief: WorkerBrief;
   answer: Answer;
   pages: ReadPage[];
 }): string {
-  const { brief, answer, pages } = params;
+  const { today, brief, answer, pages } = params;
   const answerParts = [
     taggedText("spoken_line", answer.spokenLine),
     taggedText("card_text", answer.cardText),
     taggedText("claims", claimLines(answer)),
   ];
   return [
+    `Today's date: ${today}.`,
     briefForModel(brief),
     `<answer>\n${answerParts.join("\n")}\n</answer>`,
     ...pages.map(pageForModel),

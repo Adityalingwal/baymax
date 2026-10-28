@@ -45,6 +45,11 @@ const refusedBeforeLookup: [string, RefusalRule][] = [
   ["https://x.com/a", "blockedHost"],
   ["https://www.linkedin.com/in/a", "blockedHost"],
   ["https://old.reddit.com/r/a", "blockedHost"],
+  ["https://api.exa.ai/search", "blockedHost"],
+  ["https://api.exa.ai/contents", "blockedHost"],
+  ["https://api.exa.ai/answer", "blockedHost"],
+  ["HTTPS://API.EXA.AI./contents?x=1", "blockedHost"],
+  ["https://x.api.exa.ai/", "blockedHost"],
   ["ftp://example.test/file", "scheme"],
   ["file:///etc/passwd", "scheme"],
   ["javascript:alert(1)", "scheme"],
@@ -71,6 +76,12 @@ function read(url: string) {
   );
 }
 
+const exaSitesStillAllowed = [
+  "https://exa.ai/",
+  "https://docs.exa.ai/reference/search",
+  "https://dashboard.exa.ai/",
+];
+
 describe("readPage refusals", () => {
   it.each(nonPublicAnswers)(
     "refuses a name resolving to %s without connecting",
@@ -94,6 +105,21 @@ describe("readPage refusals", () => {
       expect(outcome).toEqual({ ok: false, cause: "refused", rule });
       expect(network.lookups).toEqual([]);
       expect(network.targets).toEqual([]);
+    },
+  );
+
+  it.each(exaSitesStillAllowed)(
+    "does not refuse the Exa site %s by name",
+    async (url) => {
+      network.answer(new URL(url).hostname, ["10.0.0.5"]);
+      const outcome = await read(url);
+      // A public-looking name resolving to a private address proves the URL rules let it through to the lookup.
+      expect(outcome).toEqual({
+        ok: false,
+        cause: "refused",
+        rule: "privateAddress",
+      });
+      expect(network.lookups).toEqual([new URL(url).hostname]);
     },
   );
 });

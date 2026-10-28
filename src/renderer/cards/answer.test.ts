@@ -4,13 +4,7 @@ import { describe, expect, it } from "vitest";
 import { Answer } from "./Answer";
 
 function render(markdown: string): string {
-  return renderToStaticMarkup(
-    createElement(Answer, {
-      taskId: "t1",
-      markdown,
-      openSource: () => undefined,
-    }),
-  );
+  return renderToStaticMarkup(createElement(Answer, { markdown }));
 }
 
 const cases: [string, string, (html: string) => void][] = [
@@ -28,10 +22,11 @@ const cases: [string, string, (html: string) => void][] = [
     (html) => expect(html).not.toContain("<img"),
   ],
   [
-    "a normal link becomes a button with its text and no href",
+    "a normal link becomes plain text with no button and no href",
     "See [the docs](https://docs.example/page).",
     (html) => {
-      expect(html).toMatch(/<button type="button"[^>]*>the docs<\/button>/);
+      expect(html).toContain("<span>the docs</span>");
+      expect(html).not.toContain("<button");
       expect(html).not.toContain("href=");
     },
   ],

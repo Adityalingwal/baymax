@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 const oneCited = {
-  cardText: "Hermes runs a loop [s1].",
+  cardText: "Hermes runs a loop.",
   claims: [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }],
 };
 

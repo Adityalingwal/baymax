@@ -17,10 +17,8 @@ import {
 
 afterEach(closeRuns);
 
-const linked = (id: string, name: string) => `[${id}](<${pageUrl(name)}>)`;
-
 const goodFindings: Findings = {
-  cardText: `## How it works\n\nHermes runs a loop ${linked("s1", "one")} with tools ${linked("s2", "two")}.`,
+  cardText: "## How it works\n\nHermes runs a loop with tools.",
   sources: [
     { id: "s1", url: pageUrl("one"), title: "Page one" },
     { id: "s2", url: pageUrl("two"), title: "Page two" },
@@ -62,11 +60,13 @@ const readThree = toolUseReply([{ read: pageUrl("three") }]);
 const retryRows: RetryRow[] = [
   {
     name: "a failed code rule",
-    failed: workerAnswer({ cardText: "Hermes runs a loop." }),
+    failed: workerAnswer({
+      claims: [{ claim: "Hermes runs a loop", sourceIds: ["s9"] }],
+    }),
     verdict: [],
     stage: "code",
-    rule: "noCitation",
-    result: "a card with no citations",
+    rule: "unreadCitation",
+    result: "citations to pages that were not read",
     line: researchLine,
   },
   {

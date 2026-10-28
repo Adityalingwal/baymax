@@ -22,7 +22,7 @@ export type ClarifyingReply =
 
 // What a task found: a done answer, or the labelled partial findings of an incomplete one.
 export type Findings = {
-  cardText: string; // Markdown; every citation is a link whose URL is one of sources[].url (the screen opens it through openSource; ids serve the done check)
+  cardText: string; // Markdown with no links; sources[] lists the pages the card relies on, opened through openSource (ids serve the done check)
   sources: Source[];
   openPoints: string[]; // carried into a follow-up's brief
 };

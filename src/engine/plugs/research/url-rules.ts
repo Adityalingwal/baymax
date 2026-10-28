@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { exaApiHost } from "../../../providers/exa-request";
 import { isPublicAddress } from "./address";
 
 export type RefusalRule =
@@ -25,6 +26,7 @@ const blockedNames = [
   "x.com",
   "linkedin.com",
   "reddit.com",
+  exaApiHost,
 ];
 
 function parse(raw: string, base?: string): URL | null {

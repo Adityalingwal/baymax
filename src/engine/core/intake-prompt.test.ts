@@ -26,8 +26,8 @@ const line =
 const rows: [string, RecentExchange[], string][] = [
   [
     "shows the card under its line",
-    [exchange("## Top\n1. Sony [s1]")],
-    `<recent>\n${line}\n  card: ## Top\n1. Sony [s1]\n</recent>`,
+    [exchange("## Top\n1. Sony")],
+    `<recent>\n${line}\n  card: ## Top\n1. Sony\n</recent>`,
   ],
   [
     "shows no card line without card text",

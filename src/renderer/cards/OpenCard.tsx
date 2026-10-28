@@ -63,11 +63,7 @@ export function OpenCard({ card, actions }: OpenCardProps) {
       {missing !== null && <p className="text-sm text-zinc-300">{missing}</p>}
       {answer !== null && (
         <div className="max-h-72 overflow-y-auto pr-1">
-          <Answer
-            taskId={card.taskId}
-            markdown={answer.cardText}
-            openSource={actions.openSource}
-          />
+          <Answer markdown={answer.cardText} />
         </div>
       )}
       {answer !== null && answer.sources.length > 0 && (

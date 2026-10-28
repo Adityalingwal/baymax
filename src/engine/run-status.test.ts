@@ -18,9 +18,9 @@ const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 
 type StatusRow = { name: string; answer: AnswerFields; ending: Incomplete };
 
-const thinCard = "Only one page mentions it: a loop [s1], and memory [s4].";
+const thinCard = "Only one page mentions it: a loop, and memory.";
 const thinFindings = {
-  cardText: `Only one page mentions it: a loop [s1](<${pageUrl("one")}>), and memory .`,
+  cardText: thinCard,
   sources: [one],
   openPoints: ["How it stores memory"],
 };
@@ -106,7 +106,7 @@ const invalidRows: { name: string; answer: AnswerFields }[] = [
 ];
 
 const cited = {
-  cardText: "Hermes runs a loop [s1].",
+  cardText: "Hermes runs a loop.",
   claims: [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }],
 };
 

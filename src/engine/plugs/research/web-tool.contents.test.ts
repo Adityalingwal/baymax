@@ -148,6 +148,16 @@ describe("createWebTool around Exa Contents", () => {
     expect(asked).toHaveLength(0);
   });
 
+  it("refuses Exa's API host as blockedHost and never calls Exa Contents", async () => {
+    const { web, asked } = hosted(answer({ ok: false, cause: "unreachable" }));
+    expect(await web.read("https://api.exa.ai/contents", signal)).toEqual({
+      ok: false,
+      cause: "refused",
+      rule: "blockedHost",
+    });
+    expect(asked).toHaveLength(0);
+  });
+
   it("shares one Exa call between two reads of one URL started together", async () => {
     const { web, asked } = hosted(
       answer({ ok: true, title: "Exa title", text: hostedText }),

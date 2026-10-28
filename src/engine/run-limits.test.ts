@@ -20,17 +20,16 @@ afterEach(closeRuns);
 
 const readOne = () => toolUseReply([{ read: pageUrl("one") }]);
 const readTwo = () => toolUseReply([{ read: pageUrl("two") }]);
-const link = (id: string, name: string) => `[${id}](<${pageUrl(name)}>)`;
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
 
 const listOne: Findings = {
-  cardText: `- ${link("s1", "one")} Page one`,
+  cardText: "- Page one",
   sources: [one],
   openPoints: [],
 };
 const listTwo: Findings = {
-  cardText: `${listOne.cardText}\n- ${link("s2", "two")} Page two`,
+  cardText: `${listOne.cardText}\n- Page two`,
   sources: [one, two],
   openPoints: [],
 };
@@ -145,7 +144,7 @@ describe("runTask full prompt", () => {
     const events = await run.ended();
     expect(events[events.length - 1]).toEqual(
       limitHit({
-        cardText: `- ${link("s1", "long")} Long page`,
+        cardText: "- Long page",
         sources: [{ id: "s1", url: pageUrl("long"), title: "Long page" }],
         openPoints: [],
       }),
@@ -161,11 +160,11 @@ describe("runTask full prompt", () => {
 });
 
 const cited = {
-  cardText: "Hermes runs a loop [s1].",
+  cardText: "Hermes runs a loop.",
   claims: [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }],
 };
 const checkedCard = {
-  cardText: `Hermes runs a loop ${link("s1", "one")}.`,
+  cardText: "Hermes runs a loop.",
   sources: [one],
   openPoints: ["How it stores memory"],
 };

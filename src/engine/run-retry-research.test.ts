@@ -22,9 +22,8 @@ afterEach(closeRuns);
 const nudgeText =
   "You made no new search and read no new page in this round. Research the gaps in the check result above before you answer: make a search and read at least one new page for each gap, then write the whole answer again as the JSON object.";
 
-const linked = (id: string, name: string) => `[${id}](<${pageUrl(name)}>)`;
 const goodFindings: Findings = {
-  cardText: `## How it works\n\nHermes runs a loop ${linked("s1", "one")} with tools ${linked("s2", "two")}.`,
+  cardText: "## How it works\n\nHermes runs a loop with tools.",
   sources: [
     { id: "s1", url: pageUrl("one"), title: "Page one" },
     { id: "s2", url: pageUrl("two"), title: "Page two" },
