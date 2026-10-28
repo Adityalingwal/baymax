@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createFakeAura } from "./speech.harness";
 import type { SaidLine } from "./tasks/state";
 import {
   audio,
@@ -122,6 +123,20 @@ describe("time to the first spoken line", () => {
     await synthesized(h, 1, audio);
     expect(h.speeches).toHaveLength(2);
     expect(timing(h)).toEqual(["first spoken line 1480 ms after release"]);
+  });
+
+  it("times the first streamed chunk too", () => {
+    const aura = createFakeAura();
+    const h = createHarness({ aura });
+    aura.open();
+    h.control.now = 1000;
+    sendAudio(h, hold(h));
+    h.voice.say(line("Hi."));
+    h.control.now = 1800;
+    aura.audio(1);
+    aura.audio(2);
+    expect(h.chunks).toHaveLength(2);
+    expect(timing(h)).toEqual(["first spoken line 800 ms after release"]);
   });
 
   it("is cleared by a new hold", async () => {

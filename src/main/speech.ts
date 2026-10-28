@@ -1,23 +1,17 @@
-import { randomUUID } from "node:crypto";
-import type { Synthesis } from "../providers/deepgram";
 import type { TaskId } from "../shared/cards";
+import type { PlaybackFinished } from "../shared/ipc";
 import type {
-  LineId,
-  PlaybackFinished,
-  SpeechLine,
-  StopPlayback,
-} from "../shared/ipc";
-import type { SaidKind, SaidLine, Timers } from "./tasks/state";
+  Matches,
+  SpeechContext,
+  SpeechDeps,
+  SpeechState,
+} from "./speech-model";
+import { endPlaying, log, stopPlaying } from "./speech-model";
+import { startRest } from "./speech-rest";
+import { auraClosed, auraHeard, startStream } from "./speech-stream";
+import type { SaidLine } from "./tasks/state";
 
-export type VoiceDownCause = "unreachable" | "keyRejected" | "noCredit";
-
-export type SpeechDeps = {
-  synthesize: (text: string, signal: AbortSignal) => Promise<Synthesis>;
-  sendSpeech: (line: SpeechLine) => void;
-  sendStop: (payload: StopPlayback) => void;
-  onVoiceAvailable: (available: boolean, cause: VoiceDownCause | null) => void; // only on a change
-  timers: Timers;
-};
+export type { VoiceDownCause } from "./speech-model";
 
 type Speech = {
   speak(line: SaidLine): void;
@@ -29,56 +23,8 @@ type Speech = {
   rendererReset(): void;
 };
 
-// A distinct object per synthesis, so a settled job can tell whether it still owns the slot.
-type Job = { line: SaidLine; abort: AbortController };
-
-type Playing = {
-  lineId: LineId;
-  taskId: TaskId | null;
-  kind: SaidKind;
-  cancelDeadline: () => void;
-};
-
-type SpeechState = {
-  pending: SaidLine[];
-  synthesizing: Job | null;
-  playing: Playing | null;
-  held: boolean;
-  muted: boolean;
-  cancelled: Set<TaskId>;
-  voiceAvailable: boolean;
-};
-
-type Spoken = Pick<SaidLine, "taskId" | "kind">;
-type Matches = (line: Spoken) => boolean;
-type Audio = Extract<Synthesis, { kind: "audio" }>;
-type Failed = Extract<Synthesis, { kind: "failed" }>;
-
-// A renderer that never reports must not block speech forever.
-const playbackDeadlineMs = 60_000;
-
 const everyLine: Matches = () => true;
-
-function log(message: string): void {
-  console.log(`[Speech] ${message}`);
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error
-    ? `${error.name}: ${error.message}`
-    : String(error);
-}
-
-// An injected callback that throws is logged; it never breaks the speech state.
-function guarded(name: string, call: () => void): boolean {
-  try {
-    call();
-    return true;
-  } catch (error) {
-    log(`${name} threw: ${describeError(error)}`);
-    return false;
-  }
-}
+const cancelledLimit = 64;
 
 function dropPending(state: SpeechState, matches: Matches, why: string): void {
   const kept = state.pending.filter((line) => !matches(line));
@@ -95,151 +41,32 @@ function dropSynthesis(state: SpeechState, matches: Matches, why: string) {
   job.abort.abort();
 }
 
-function endPlaying(state: SpeechState, lineId: LineId): boolean {
-  const playing = state.playing;
-  if (playing === null || playing.lineId !== lineId) return false;
-  state.playing = null;
-  guarded("cancelDeadline", playing.cancelDeadline);
-  return true;
-}
-
-function stopPlaying(
-  state: SpeechState,
-  deps: SpeechDeps,
-  matches: Matches,
-  sendStop: boolean,
-): void {
-  const playing = state.playing;
-  if (playing === null || !matches(playing)) return;
-  endPlaying(state, playing.lineId);
-  if (!sendStop) return;
-  const lineId = playing.lineId;
-  guarded("sendStop", () => deps.sendStop({ lineId }));
-}
-
 function clearSpeech(
-  state: SpeechState,
-  deps: SpeechDeps,
+  ctx: SpeechContext,
   clear: { matches: Matches; why: string; sendStop: boolean },
 ): void {
-  dropPending(state, clear.matches, clear.why);
-  dropSynthesis(state, clear.matches, clear.why);
-  stopPlaying(state, deps, clear.matches, clear.sendStop);
+  dropPending(ctx.state, clear.matches, clear.why);
+  dropSynthesis(ctx.state, clear.matches, clear.why);
+  stopPlaying(ctx, clear.matches, clear.sendStop);
 }
 
-function deadlinePassed(
-  state: SpeechState,
-  deps: SpeechDeps,
-  lineId: LineId,
-): void {
-  if (!endPlaying(state, lineId)) return;
-  log("playback timeout: the renderer never reported the line's end");
-  guarded("sendStop", () => deps.sendStop({ lineId }));
-  pump(state, deps);
-}
-
-function startPlaying(
-  state: SpeechState,
-  deps: SpeechDeps,
-  line: SaidLine,
-  result: Audio,
-): void {
-  const lineId = randomUUID();
-  let cancelDeadline = (): void => undefined;
-  const timed = guarded("setTimer", () => {
-    cancelDeadline = deps.timers.setTimer(playbackDeadlineMs, () =>
-      deadlinePassed(state, deps, lineId),
-    );
-  });
-  // Without a deadline a lost report could block speech for good, so the line is dropped.
-  if (!timed) return pump(state, deps);
-  state.playing = {
-    lineId,
-    taskId: line.taskId,
-    kind: line.kind,
-    cancelDeadline,
-  };
-  const { audio, mimeType } = result;
-  const sent = guarded("sendSpeech", () =>
-    deps.sendSpeech({ lineId, audio, mimeType }),
-  );
-  if (!sent && endPlaying(state, lineId)) pump(state, deps);
-}
-
-function synthesisFailed(
-  state: SpeechState,
-  deps: SpeechDeps,
-  failure: Failed,
-): void {
-  if (failure.cause === "error") {
-    log(`line dropped: synthesis error ${failure.detail}`);
-    return;
-  }
-  const cause = failure.cause;
-  log(`line dropped: voice down (${cause}) ${failure.detail}`);
-  if (!state.voiceAvailable) return;
-  state.voiceAvailable = false;
-  guarded("onVoiceAvailable", () => deps.onVoiceAvailable(false, cause));
-}
-
-function synthesisSettled(
-  state: SpeechState,
-  deps: SpeechDeps,
-  job: Job,
-  result: Synthesis,
-  startedAt: number,
-): void {
-  if (state.synthesizing !== job) return;
-  state.synthesizing = null;
-  log(`synthesis in ${Math.round(performance.now() - startedAt)} ms`);
-  if (result.kind === "failed") {
-    synthesisFailed(state, deps, result);
-    pump(state, deps);
-    return;
-  }
-  const wasDown = !state.voiceAvailable;
-  state.voiceAvailable = true;
-  startPlaying(state, deps, job.line, result);
-  if (!wasDown) return;
-  log("voice back");
-  guarded("onVoiceAvailable", () => deps.onVoiceAvailable(true, null));
-}
-
-function synthesize(state: SpeechState, deps: SpeechDeps, job: Job): void {
-  const startedAt = performance.now();
-  const settle = (result: Synthesis) =>
-    synthesisSettled(state, deps, job, result, startedAt);
-  // Wrapped so a synchronous throw takes the same path as a rejection.
-  new Promise<Synthesis>((resolve) =>
-    resolve(deps.synthesize(job.line.text, job.abort.signal)),
-  )
-    .then(settle, (error: unknown) =>
-      settle({ kind: "failed", cause: "error", detail: describeError(error) }),
-    )
-    .catch((error: unknown) => {
-      log(`settling a synthesis threw: ${describeError(error)}`);
-    });
-}
-
-function pump(state: SpeechState, deps: SpeechDeps): void {
+// The open Aura socket streams the line; without it the line goes to the REST call.
+function pump(ctx: SpeechContext): void {
+  const { state, aura } = ctx;
   if (state.held || state.muted) return;
   if (state.synthesizing !== null || state.playing !== null) return;
   const line = state.pending.shift();
   if (line === undefined) return;
-  const job: Job = { line, abort: new AbortController() };
-  state.synthesizing = job;
-  synthesize(state, deps, job);
+  if (aura !== null && aura.isOpen()) startStream(ctx, aura, line);
+  else startRest(ctx, line);
 }
 
-function speakLine(state: SpeechState, deps: SpeechDeps, line: SaidLine) {
-  if (state.muted) {
-    log(`line dropped: muted (${line.kind})`);
-    return;
-  }
+function speakLine(ctx: SpeechContext, line: SaidLine): void {
+  const { state } = ctx;
+  if (state.muted) return log(`line dropped: muted (${line.kind})`);
   const taskId = line.taskId;
   if (taskId !== null && state.cancelled.has(taskId)) {
-    log(`line dropped: task cancelled (${line.kind})`);
-    return;
+    return log(`line dropped: task cancelled (${line.kind})`);
   }
   if (taskId !== null && line.kind !== "letMeCheck") {
     const superseded: Matches = (other) =>
@@ -249,79 +76,85 @@ function speakLine(state: SpeechState, deps: SpeechDeps, line: SaidLine) {
     dropSynthesis(state, superseded, why);
   }
   state.pending.push(line);
-  pump(state, deps);
+  pump(ctx);
 }
 
-function startHold(state: SpeechState, deps: SpeechDeps): void {
-  state.held = true;
-  clearSpeech(state, deps, {
-    matches: everyLine,
-    why: "key pressed",
-    sendStop: true,
-  });
+function startHold(ctx: SpeechContext): void {
+  ctx.state.held = true;
+  clearSpeech(ctx, { matches: everyLine, why: "key pressed", sendStop: true });
 }
 
-function endHold(state: SpeechState, deps: SpeechDeps): void {
-  if (!state.held) return;
-  state.held = false;
-  pump(state, deps);
+function endHold(ctx: SpeechContext): void {
+  if (!ctx.state.held) return;
+  ctx.state.held = false;
+  pump(ctx);
 }
 
-function changeMuted(state: SpeechState, deps: SpeechDeps, muted: boolean) {
-  if (state.muted === muted) return;
-  state.muted = muted;
+function changeMuted(ctx: SpeechContext, muted: boolean): void {
+  if (ctx.state.muted === muted) return;
+  ctx.state.muted = muted;
   if (muted) {
-    clearSpeech(state, deps, {
-      matches: everyLine,
-      why: "muted",
-      sendStop: true,
-    });
+    clearSpeech(ctx, { matches: everyLine, why: "muted", sendStop: true });
   }
-  pump(state, deps);
+  pump(ctx);
 }
 
-function cancelLines(state: SpeechState, deps: SpeechDeps, taskId: TaskId) {
-  state.cancelled.add(taskId);
+function cancelLines(ctx: SpeechContext, taskId: TaskId): void {
+  const { cancelled } = ctx.state;
+  cancelled.add(taskId);
+  // Only recent cancels can still meet a late line, so the set keeps the latest ones.
+  if (cancelled.size > cancelledLimit) {
+    const oldest = cancelled.values().next();
+    if (oldest.done !== true) cancelled.delete(oldest.value);
+  }
   const matches: Matches = (line) => line.taskId === taskId;
-  clearSpeech(state, deps, { matches, why: "task cancelled", sendStop: true });
-  pump(state, deps);
+  clearSpeech(ctx, { matches, why: "task cancelled", sendStop: true });
+  pump(ctx);
 }
 
-function finishPlayback(
-  state: SpeechState,
-  deps: SpeechDeps,
-  payload: PlaybackFinished,
-): void {
-  if (!endPlaying(state, payload.lineId)) return;
+function finishPlayback(ctx: SpeechContext, payload: PlaybackFinished) {
+  if (!endPlaying(ctx, payload.lineId)) return;
   if (payload.outcome === "failed") log("playback failed in the renderer");
-  pump(state, deps);
+  pump(ctx);
 }
 
 // The renderer and its key state are gone, so nothing is told to stop.
-function forgetRenderer(state: SpeechState, deps: SpeechDeps): void {
-  state.held = false;
-  const clear = { matches: everyLine, why: "renderer reset", sendStop: false };
-  clearSpeech(state, deps, clear);
-  pump(state, deps);
+function forgetRenderer(ctx: SpeechContext): void {
+  ctx.state.held = false;
+  clearSpeech(ctx, {
+    matches: everyLine,
+    why: "renderer reset",
+    sendStop: false,
+  });
+  pump(ctx);
 }
 
 export function createSpeech(deps: SpeechDeps): Speech {
-  const state: SpeechState = {
-    pending: [],
-    synthesizing: null,
-    playing: null,
-    held: false,
-    muted: false,
-    cancelled: new Set(),
-    voiceAvailable: true,
+  const ctx: SpeechContext = {
+    state: {
+      pending: [],
+      synthesizing: null,
+      playing: null,
+      held: false,
+      muted: false,
+      cancelled: new Set(),
+      voiceAvailable: true,
+    },
+    deps,
+    aura: null,
+    pump: () => pump(ctx),
   };
+  ctx.aura = deps.startAura({
+    heard: (event) => auraHeard(ctx, event),
+    closed: () => auraClosed(ctx),
+  });
   return {
-    speak: (line) => speakLine(state, deps, line),
-    holdStarted: () => startHold(state, deps),
-    holdEnded: () => endHold(state, deps),
-    setMuted: (muted) => changeMuted(state, deps, muted),
-    cancelTask: (taskId) => cancelLines(state, deps, taskId),
-    playbackFinished: (payload) => finishPlayback(state, deps, payload),
-    rendererReset: () => forgetRenderer(state, deps),
+    speak: (line) => speakLine(ctx, line),
+    holdStarted: () => startHold(ctx),
+    holdEnded: () => endHold(ctx),
+    setMuted: (muted) => changeMuted(ctx, muted),
+    cancelTask: (taskId) => cancelLines(ctx, taskId),
+    playbackFinished: (payload) => finishPlayback(ctx, payload),
+    rendererReset: () => forgetRenderer(ctx),
   };
 }

@@ -2,7 +2,7 @@
 
 Voice-first personal AI assistant: hold one key, speak, and your work goes to the agent you choose.
 
-Status: streaming speech-to-text (28 Oct 2026). Hold the hold-key (Option on macOS), ask a question and release, or type it in the window. While the key is held the microphone streams to Deepgram Flux over a socket kept open from start; when that socket is down, the held clip goes to Deepgram's pre-recorded call instead. Baymax researches the question on the web: a card shows the start line, the progress, and then the checked answer with its sources, and Baymax speaks the start line and a short answer.
+Status: streaming speech in and out (28 Oct 2026). Hold the hold-key (Option on macOS), ask a question and release, or type it in the window. While the key is held the microphone streams to Deepgram Flux over a socket kept open from start; when that socket is down, the held clip goes to Deepgram's pre-recorded call instead. Spoken lines stream from a warm Deepgram Aura-2 socket and play as the audio arrives; when that socket is down, a line goes to the Aura-2 REST call. Baymax researches the question on the web: a card shows the start line, the progress, and then the checked answer with its sources, and Baymax speaks the start line and a short answer.
 
 ## Requirements
 

@@ -1,9 +1,16 @@
 import { vi } from "vitest";
+import type { Aura, AuraListener } from "../providers/aura";
 import type { DeepgramFailure, Synthesis } from "../providers/deepgram";
 import type { TaskId } from "../shared/cards";
-import type { LineId, SpeechLine, StopPlayback } from "../shared/ipc";
+import type {
+  LineId,
+  SpeechChunk,
+  SpeechEnd,
+  SpeechLine,
+  StopPlayback,
+} from "../shared/ipc";
 import { createSpeech } from "./speech";
-import type { VoiceDownCause } from "./speech";
+import type { VoiceDownCause } from "./speech-model";
 import type { SaidKind, SaidLine } from "./tasks/state";
 
 type Call = {
@@ -27,44 +34,109 @@ function createFakeTimers() {
   return { timers, setTimer };
 }
 
-export function createHarness() {
-  const calls: Call[] = [];
-  const speeches: SpeechLine[] = [];
-  const stops: StopPlayback[] = [];
-  const voice: { available: boolean; cause: VoiceDownCause | null }[] = [];
-  const fakeTimers = createFakeTimers();
-  const timers = fakeTimers.timers;
-  const setTimer = vi.fn(fakeTimers.setTimer);
-  const synthesize = vi.fn(
+// An Aura socket the test opens, closes and answers; it records what speech sent on it in order.
+export function createFakeAura() {
+  const control = {
+    open: false,
+    failSends: false,
+    listener: null as AuraListener | null,
+  };
+  const sent: string[] = [];
+  const record = (entry: string) => {
+    if (!control.open || control.failSends) return false;
+    sent.push(entry);
+    return true;
+  };
+  const aura: Aura = {
+    isOpen: () => control.open,
+    speak: (text) => record(`speak ${text}`),
+    flush: () => record("flush"),
+    restart: () => {
+      sent.push("restart");
+      const wasOpen = control.open;
+      control.open = false;
+      if (wasOpen) control.listener?.closed();
+    },
+    stop: () => undefined,
+  };
+  const listener = () => {
+    if (control.listener === null) throw new Error("Aura was not started");
+    return control.listener;
+  };
+  return {
+    sent,
+    startAura: (started: AuraListener) => {
+      control.listener = started;
+      return aura;
+    },
+    open: () => {
+      control.open = true;
+    },
+    failSends: () => {
+      control.failSends = true;
+    },
+    close: () => {
+      control.open = false;
+      listener().closed();
+    },
+    audio: (mark: number) =>
+      listener().heard({ kind: "audio", pcm: new Uint8Array([mark]).buffer }),
+    flushed: () => listener().heard({ kind: "flushed" }),
+  };
+}
+
+export type FakeAura = ReturnType<typeof createFakeAura>;
+
+// Each call waits until a test settles it.
+function fakeSynthesize(calls: Call[]) {
+  return vi.fn(
     (text: string, signal: AbortSignal) =>
       new Promise<Synthesis>((resolve, reject) => {
         calls.push({ text, signal, resolve, reject });
       }),
   );
-  const sendSpeech = vi.fn((line: SpeechLine) => {
+}
+
+// Without a fake Aura there is no socket, so every line goes to the REST call.
+export function createHarness(fakeAura: FakeAura | null = null) {
+  const calls: Call[] = [];
+  const speeches: SpeechLine[] = [];
+  const chunks: SpeechChunk[] = [];
+  const ends: SpeechEnd[] = [];
+  const stops: StopPlayback[] = [];
+  const voice: { available: boolean; cause: VoiceDownCause | null }[] = [];
+  const fakeTimers = createFakeTimers();
+  const timers = fakeTimers.timers;
+  const setTimer = vi.fn(fakeTimers.setTimer);
+  const synthesize = fakeSynthesize(calls);
+  const sendSpeech = vi.fn((line: SpeechLine): void => {
     speeches.push(line);
   });
-  const sendStop = vi.fn((payload: StopPlayback) => {
+  const sendStop = vi.fn((payload: StopPlayback): void => {
     stops.push(payload);
   });
   const onVoiceAvailable = vi.fn(
-    (available: boolean, cause: VoiceDownCause | null) => {
+    (available: boolean, cause: VoiceDownCause | null): void => {
       voice.push({ available, cause });
     },
   );
   const speech = createSpeech({
     synthesize,
+    startAura: (listener) => fakeAura?.startAura(listener) ?? null,
     sendSpeech,
+    sendChunk: (chunk) => chunks.push(chunk),
+    sendEnd: (end) => ends.push(end),
     sendStop,
     onVoiceAvailable,
     timers: { setTimer },
   });
-  const texts = () => calls.map((call) => call.text);
   return {
     speech,
+    texts: () => calls.map((call) => call.text),
     calls,
-    texts,
     speeches,
+    chunks,
+    ends,
     stops,
     voice,
     timers,
