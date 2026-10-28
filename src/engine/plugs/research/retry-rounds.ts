@@ -42,10 +42,8 @@ function wouldBeChecked(turn: AnswerTurn): boolean {
   return turn.kind === "answer" && turn.answer.status === "complete";
 }
 
-// The one-per-task flag for the zero-read "sourcesThin" nudge.
 type ThinNudge = { nudged: boolean };
 
-// A "sourcesThin" answer in a task that has read no page at all.
 function zeroReadThin(rounds: Rounds, turn: AnswerTurn): boolean {
   return (
     turn.kind === "answer" &&
