@@ -20,6 +20,7 @@ import type { Moment } from "./moment";
 import { createSpeech } from "./speech";
 import type { LineFeed } from "./speech";
 import type { Spoken } from "./speech-model";
+import { createTalkerTiming } from "./talker-timing";
 import type { SaidLine, Timers } from "./tasks/state";
 import { admit, createModel, setStt, tellHealth } from "./voice-model";
 import type { VoiceModel, VoiceState } from "./voice-model";
@@ -61,6 +62,7 @@ type Flows = {
   recording: ReturnType<typeof createRecording>;
   speech: ReturnType<typeof createSpeech>;
   moment: Moment;
+  timing: ReturnType<typeof createTalkerTiming>;
 };
 
 // Voice never throws into main's state or the hold key; a failing call is logged.
@@ -181,12 +183,18 @@ function holdChanged(
     model.releasedAt = deps.now();
     const entry = ending === null ? undefined : model.admitted.get(ending);
     if (entry !== undefined) entry.releasedAt = model.releasedAt;
-    if (ending !== null) flows.moment.start(ending, model.releasedAt);
+    if (ending !== null) startGeneration(flows, ending, model.releasedAt);
   }
   flows.speech.holdEnded();
 }
 
+function startGeneration(flows: Flows, key: string, now: number): void {
+  flows.moment.start(key);
+  flows.timing.released(key, now);
+}
+
 function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
+  const timing = createTalkerTiming({ now: deps.now, log: deps.log });
   const moment = createMoment({
     setTimer: deps.timers.setTimer,
     sayMoment: (key) => contained(deps, "say", () => speech.sayMoment(key)),
@@ -219,15 +227,12 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
       forwarded(deps, () => tellHealth(model));
     },
     onAudioStarted: (line) => {
-      if (line.kind !== "talk" || line.key === null) return;
-      const startedAt = moment.audioStarted(line.key);
-      if (startedAt === null) return;
-      const ms = Math.round(deps.now() - startedAt);
-      deps.log(`talker first audio ${ms} ms after release`);
+      timing.audioStarted(line);
+      if (line.kind === "talk" && line.key !== null) moment.ended(line.key);
     },
     timers: deps.timers,
   });
-  return { recording, speech, moment };
+  return { recording, speech, moment, timing };
 }
 
 function forgetRenderer(model: VoiceModel, flows: Flows): void {
@@ -285,8 +290,8 @@ export function createVoice(deps: VoiceDeps): Voice {
         }
       }),
     say: (line) => contained(deps, "say", () => speech.speak(line)),
-    talk: (spoken) => speech.speakFed(spoken),
-    submitted: (key) => flows.moment.start(key, deps.now()),
+    talk: (spoken) => flows.timing.timed(spoken.key, speech.speakFed(spoken)),
+    submitted: (key) => startGeneration(flows, key, deps.now()),
     silence: (taskId) =>
       contained(deps, "silence", () => speech.cancelTask(taskId)),
     rendererReset: () => forgetRenderer(model, flows),

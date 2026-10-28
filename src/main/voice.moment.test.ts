@@ -128,3 +128,52 @@ describe("a generation that ends", () => {
     expect(texts(h)).toEqual(["Blocker."]);
   });
 });
+
+describe("talker timing", () => {
+  const timed = (h: Harness) =>
+    h.logs.filter(
+      (log) => log.startsWith("talker ") || log.startsWith('"One moment."'),
+    );
+
+  it.each([
+    { start: "a release", begin: (h: Harness) => hold(h) },
+    {
+      start: "a typed submit",
+      begin: (h: Harness) => {
+        h.voice.submitted("typed:t1");
+        return "typed:t1";
+      },
+    },
+  ])(
+    "logs each talker step and the filler once, in ms after $start",
+    async ({ begin }) => {
+      const h = createHarness();
+      h.control.now = 1000;
+      const key = begin(h);
+      h.advance(1500);
+      h.control.now = 1870;
+      await synthesized(h, 0, audio);
+      h.control.now = 2000;
+      const line = h.voice.talk({ taskId: "t1", kind: "talk", key });
+      h.control.now = 2300;
+      line.push("");
+      line.push("I'll check.");
+      line.push(" Then I'll answer.");
+      h.control.now = 2600;
+      line.end();
+      h.voice.playbackFinished({
+        lineId: h.speeches[0].lineId,
+        outcome: "ended",
+      });
+      h.control.now = 2900;
+      await synthesized(h, 1, audio);
+      expect(timed(h)).toEqual([
+        '"One moment." first audio 870 ms after release',
+        "talker reply asked 1000 ms after release",
+        "talker first text 1300 ms after release",
+        "talker text ended 1600 ms after release",
+        "talker first audio 1900 ms after release",
+      ]);
+    },
+  );
+});
