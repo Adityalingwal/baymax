@@ -11,8 +11,10 @@ import { holdKeyLabel, isMac } from "./main/platform";
 import { createRestart } from "./main/restart";
 import { createMainWindow } from "./main/window";
 import { wireMain } from "./main/wiring";
-import type { Wiring } from "./main/wiring";
+import type { Wiring, WiringDeps } from "./main/wiring";
 import { synthesizeSpeech, transcribeClip } from "./providers/deepgram";
+import { startFlux } from "./providers/flux";
+import { openWebSocket } from "./providers/warm-socket";
 import { ipcChannels } from "./shared/ipc";
 import type { HoldState, MainToRenderer, StartupInfo } from "./shared/ipc";
 
@@ -86,6 +88,34 @@ function sendHoldState(state: HoldState): void {
   sendToWindow(ipcChannels.holdState, state);
 }
 
+function setTimer(ms: number, fire: () => void): () => void {
+  const timer = setTimeout(fire, ms);
+  return () => clearTimeout(timer);
+}
+
+function voiceLog(message: string): void {
+  console.info("[Voice]", message);
+}
+
+function voiceDeps(deepgramKey: string): WiringDeps["voice"] {
+  const deepgram = { key: deepgramKey, fetch };
+  const flux = { key: deepgramKey, openSocket: openWebSocket, setTimer };
+  return {
+    sendRecording: (command) => sendToWindow(ipcChannels.recording, command),
+    sendSpeech: (line) => sendToWindow(ipcChannels.speech, line),
+    sendStop: (payload) => sendToWindow(ipcChannels.stopPlayback, payload),
+    transcribe: (audio, mimeType) => transcribeClip(deepgram, audio, mimeType),
+    startFlux: (listener) =>
+      deepgramKey === ""
+        ? null
+        : startFlux({ ...flux, log: voiceLog }, listener),
+    synthesize: (text, signal) => synthesizeSpeech(deepgram, text, signal),
+    now: () => performance.now(),
+    log: voiceLog,
+    deepgramKeyPresent: deepgramKey !== "",
+  };
+}
+
 // Keys are read and removed from process.env here, before any window opens.
 async function startEngineAndWiring(): Promise<Wiring> {
   await loadEnvFile({
@@ -98,33 +128,17 @@ async function startEngineAndWiring(): Promise<Wiring> {
   if (keys.missing.length > 0) {
     console.info("[Keys] Missing:", keys.missing.join(", "));
   }
-  const deepgram = { key: keys.deepgramKey, fetch };
   return wireMain({
     port: startEngine(keys.engine),
     ipc: ipcMain,
     isOwnSender: (sender) => sender === mainWindow?.webContents,
     publish: (display) => sendToWindow(ipcChannels.displayState, display),
     openUrl: (url) => shell.openExternal(url),
-    timers: {
-      setTimer: (ms, fire) => {
-        const timer = setTimeout(fire, ms);
-        return () => clearTimeout(timer);
-      },
-    },
+    timers: { setTimer },
     log: (message) => console.info("[main]", message),
     newTaskId: () => randomUUID(),
     fail: (error) => restart(error, "state failure in a listener"),
-    voice: {
-      sendRecording: (command) => sendToWindow(ipcChannels.recording, command),
-      sendSpeech: (line) => sendToWindow(ipcChannels.speech, line),
-      sendStop: (payload) => sendToWindow(ipcChannels.stopPlayback, payload),
-      transcribe: (audio, mimeType) =>
-        transcribeClip(deepgram, audio, mimeType),
-      synthesize: (text, signal) => synthesizeSpeech(deepgram, text, signal),
-      now: () => performance.now(),
-      log: (message) => console.info("[Voice]", message),
-      deepgramKeyPresent: keys.deepgramKey !== "",
-    },
+    voice: voiceDeps(keys.deepgramKey),
   });
 }
 

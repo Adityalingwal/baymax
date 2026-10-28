@@ -6,7 +6,7 @@ import {
   createHarness,
   failed,
   hold,
-  sendClip,
+  sendAudio,
   transcribed,
   waitingQuestion,
 } from "./voice.harness";
@@ -15,7 +15,7 @@ const words = (text: string): Transcription => ({ kind: "words", words: text });
 
 function heldAndSent(h: Harness): UtteranceId {
   const utteranceId = hold(h);
-  sendClip(h, utteranceId);
+  sendAudio(h, utteranceId);
   return utteranceId;
 }
 
@@ -66,13 +66,13 @@ const droppedRows: { name: string; result: Transcription; log: string }[] = [
 describe("dropped transcripts", () => {
   it.each(droppedRows)(
     "drops $name that settles after a renderer reset",
-    async ({ result, log }) => {
+    async ({ result }) => {
       const h = createHarness();
       heldAndSent(h);
       h.voice.rendererReset();
       await transcribed(h, 0, result);
       expect(h.calls).toEqual([]);
-      expect(h.logs).toContain(`${log}: utterance not admitted`);
+      expect(h.logs).toContain("transcript dropped: its hold already ended");
     },
   );
 
@@ -84,7 +84,7 @@ describe("dropped transcripts", () => {
       for (let index = 0; index < 16; index += 1) hold(h);
       await transcribed(h, 0, result);
       expect(h.calls).toEqual([]);
-      expect(h.logs).toContain(`${log}: utterance not admitted`);
+      expect(h.logs).toContain(`${log}: not an accepted hold`);
     },
   );
 

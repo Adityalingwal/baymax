@@ -7,8 +7,12 @@ export type VoiceState = Pick<
   "ask" | "waitingQuestion" | "setMuted" | "setVoiceAvailable" | "showNotice"
 >;
 
-// The waiting question at key-down and the hold's place in time, kept until its words are delivered.
-type Admitted = { waiting: WaitingQuestion | null; order: number };
+// The waiting question at key-down, the hold's place in time and its release, kept until its words are delivered.
+type Admitted = {
+  waiting: WaitingQuestion | null;
+  order: number;
+  releasedAt: number | null;
+};
 
 export type VoiceModel = {
   state: VoiceState | null;
@@ -44,7 +48,8 @@ export function createModel(): VoiceModel {
 
 export function admit(model: VoiceModel, utteranceId: UtteranceId): void {
   const waiting = model.state?.waitingQuestion() ?? null;
-  model.admitted.set(utteranceId, { waiting, order: model.nextOrder });
+  const order = model.nextOrder;
+  model.admitted.set(utteranceId, { waiting, order, releasedAt: null });
   model.nextOrder += 1;
   if (model.admitted.size <= admittedLimit) return;
   const oldest = model.admitted.keys().next();

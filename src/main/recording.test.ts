@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Transcription } from "../providers/deepgram";
 import type { UtteranceId } from "../shared/cards";
-import type { Clip } from "../shared/ipc";
 import {
   createHarness,
-  failedClip,
+  end,
   flush,
+  frame,
   hold,
+  micFailed,
   missed,
-  recorded,
   resolveCall,
+  sendAudio,
   words,
 } from "./recording.harness";
 import type { Heard } from "./recording";
@@ -26,10 +27,10 @@ type RuleRow = {
   expected: (utteranceId: UtteranceId) => Heard[];
 };
 
-function acceptedThen(clip: (id: UtteranceId) => Clip, result?: Transcription) {
+function acceptedThen(result?: Transcription) {
   return async (h: Harness) => {
     const id = hold(h, "accept");
-    h.flow.clipArrived(clip(id));
+    sendAudio(h, id);
     if (result) await resolveCall(h, 0, result);
     return id;
   };
@@ -37,42 +38,50 @@ function acceptedThen(clip: (id: UtteranceId) => Clip, result?: Transcription) {
 
 const ruleRows: RuleRow[] = [
   {
-    name: "accept + recorded clip -> one transcription and the words",
-    run: acceptedThen(recorded, { kind: "words", words: "hello" }),
+    name: "accept + audio -> one transcription and the words",
+    run: acceptedThen({ kind: "words", words: "hello" }),
     calls: 1,
     expected: (id) => [words(id, "hello")],
   },
   {
-    name: "discard + recorded clip -> no call and nothing heard",
+    name: "discard + audio -> no call and nothing heard",
     run: async (h) => {
       const id = hold(h, "discard");
-      h.flow.clipArrived(recorded(id));
+      sendAudio(h, id);
       return id;
     },
     calls: 0,
     expected: () => [],
   },
   ...(["permissionDenied", "noMicrophone", "error"] as const).map((reason) => ({
-    name: `accept + failed clip (${reason}) -> not caught with that cause, no call`,
-    run: acceptedThen((id) => failedClip(id, reason)),
+    name: `accept + mic failure (${reason}) -> not caught with that cause, no call`,
+    run: async (h: Harness) => {
+      const id = hold(h, "accept");
+      micFailed(h, id, reason);
+      return id;
+    },
     calls: 0,
     expected: (id: UtteranceId) => [missed(id, reason)],
   })),
   {
-    name: "accept + zero-byte clip -> not caught empty, no call",
-    run: acceptedThen((id) => recorded(id, 0)),
+    name: "accept + an end with no frames -> not caught empty, no call",
+    run: async (h) => {
+      const id = hold(h, "accept");
+      end(h, id);
+      return id;
+    },
     calls: 0,
     expected: (id) => [missed(id, "empty")],
   },
   {
     name: "an empty transcription -> not caught empty",
-    run: acceptedThen(recorded, { kind: "empty" }),
+    run: acceptedThen({ kind: "empty" }),
     calls: 1,
     expected: (id) => [missed(id, "empty")],
   },
   {
     name: "a failed transcription -> not caught with its cause",
-    run: acceptedThen(recorded, {
+    run: acceptedThen({
       kind: "failed",
       cause: "unreachable",
       detail: "TypeError: fetch failed",
@@ -83,7 +92,7 @@ const ruleRows: RuleRow[] = [
   {
     name: "a rejected transcription -> not caught error",
     run: async (h) => {
-      const id = await acceptedThen(recorded)(h);
+      const id = await acceptedThen()(h);
       h.pending[0].reject(new Error("boom"));
       await flush();
       return id;
@@ -92,22 +101,20 @@ const ruleRows: RuleRow[] = [
     expected: (id) => [missed(id, "error")],
   },
   {
-    name: "a clip for an unknown id -> nothing",
+    name: "audio for an unknown id -> nothing",
     run: async (h) => {
       hold(h, "accept");
-      h.flow.clipArrived(recorded("unknown"));
+      sendAudio(h, "unknown");
       return "unknown";
     },
     calls: 0,
     expected: () => [],
   },
   {
-    name: "a second clip for the same id -> nothing more",
+    name: "frames and an end after the end -> nothing more",
     run: async (h) => {
-      const id = await acceptedThen(recorded, { kind: "words", words: "hi" })(
-        h,
-      );
-      h.flow.clipArrived(recorded(id));
+      const id = await acceptedThen({ kind: "words", words: "hi" })(h);
+      sendAudio(h, id);
       await flush();
       return id;
     },
@@ -115,31 +122,31 @@ const ruleRows: RuleRow[] = [
     expected: (id) => [words(id, "hi")],
   },
   {
-    name: "a reset while recording, then its clip -> nothing",
+    name: "a reset while recording, then its audio -> nothing",
     run: async (h) => {
       h.flow.holdStarted();
-      const id = h.starts()[0].utteranceId;
+      const id = h.last();
       h.flow.rendererReset();
       h.flow.holdEnded("accept");
-      h.flow.clipArrived(recorded(id));
+      sendAudio(h, id);
       return id;
     },
     calls: 0,
     expected: () => [],
   },
   {
-    name: "an accepted hold, then a reset, then its clip -> nothing",
+    name: "an accepted hold, then a reset, then its audio -> nothing",
     run: async (h) => {
       const id = hold(h, "accept");
       h.flow.rendererReset();
-      h.flow.clipArrived(recorded(id));
+      sendAudio(h, id);
       return id;
     },
     calls: 0,
     expected: () => [],
   },
   {
-    name: "holdStarted twice -> the first is stopped and its clip dropped",
+    name: "holdStarted twice -> the first is stopped and its audio dropped",
     run: async (h) => {
       h.flow.holdStarted();
       h.flow.holdStarted();
@@ -149,7 +156,7 @@ const ruleRows: RuleRow[] = [
         { type: "stop", utteranceId: id },
         { type: "start", utteranceId: h.starts()[1].utteranceId },
       ]);
-      h.flow.clipArrived(recorded(id));
+      sendAudio(h, id);
       return id;
     },
     calls: 0,
@@ -182,24 +189,28 @@ describe("recording commands", () => {
   });
 });
 
-describe("transcription input", () => {
-  it("passes the clip's audio and mime type", () => {
+describe("batch transcription input", () => {
+  it("sends the whole held PCM in order as one WAV", () => {
     const h = createHarness();
-    const clip = recorded(hold(h, "accept"));
-    h.flow.clipArrived(clip);
-    if (clip.outcome !== "recorded")
-      throw new Error("expected a recorded clip");
-    expect(h.transcribe).toHaveBeenCalledWith(clip.audio, clip.mimeType);
+    const id = hold(h, "accept");
+    frame(h, id, 7);
+    frame(h, id, 9);
+    end(h, id);
+    expect(h.pending).toHaveLength(1);
+    const { audio, mimeType } = h.pending[0];
+    expect(mimeType).toBe("audio/wav");
+    expect([...new Uint8Array(audio, 44)]).toEqual([7, 0, 0, 0, 9, 0, 0, 0]);
   });
 });
 
-describe("clips that never come", () => {
-  it("keeps the outcomes of the last sixteen holds only", () => {
+describe("utterances that never resolve", () => {
+  it("keeps the places of the last sixteen accepted holds only", async () => {
     const h = createHarness();
     const ids = Array.from({ length: 17 }, () => hold(h, "accept"));
-    h.flow.clipArrived(recorded(ids[0]));
-    expect(h.transcribe).not.toHaveBeenCalled();
-    h.flow.clipArrived(recorded(ids[1]));
-    expect(h.transcribe).toHaveBeenCalledTimes(1);
+    sendAudio(h, ids[0]);
+    sendAudio(h, ids[1]);
+    await resolveCall(h, 0, { kind: "words", words: "first" });
+    await resolveCall(h, 1, { kind: "words", words: "second" });
+    expect(h.heard).toEqual([words(ids[1], "second")]);
   });
 });

@@ -23,7 +23,7 @@ const deepgramDown = {
   detail: "x",
 } as const;
 
-// Deepgram and the renderer sends faked; each call waits until a test settles it, or fails at once when voice fails.
+// Deepgram and the renderer sends faked, with no Flux socket so held audio goes to the batch call; each call waits until a test settles it, or fails at once when voice fails.
 function fakeVoice(deepgramKeyPresent: boolean, fails: boolean) {
   const seen = {
     recordings: [] as RecordingCommand[],
@@ -37,12 +37,14 @@ function fakeVoice(deepgramKeyPresent: boolean, fails: boolean) {
     sendRecording: (command: RecordingCommand) => seen.recordings.push(command),
     sendSpeech: (line: SpeechLine) => seen.speeches.push(line),
     sendStop: (payload: StopPlayback) => seen.stops.push(payload),
+    // The input is the mime type and the PCM after the 44-byte WAV header.
     transcribe: (audio: ArrayBuffer, mimeType: string) =>
       new Promise<Transcription>((resolve) => {
-        const bytes = [...new Uint8Array(audio)].join(",");
+        const bytes = [...new Uint8Array(audio, 44)].join(",");
         seen.transcriptions.push({ input: `${mimeType} ${bytes}`, resolve });
         if (fails) resolve(deepgramDown);
       }),
+    startFlux: () => null,
     synthesize: (text: string) =>
       new Promise<Synthesis>((resolve) => {
         seen.syntheses.push({ input: text, resolve });

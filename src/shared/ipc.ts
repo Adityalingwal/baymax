@@ -22,7 +22,7 @@ export const ipcChannels = {
   openSource: "open-source",
   setMuted: "set-muted",
   recording: "recording",
-  sendClip: "send-clip",
+  micAudio: "mic-audio",
   speech: "speech",
   stopPlayback: "stop-playback",
   playbackFinished: "playback-finished",
@@ -52,18 +52,13 @@ export type RecordingCommand =
   | { type: "start"; utteranceId: UtteranceId }
   | { type: "stop"; utteranceId: UtteranceId };
 
-export type Clip =
-  | {
-      utteranceId: UtteranceId;
-      outcome: "recorded";
-      audio: ArrayBuffer;
-      mimeType: string;
-    }
-  | {
-      utteranceId: UtteranceId;
-      outcome: "failed";
-      reason: "permissionDenied" | "noMicrophone" | "error";
-    };
+export type MicFailure = "permissionDenied" | "noMicrophone" | "error";
+
+// The held microphone as 16 kHz mono 16-bit little-endian PCM frames, then exactly one end or failure.
+export type MicAudio =
+  | { type: "frames"; utteranceId: UtteranceId; pcm: ArrayBuffer }
+  | { type: "end"; utteranceId: UtteranceId }
+  | { type: "failed"; utteranceId: UtteranceId; reason: MicFailure };
 
 export type SpeechLine = {
   lineId: LineId;
@@ -101,7 +96,7 @@ export type RendererToMain = {
   [ipcChannels.setCardFolded]: SetCardFolded;
   [ipcChannels.openSource]: OpenSource;
   [ipcChannels.setMuted]: SetMuted;
-  [ipcChannels.sendClip]: Clip;
+  [ipcChannels.micAudio]: MicAudio;
   [ipcChannels.playbackFinished]: PlaybackFinished;
   [ipcChannels.setMouseCapture]: SetMouseCapture;
 };
@@ -130,7 +125,7 @@ export type BaymaxApi = {
   openSource: (payload: OpenSource) => void;
   setMuted: (payload: SetMuted) => void;
   onRecording: (callback: (command: RecordingCommand) => void) => () => void;
-  sendClip: (clip: Clip) => void;
+  sendMicAudio: (audio: MicAudio) => void;
   onSpeech: (callback: (line: SpeechLine) => void) => () => void;
   onStopPlayback: (callback: (payload: StopPlayback) => void) => () => void;
   reportPlaybackFinished: (payload: PlaybackFinished) => void;

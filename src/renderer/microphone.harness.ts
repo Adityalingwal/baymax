@@ -1,32 +1,7 @@
 import { vi } from "vitest";
-import type { Clip, RecordingCommand } from "../shared/ipc";
+import type { MicAudio, RecordingCommand } from "../shared/ipc";
+import type { Capture, MicStream } from "./capture";
 import { startMicrophone } from "./microphone";
-import type { MicStream, Recorder } from "./microphone";
-
-export const mimeType = "audio/webm;codecs=opus";
-
-function createFakeRecorder() {
-  const chunkListeners: ((chunk: Blob) => void)[] = [];
-  const startListeners: (() => void)[] = [];
-  const stopListeners: (() => void)[] = [];
-  const errorListeners: (() => void)[] = [];
-  const recorder: Recorder = {
-    mimeType,
-    start: vi.fn(),
-    stop: vi.fn(),
-    onChunk: (listener) => chunkListeners.push(listener),
-    onStart: (listener) => startListeners.push(listener),
-    onStop: (listener) => stopListeners.push(listener),
-    onError: (listener) => errorListeners.push(listener),
-  };
-  return {
-    recorder,
-    emitChunk: (chunk: Blob) => chunkListeners.forEach((l) => l(chunk)),
-    emitStart: () => startListeners.forEach((l) => l()),
-    emitStop: () => stopListeners.forEach((l) => l()),
-    emitError: () => errorListeners.forEach((l) => l()),
-  };
-}
 
 type FakeStream = {
   stream: MicStream;
@@ -35,57 +10,92 @@ type FakeStream = {
   reject: (error: unknown) => void;
 };
 
-type Breakage = "create" | "start" | "stop" | "getUserMediaThrows" | null;
+// One capture the test drives: it posts frames, and its flush waits until the test answers it.
+type FakeCapture = {
+  frame: (mark: number) => void;
+  answerFlush: () => void;
+  flush: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+};
+
+type Breakage = "getUserMediaThrows" | "flushRejects" | null;
+
+function fakeStream(streams: FakeStream[]) {
+  return new Promise<MicStream>((resolve, reject) => {
+    const stopTrack = vi.fn();
+    const stream = { getTracks: () => [{ stop: stopTrack }] };
+    streams.push({ stream, stopTrack, resolve: () => resolve(stream), reject });
+  });
+}
+
+function fakeCapture(
+  captures: FakeCapture[],
+  onFrame: (pcm: ArrayBuffer) => void,
+  breakage: Breakage,
+): Promise<Capture> {
+  return new Promise<Capture>((resolve, reject) => {
+    let answer = (): void => undefined;
+    const flush = vi.fn(() =>
+      breakage === "flushRejects"
+        ? Promise.reject(new Error("worklet gone"))
+        : new Promise<void>((done) => {
+            answer = done;
+          }),
+    );
+    const close = vi.fn();
+    captures.push({
+      frame: (mark) => onFrame(new Uint8Array([mark, 0]).buffer),
+      answerFlush: () => answer(),
+      flush,
+      close,
+      resolve: () => resolve({ flush, close }),
+      reject,
+    });
+  });
+}
 
 export function createHarness(breakage: Breakage = null) {
   const holder: { onCommand?: (command: RecordingCommand) => void } = {};
   const unsubscribe = vi.fn();
-  const clips: Clip[] = [];
+  const sent: MicAudio[] = [];
   const streams: FakeStream[] = [];
-  const recorders: ReturnType<typeof createFakeRecorder>[] = [];
+  const captures: FakeCapture[] = [];
   const getUserMedia = vi.fn((): Promise<MicStream> => {
     if (breakage === "getUserMediaThrows") throw new TypeError("no devices");
-    return new Promise<MicStream>((resolve, reject) => {
-      const stopTrack = vi.fn();
-      const stream = { getTracks: () => [{ stop: stopTrack }] };
-      streams.push({
-        stream,
-        stopTrack,
-        resolve: () => resolve(stream),
-        reject,
-      });
-    });
+    return fakeStream(streams);
   });
-  const createRecorder = vi.fn(() => {
-    if (breakage === "create") {
-      throw new DOMException("no", "NotSupportedError");
-    }
-    const fake = createFakeRecorder();
-    const fail = () => {
-      throw new DOMException("bad state", "InvalidStateError");
-    };
-    if (breakage === "start") fake.recorder.start = vi.fn(fail);
-    if (breakage === "stop") fake.recorder.stop = vi.fn(fail);
-    recorders.push(fake);
-    return fake.recorder;
-  });
+  const startCapture = vi.fn(
+    (_stream: MicStream, onFrame: (pcm: ArrayBuffer) => void) =>
+      fakeCapture(captures, onFrame, breakage),
+  );
   const bridge = {
     onRecording: (callback: (command: RecordingCommand) => void) => {
       holder.onCommand = callback;
       return unsubscribe;
     },
-    sendClip: (clip: Clip) => clips.push(clip),
+    sendMicAudio: (audio: MicAudio) => sent.push(audio),
   };
   const cleanup = startMicrophone(bridge, {
     getUserMedia,
-    createRecorder,
+    startCapture,
     now: () => 0,
   });
   const start = (utteranceId: string) =>
     holder.onCommand?.({ type: "start", utteranceId });
   const stop = (utteranceId: string) =>
     holder.onCommand?.({ type: "stop", utteranceId });
-  return { start, stop, cleanup, unsubscribe, clips, streams, recorders };
+  // What reached main, with a frame shown by its first byte.
+  const seen = () =>
+    sent.map((audio) =>
+      audio.type === "frames"
+        ? `${audio.utteranceId} frame ${new Uint8Array(audio.pcm)[0]}`
+        : audio.type === "end"
+          ? `${audio.utteranceId} end`
+          : `${audio.utteranceId} failed ${audio.reason}`,
+    );
+  return { start, stop, cleanup, unsubscribe, seen, streams, captures };
 }
 
 export type Harness = ReturnType<typeof createHarness>;
@@ -98,15 +108,13 @@ export async function resolveStream(h: Harness, index: number): Promise<void> {
   await flush();
 }
 
-export const zeroByteClip = (utteranceId: string): Clip => ({
-  utteranceId,
-  outcome: "recorded",
-  audio: new ArrayBuffer(0),
-  mimeType: "",
-});
+export async function resolveCapture(h: Harness, index: number) {
+  h.captures[index].resolve();
+  await flush();
+}
 
-export const failedError = (utteranceId: string): Clip => ({
-  utteranceId,
-  outcome: "failed",
-  reason: "error",
-});
+// The stream and the capture both ready, so frames flow.
+export async function capturing(h: Harness, index: number): Promise<void> {
+  await resolveStream(h, index);
+  await resolveCapture(h, index);
+}

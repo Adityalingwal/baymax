@@ -5,8 +5,9 @@ import {
   createHarness,
   failed,
   hold,
-  sendClip,
+  sendAudio,
   synthesized,
+  transcribed,
 } from "./voice.harness";
 
 const line = (text: string): SaidLine => ({
@@ -20,18 +21,14 @@ describe("voice before start", () => {
     const h = createHarness({ started: false });
     h.voice.holdChanged("listening", null);
     h.voice.holdChanged("idle", "accept");
-    h.voice.clipArrived({
-      utteranceId: "u1",
-      outcome: "failed",
-      reason: "error",
-    });
+    h.voice.micAudio({ type: "failed", utteranceId: "u1", reason: "error" });
     h.voice.setMuted(true);
     expect(h.recordings).toEqual([]);
     expect(h.calls).toEqual([]);
     expect(h.logs).toEqual([
       "hold change before start: ignored",
       "hold change before start: ignored",
-      "clip before start: ignored",
+      "mic audio before start: ignored",
       "mute before start: ignored",
     ]);
     h.voice.say(line("Hello."));
@@ -113,7 +110,7 @@ describe("time to the first spoken line", () => {
   it("logs the time from release to the first line once", async () => {
     const h = createHarness();
     h.control.now = 1000;
-    sendClip(h, hold(h));
+    sendAudio(h, hold(h));
     h.voice.say(line("Let me check."));
     h.control.now = 2480.4;
     await synthesized(h, 0, audio);
@@ -136,5 +133,17 @@ describe("time to the first spoken line", () => {
     await synthesized(h, 0, audio);
     expect(h.speeches).toHaveLength(1);
     expect(timing(h)).toEqual([]);
+  });
+});
+
+describe("time to the final transcript", () => {
+  it("logs the time from release to the transcript", async () => {
+    const h = createHarness();
+    h.control.now = 1000;
+    sendAudio(h, hold(h));
+    h.control.now = 1450.6;
+    await transcribed(h, 0, { kind: "words", words: "hi" });
+    expect(h.logs).toContain("final transcript 451 ms after release");
+    expect(h.calls).toEqual(["ask hi"]);
   });
 });

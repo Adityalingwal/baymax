@@ -69,6 +69,7 @@ export function createHarness(options: Options = {}) {
     },
     transcribe: () =>
       new Promise((resolve) => seen.transcriptions.push({ text: "", resolve })),
+    startFlux: () => null,
     synthesize: (text) => {
       seen.timeline.push(`synthesize ${text}`);
       return new Promise((resolve) => seen.syntheses.push({ text, resolve }));
@@ -96,13 +97,11 @@ export function hold(h: Harness, outcome: HoldOutcome = "accept"): UtteranceId {
   return utteranceId;
 }
 
-export function sendClip(h: Harness, utteranceId: UtteranceId): void {
-  h.voice.clipArrived({
-    utteranceId,
-    outcome: "recorded",
-    audio: new ArrayBuffer(4),
-    mimeType: "audio/webm",
-  });
+// Without a Flux socket the held audio goes to the batch call, which the test settles.
+export function sendAudio(h: Harness, utteranceId: UtteranceId): void {
+  const pcm = new ArrayBuffer(4);
+  h.voice.micAudio({ type: "frames", utteranceId, pcm });
+  h.voice.micAudio({ type: "end", utteranceId });
 }
 
 export async function transcribed(

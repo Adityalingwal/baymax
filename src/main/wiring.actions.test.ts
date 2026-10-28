@@ -112,8 +112,8 @@ const validPayloads: [string, unknown][] = [
   [ipcChannels.openSource, { taskId: "t1", url: source }],
   [ipcChannels.setMuted, { muted: true }],
   [
-    ipcChannels.sendClip,
-    { utteranceId: "u1", outcome: "failed", reason: "error" },
+    ipcChannels.micAudio,
+    { type: "failed", utteranceId: "u1", reason: "error" },
   ],
   [ipcChannels.playbackFinished, { lineId: "l1", outcome: "ended" }],
 ];
@@ -138,17 +138,11 @@ const malformedPayloads: [string, unknown][] = [
   [ipcChannels.setCardFolded, { taskId: "t1", folded: "yes" }],
   [ipcChannels.openSource, { taskId: "t1" }],
   [ipcChannels.setMuted, { muted: "true" }],
-  [ipcChannels.sendClip, { outcome: "failed", reason: "error" }],
-  [ipcChannels.sendClip, { utteranceId: "u1", outcome: "failed", reason: "x" }],
-  [
-    ipcChannels.sendClip,
-    { utteranceId: "u1", outcome: "recorded", audio: [1, 2], mimeType: "a" },
-  ],
-  [
-    ipcChannels.sendClip,
-    { utteranceId: "u1", outcome: "recorded", audio: new ArrayBuffer(2) },
-  ],
-  [ipcChannels.sendClip, { utteranceId: "u1", outcome: "lost" }],
+  [ipcChannels.micAudio, { type: "failed", reason: "error" }],
+  [ipcChannels.micAudio, { type: "failed", utteranceId: "u1", reason: "x" }],
+  [ipcChannels.micAudio, { type: "frames", utteranceId: "u1", pcm: [1, 2] }],
+  [ipcChannels.micAudio, { type: "frames", utteranceId: "u1" }],
+  [ipcChannels.micAudio, { type: "lost", utteranceId: "u1" }],
   [ipcChannels.playbackFinished, { lineId: "l1", outcome: "paused" }],
   [ipcChannels.playbackFinished, { outcome: "ended" }],
 ];

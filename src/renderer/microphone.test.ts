@@ -1,115 +1,125 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  capturing,
   createHarness,
   flush,
-  mimeType,
+  resolveCapture,
   resolveStream,
-  zeroByteClip,
 } from "./microphone.harness";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
 
-describe("microphone records one clip per utterance", () => {
-  it("start -> stop sends one recorded clip with the chunks' bytes and stops the tracks", async () => {
+describe("microphone streams one utterance's frames", () => {
+  it("sends frames as they come, then the last frames and the end after the stop", async () => {
     const h = createHarness();
     h.start("a");
-    await resolveStream(h, 0);
-    const fake = h.recorders[0];
-    expect(fake.recorder.start).toHaveBeenCalledTimes(1);
-    fake.emitStart();
-    fake.emitChunk(new Blob([new Uint8Array([1, 2, 3])]));
+    await capturing(h, 0);
+    const capture = h.captures[0];
+    capture.frame(1);
+    capture.frame(2);
     h.stop("a");
-    expect(fake.recorder.stop).toHaveBeenCalledTimes(1);
-    expect(h.clips).toEqual([]);
-    // MediaRecorder hands over the last chunk after stop() and before its stop event.
-    fake.emitChunk(new Blob([new Uint8Array([4, 5])]));
-    fake.emitStop();
+    expect(capture.flush).toHaveBeenCalledTimes(1);
+    capture.frame(3);
+    expect(h.seen()).toEqual(["a frame 1", "a frame 2", "a frame 3"]);
+    capture.answerFlush();
     await flush();
-    expect(h.clips).toHaveLength(1);
-    const clip = h.clips[0];
-    expect(clip).toMatchObject({
-      utteranceId: "a",
-      outcome: "recorded",
-      mimeType,
-    });
-    if (clip.outcome !== "recorded")
-      throw new Error("expected a recorded clip");
-    expect([...new Uint8Array(clip.audio)]).toEqual([1, 2, 3, 4, 5]);
+    expect(h.seen()).toEqual(["a frame 1", "a frame 2", "a frame 3", "a end"]);
+    expect(capture.close).toHaveBeenCalledTimes(1);
     expect(h.streams[0].stopTrack).toHaveBeenCalled();
+    capture.frame(4);
+    expect(h.seen()).toHaveLength(4);
   });
 
   it("a stop for another id does nothing", async () => {
     const h = createHarness();
     h.start("a");
-    await resolveStream(h, 0);
+    await capturing(h, 0);
     h.stop("other");
+    expect(h.captures[0].flush).not.toHaveBeenCalled();
+    expect(h.seen()).toEqual([]);
+  });
+
+  it("still ends when the flush fails", async () => {
+    const h = createHarness("flushRejects");
+    h.start("a");
+    await capturing(h, 0);
+    h.stop("a");
     await flush();
-    expect(h.recorders[0].recorder.stop).not.toHaveBeenCalled();
-    expect(h.clips).toEqual([]);
+    expect(h.seen()).toEqual(["a end"]);
   });
 });
 
 describe("microphone stream races", () => {
-  it("a stop before the stream resolves sends a zero-byte clip, stops the tracks, creates no recorder", async () => {
+  it("a stop before the stream resolves sends only the end, stops the tracks and starts no capture", async () => {
     const h = createHarness();
     h.start("a");
     h.stop("a");
-    expect(h.clips).toEqual([]);
+    expect(h.seen()).toEqual([]);
     await resolveStream(h, 0);
-    expect(h.clips).toEqual([zeroByteClip("a")]);
+    expect(h.seen()).toEqual(["a end"]);
     expect(h.streams[0].stopTrack).toHaveBeenCalled();
-    expect(h.recorders).toHaveLength(0);
+    expect(h.captures).toHaveLength(0);
   });
 
-  it("start A, stop A with its stream pending, start B: A's zero-byte clip, B records normally", async () => {
+  it("a stop before the capture is ready ends the capture once it is", async () => {
+    const h = createHarness();
+    h.start("a");
+    await resolveStream(h, 0);
+    h.stop("a");
+    await resolveCapture(h, 0);
+    expect(h.captures[0].flush).toHaveBeenCalledTimes(1);
+    h.captures[0].answerFlush();
+    await flush();
+    expect(h.seen()).toEqual(["a end"]);
+  });
+});
+
+describe("microphone holds that overlap", () => {
+  it("start A, stop A with its stream pending, start B: A ends empty, B streams normally", async () => {
     const h = createHarness();
     h.start("a");
     h.stop("a");
     h.start("b");
     expect(h.streams).toHaveLength(2);
     await resolveStream(h, 0);
-    expect(h.clips).toEqual([zeroByteClip("a")]);
     expect(h.streams[1].stopTrack).not.toHaveBeenCalled();
     await resolveStream(h, 1);
-    h.recorders[0].emitChunk(new Blob([new Uint8Array([7])]));
+    await resolveCapture(h, 0);
+    h.captures[0].frame(7);
     h.stop("b");
-    h.recorders[0].emitStop();
+    h.captures[0].answerFlush();
     await flush();
-    expect(h.clips).toHaveLength(2);
-    expect(h.clips[1]).toMatchObject({ utteranceId: "b", outcome: "recorded" });
-    expect(h.streams[1].stopTrack).toHaveBeenCalled();
+    expect(h.seen()).toEqual(["a end", "b frame 7", "b end"]);
   });
 
-  it("a second start while recording requests its stream at once and sends the first clip when its recorder stops", async () => {
+  it("a second start while capturing ends the first and asks for a new stream at once", async () => {
     const h = createHarness();
     h.start("a");
-    await resolveStream(h, 0);
+    await capturing(h, 0);
     h.start("b");
     expect(h.streams).toHaveLength(2);
-    expect(h.recorders[0].recorder.stop).toHaveBeenCalledTimes(1);
-    expect(h.clips).toEqual([]);
-    h.recorders[0].emitStop();
+    expect(h.captures[0].flush).toHaveBeenCalledTimes(1);
+    h.captures[0].answerFlush();
     await flush();
-    expect(h.clips).toEqual([
-      expect.objectContaining({ utteranceId: "a", outcome: "recorded" }),
-    ]);
+    expect(h.seen()).toEqual(["a end"]);
   });
 });
 
 describe("microphone cleanup", () => {
-  it("unsubscribes, stops a live recording and its tracks, and sends no clip after", async () => {
+  it("unsubscribes, closes a live capture and its tracks, and sends nothing after", async () => {
     const h = createHarness();
     h.start("a");
-    await resolveStream(h, 0);
+    await capturing(h, 0);
     h.cleanup();
     expect(h.unsubscribe).toHaveBeenCalledTimes(1);
-    expect(h.recorders[0].recorder.stop).toHaveBeenCalledTimes(1);
+    expect(h.captures[0].close).toHaveBeenCalledTimes(1);
     expect(h.streams[0].stopTrack).toHaveBeenCalled();
-    h.recorders[0].emitStop();
+    h.captures[0].frame(1);
+    h.stop("a");
     await flush();
-    expect(h.clips).toEqual([]);
+    expect(h.seen()).toEqual([]);
   });
 
   it("stops the tracks of a stream that resolves after cleanup and sends nothing", async () => {
@@ -119,7 +129,7 @@ describe("microphone cleanup", () => {
     h.cleanup();
     await resolveStream(h, 0);
     expect(h.streams[0].stopTrack).toHaveBeenCalled();
-    expect(h.recorders).toHaveLength(0);
-    expect(h.clips).toEqual([]);
+    expect(h.captures).toHaveLength(0);
+    expect(h.seen()).toEqual([]);
   });
 });

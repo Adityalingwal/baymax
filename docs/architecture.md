@@ -282,14 +282,17 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/index.ts` | Main process entry: keys, engine start, wiring, hotkey, restart on an uncaught failure |
 | `src/preload.ts` | Bridge between main and renderer (`window.baymax`) |
 | `src/renderer.ts`, `src/renderer/` | The screen (React): text box, cards, mic recording, playback |
-| `src/renderer/microphone.ts` | Mic recording of the held clip |
+| `src/renderer/microphone.ts` | The microphone while the key is held: PCM frames to main, then one end or failure |
+| `src/renderer/capture.ts` | The Web Audio capture: an AudioWorklet, loaded as a data URL, that posts 16 kHz PCM frames |
+| `src/renderer/pcm.ts` | Microphone samples to 16 kHz mono 16-bit PCM; pure |
 | `src/renderer/playback.ts` | Playback of spoken lines (Web Audio) |
 | `src/renderer/notch/` | The shell that unfolds from the notch: its modes, outline, pointer and click capture, and the dot that reopens the last folded answer |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
 | `src/main/hold.ts` | Hold state and the accept or discard outcome from key events and the time; pure |
 | `src/main/platform.ts` | Platform flags and labels |
-| `src/main/recording.ts` | One utterance: recording commands, the clip, the transcript; discarded clips and late transcripts dropped |
+| `src/main/recording.ts` | One utterance: recording commands, the mic audio, the transcript in hold order; discarded holds and late transcripts dropped |
+| `src/main/flux-turns.ts` | Flux turns bound to held utterances: sending order, `ForceEndTurn`, the final-transcript deadline and the Nova-3 batch fallback |
 | `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, voice-down reported |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line timing |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
@@ -309,6 +312,9 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/shared/cards.ts` | Types both links carry: ids, sources, the clarifying question, findings, the task card and the display state |
 | `src/providers/` | Process-neutral provider code: the search call and its outcome types, the Anthropic call with its timeout and usage record, the Deepgram calls. Imports nothing from a process folder |
 | `src/providers/deepgram.ts` | Deepgram calls: pre-recorded transcription and REST speech |
+| `src/providers/warm-socket.ts` | A socket kept open from start that reconnects with backoff, and the real WebSocket opener |
+| `src/providers/flux.ts` | The Flux socket: the listen URL, its messages, the silence keep-alive and ending a turn |
+| `src/providers/wav.ts` | A WAV header in front of held PCM for the batch call |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.
 - `src/engine/` imports nothing from `src/main/`, `src/renderer/` or `electron`. `src/main/` imports the engine only through `src/engine/index.ts`. The renderer never imports `src/shared/engine.ts` or the engine.
