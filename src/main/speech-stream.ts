@@ -55,7 +55,7 @@ export function startStream(
     textEnded: false,
   };
   if (occupy(ctx, line, stream) === null) return ctx.pump();
-  if (!feed(aura, stream, line.text)) return auraClosed(ctx);
+  if (!feed(aura, stream, line.text)) return sendFailed(ctx, aura);
   audioDone(ctx);
 }
 
@@ -78,6 +78,14 @@ export function auraHeard(ctx: SpeechContext, event: AuraEvent): void {
     ctx.deps.sendChunk({ ...chunk, sampleRate: auraSampleRate }),
   );
   voiceBack(ctx);
+}
+
+// A failed send restarts the socket like a cut line, so no event of the old socket binds to a later line.
+function sendFailed(ctx: SpeechContext, aura: Aura): void {
+  log("a speech socket send failed; the socket restarts");
+  aura.restart();
+  // The restart's close already ran the line's fallback if the socket was open; otherwise it runs here.
+  auraClosed(ctx);
 }
 
 // A line that had no audio yet goes to REST whole; one that had some ends where it is, never replayed.

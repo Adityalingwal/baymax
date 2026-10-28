@@ -155,8 +155,13 @@ describe("the REST backup after a failed send or a restart (L11)", () => {
     const { aura, h } = streaming();
     aura.failSends();
     h.speech.speak(said("Hello there."));
+    expect(aura.sent).toEqual(["restart"]);
     expect(h.texts()).toEqual(["Hello there."]);
     expect(h.ends).toEqual([]);
+    aura.open();
+    aura.audio(1);
+    aura.flushed();
+    expect(h.chunks).toEqual([]);
   });
 
   it("sends the next line to REST while the restarted socket is not open", () => {

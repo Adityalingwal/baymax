@@ -53,8 +53,9 @@ export function createFakeAura() {
     flush: () => record("flush"),
     restart: () => {
       sent.push("restart");
+      const wasOpen = control.open;
       control.open = false;
-      control.listener?.closed();
+      if (wasOpen) control.listener?.closed();
     },
     stop: () => undefined,
   };
