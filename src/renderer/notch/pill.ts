@@ -56,10 +56,12 @@ function show(state: PillState, word: PillWord): PillState {
   return { ...state, shown: true, word, muted: false, session, wait: null };
 }
 
-// After speech: the pill holds 800 ms, the island closes at once.
+// After speech: the pill holds 800 ms, the island closes at once. A turn that ends in Thinking has no line to hold after.
 function speechEnded(state: PillState, next: PillState): PillState {
   if (!state.shown) return { ...next, wait: null };
-  if (islandShown(state)) return { ...next, shown: false, wait: null };
+  if (islandShown(state) || state.phase === "thinking") {
+    return { ...next, shown: false, wait: null };
+  }
   // A mute confirmation already counts its 800 ms from the click.
   if (state.wait?.kind === "hold") return next;
   return startWait(next, "hold");

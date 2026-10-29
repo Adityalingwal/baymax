@@ -113,6 +113,16 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { shown: false, muted: true },
   },
   {
+    name: "a turn that fails while Thinking closes the pill with no hold",
+    steps: [listening, threshold, thinking, idle],
+    expected: { shown: false, closing: false },
+  },
+  {
+    name: "a new turn after a failed Thinking opens the pill again",
+    steps: [listening, threshold, thinking, idle, listening, threshold],
+    expected: { shown: true, word: "Listening" },
+  },
+  {
     name: "mute does nothing unless Baymax speaks",
     steps: [listening, threshold, thinking, mute],
     expected: { shown: true, muted: false, closing: false },
