@@ -12,7 +12,7 @@ const rules = {
 type CheckRule = keyof typeof rules;
 
 export type CodeCheck =
-  | { passed: true; findings: Findings; cited: ReadPage[] }
+  | { passed: true; findings: Findings }
   | {
       passed: false;
       rule: CheckRule;
@@ -63,26 +63,21 @@ function failedRule(
     : "unreadCitation";
 }
 
-function built(answer: Answer, pages: ReadPage[]) {
+// The card as the user may see it, built in code whether or not the answer passes: plain text, no links.
+export function answerFindings(answer: Answer, pages: ReadPage[]): Findings {
   const ids = new Set(citedIds(answer));
   const cited = pages.filter((page) => ids.has(page.id));
-  const findings: Findings = {
+  return {
     cardText: rewriteCard(answer.cardText),
     sources: cited.map(({ id, url, title }) => ({ id, url, title })),
     openPoints: answer.openPoints,
   };
-  return { cited, findings };
-}
-
-// The card as the user may see it, built in code whether or not the answer passes: plain text, no links.
-export function answerFindings(answer: Answer, pages: ReadPage[]): Findings {
-  return built(answer, pages).findings;
 }
 
 export function checkAnswer(answer: Answer, pages: ReadPage[]): CodeCheck {
-  const { cited, findings } = built(answer, pages);
+  const findings = answerFindings(answer, pages);
   const rule = failedRule(answer, findings.cardText, pages);
   return rule === null
-    ? { passed: true, findings, cited }
+    ? { passed: true, findings }
     : { passed: false, rule, uncheckedPart: rules[rule], findings };
 }
