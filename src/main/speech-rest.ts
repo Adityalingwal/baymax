@@ -1,9 +1,11 @@
 import type { Synthesis } from "../providers/deepgram";
 import type { Job, Line, SpeechContext } from "./speech-model";
 import {
+  audioStarted,
   describeError,
   endPlaying,
   guarded,
+  lineGone,
   log,
   occupy,
   voiceBack,
@@ -21,7 +23,7 @@ function startPlaying(ctx: SpeechContext, line: Line, result: Audio) {
     ctx.deps.sendSpeech({ lineId, audio, mimeType }),
   );
   if (!sent && endPlaying(ctx, lineId)) return ctx.pump();
-  guarded("onAudioStarted", () => ctx.deps.onAudioStarted(line));
+  audioStarted(ctx, playing);
 }
 
 function synthesisFailed(ctx: SpeechContext, failure: Failed): void {
@@ -47,6 +49,7 @@ function synthesisSettled(
   log(`synthesis in ${Math.round(performance.now() - startedAt)} ms`);
   if (result.kind === "failed") {
     synthesisFailed(ctx, result);
+    lineGone(ctx, job.line, null);
     ctx.pump();
     return;
   }
@@ -60,6 +63,7 @@ function synthesize(ctx: SpeechContext, job: Job): void {
   if (line.feed.text.trim() === "") {
     ctx.state.synthesizing = null;
     log(`line dropped: no text (${line.kind})`);
+    lineGone(ctx, line, null);
     return ctx.pump();
   }
   const startedAt = performance.now();

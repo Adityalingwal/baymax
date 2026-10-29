@@ -217,6 +217,13 @@ const subscriptionRows: SubscriptionRow[] = [
     payload: { notched: true, notchWidth: 139, notchHeight: 25 },
     replay: [[ipcChannels.getWindowShape]],
   },
+  {
+    name: "onVoicePhase",
+    subscribe: (callback) => api.onVoicePhase(callback),
+    channel: ipcChannels.voicePhase,
+    payload: { phase: "thinking" },
+    replay: [[ipcChannels.getVoicePhase]],
+  },
 ];
 
 describe("preload subscriptions", () => {

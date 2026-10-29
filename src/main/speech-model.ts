@@ -21,7 +21,8 @@ export type SpeechDeps = {
   sendEnd: (end: SpeechEnd) => void;
   sendStop: (payload: StopPlayback) => void;
   onVoiceAvailable: (available: boolean, cause: VoiceDownCause | null) => void; // only on a change
-  onAudioStarted: (line: Spoken) => void; // a line's first audio reached the renderer
+  onAudioStarted: (line: Spoken, lineId: LineId) => void; // a line's first audio reached the renderer
+  onLineGone: (line: Spoken, lineId: LineId | null) => void; // once per line that leaves speech; lineId only if its audio started
   timers: Timers;
 };
 
@@ -59,6 +60,7 @@ export type Playing = {
   line: Line;
   cancelDeadline: () => void;
   stream: StreamJob | null;
+  started: boolean; // its first audio reached the renderer
 };
 
 export type SpeechState = {
@@ -105,13 +107,35 @@ export function guarded(name: string, call: () => void): boolean {
   }
 }
 
+// A line that leaves speech, played or not; every drop and every end of playback comes through here once.
+export function lineGone(
+  ctx: SpeechContext,
+  line: Line,
+  lineId: LineId | null,
+): void {
+  guarded("onLineGone", () => ctx.deps.onLineGone(line, lineId));
+}
+
+export function audioStarted(ctx: SpeechContext, playing: Playing): void {
+  if (playing.started) return;
+  playing.started = true;
+  const { line, lineId } = playing;
+  guarded("onAudioStarted", () => ctx.deps.onAudioStarted(line, lineId));
+}
+
 // A stream cut before its audio ended restarts the socket, so none of its audio reaches the next line.
-export function endPlaying(ctx: SpeechContext, lineId: LineId): boolean {
+// moving: the line only changes path (socket to REST), so it has not left speech.
+export function endPlaying(
+  ctx: SpeechContext,
+  lineId: LineId,
+  moving = false,
+): boolean {
   const playing = ctx.state.playing;
   if (playing === null || playing.lineId !== lineId) return false;
   ctx.state.playing = null;
   guarded("cancelDeadline", playing.cancelDeadline);
   if (playing.stream !== null) guarded("restart", () => ctx.aura?.restart());
+  if (!moving) lineGone(ctx, playing.line, playing.started ? lineId : null);
   return true;
 }
 
@@ -148,8 +172,11 @@ export function occupy(
       deadlinePassed(ctx, lineId),
     );
   });
-  if (!timed) return null;
-  ctx.state.playing = { lineId, line, cancelDeadline, stream };
+  if (!timed) {
+    lineGone(ctx, line, null);
+    return null;
+  }
+  ctx.state.playing = { lineId, line, cancelDeadline, stream, started: false };
   return ctx.state.playing;
 }
 

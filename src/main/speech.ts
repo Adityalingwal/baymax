@@ -5,10 +5,9 @@ import type {
   Matches,
   SpeechContext,
   SpeechDeps,
-  SpeechState,
   Spoken,
 } from "./speech-model";
-import { endPlaying, log, stopPlaying } from "./speech-model";
+import { endPlaying, lineGone, log, stopPlaying } from "./speech-model";
 import { startRest } from "./speech-rest";
 import { auraClosed, auraHeard, startStream } from "./speech-stream";
 import type { SaidLine } from "./tasks/state";
@@ -36,27 +35,30 @@ type Speech = {
 const everyLine: Matches = () => true;
 const cancelledLimit = 64;
 
-function dropPending(state: SpeechState, matches: Matches, why: string): void {
-  const kept = state.pending.filter((line) => !matches(line));
-  const dropped = state.pending.length - kept.length;
-  if (dropped > 0) log(`${dropped} pending line(s) dropped: ${why}`);
-  state.pending = kept;
+function dropPending(ctx: SpeechContext, matches: Matches, why: string): void {
+  const { state } = ctx;
+  const dropped = state.pending.filter(matches);
+  state.pending = state.pending.filter((line) => !matches(line));
+  if (dropped.length > 0)
+    log(`${dropped.length} pending line(s) dropped: ${why}`);
+  dropped.forEach((line) => lineGone(ctx, line, null));
 }
 
-function dropSynthesis(state: SpeechState, matches: Matches, why: string) {
-  const job = state.synthesizing;
+function dropSynthesis(ctx: SpeechContext, matches: Matches, why: string) {
+  const job = ctx.state.synthesizing;
   if (job === null || !matches(job.line)) return;
-  state.synthesizing = null;
+  ctx.state.synthesizing = null;
   log(`line dropped while synthesizing: ${why}`);
   job.abort.abort();
+  lineGone(ctx, job.line, null);
 }
 
 function clearSpeech(
   ctx: SpeechContext,
   clear: { matches: Matches; why: string; sendStop: boolean },
 ): void {
-  dropPending(ctx.state, clear.matches, clear.why);
-  dropSynthesis(ctx.state, clear.matches, clear.why);
+  dropPending(ctx, clear.matches, clear.why);
+  dropSynthesis(ctx, clear.matches, clear.why);
   stopPlaying(ctx, clear.matches, clear.sendStop);
 }
 
@@ -74,6 +76,7 @@ function pump(ctx: SpeechContext): void {
   ) {
     log(`line dropped: no text (${line.kind})`);
     state.pending.shift();
+    lineGone(ctx, line, null);
     line = state.pending[0];
   }
   // A talker line takes the slot only with its first words, so it never holds up the lines behind it while silent.
@@ -85,10 +88,15 @@ function pump(ctx: SpeechContext): void {
 
 function queueLine(ctx: SpeechContext, line: Line): void {
   const { state } = ctx;
-  if (state.muted) return log(`line dropped: muted (${line.kind})`);
   const taskId = line.taskId;
-  if (taskId !== null && state.cancelled.has(taskId)) {
-    return log(`line dropped: task cancelled (${line.kind})`);
+  const why = state.muted
+    ? "muted"
+    : taskId !== null && state.cancelled.has(taskId)
+      ? "task cancelled"
+      : null;
+  if (why !== null) {
+    log(`line dropped: ${why} (${line.kind})`);
+    return lineGone(ctx, line, null);
   }
   state.pending.push(line);
   pump(ctx);

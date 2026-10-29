@@ -78,6 +78,7 @@ function fakeVoice(deepgramKeyPresent: boolean, fails: boolean) {
     sendEnd: () => undefined,
     startAura: () => null,
     sendStop: (payload: StopPlayback) => seen.stops.push(payload),
+    sendVoicePhase: () => undefined,
     // The input is the mime type and the PCM after the 44-byte WAV header.
     transcribe: (audio: ArrayBuffer, mimeType: string) =>
       new Promise<Transcription>((resolve) => {
@@ -186,10 +187,8 @@ function playback(
   const playNext = async (): Promise<void> => {
     const line = await settleNext();
     if (line === undefined) return;
-    send(ipcChannels.playbackFinished, {
-      lineId: line.lineId,
-      outcome: "ended",
-    });
+    const { lineId } = line;
+    send(ipcChannels.playbackFinished, { lineId, outcome: "ended" });
   };
   const playAll = async (): Promise<void> => {
     for (let turn = 0; turn < 20 && settled < seen.syntheses.length; turn += 1)

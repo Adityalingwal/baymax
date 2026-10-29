@@ -6,11 +6,12 @@ import type {
   TaskState,
 } from "../../shared/cards";
 import type { EngineCommand, ParentResult, TaskAsk } from "../../shared/engine";
+import type { SpokenKind } from "../../shared/ipc";
 import type { Exchange } from "./history";
 import type { TalkRequest } from "./talk";
 
 // Main's state says fixed lines (failure, notice, queue), results and the waiting question as given; the front call says the rest.
-export type SaidKind = "talk" | "question" | "answer" | "failure" | "notice";
+export type SaidKind = SpokenKind;
 export type SaidLine = { taskId: TaskId | null; text: string; kind: SaidKind };
 
 export type Admission = { ask: TaskAsk };

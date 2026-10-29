@@ -6,6 +6,7 @@ import type {
   SpeechChunk,
   SpeechLine,
   StopPlayback,
+  VoicePhase,
 } from "../shared/ipc";
 import type { HoldOutcome } from "./hold";
 import type { FakeAura } from "./speech.harness";
@@ -28,12 +29,15 @@ function fakeState() {
   const control = {
     waiting: null as WaitingQuestion | null,
     stateFails: false,
+    // Main's state starting a front call for the words, as it does at once.
+    onAsk: null as ((utteranceId: UtteranceId | null) => void) | null,
   };
   const state: VoiceState = {
     ask: (words, utteranceId, waiting) => {
       if (control.stateFails) throw new Error("ask broke");
       asked.push({ words, utteranceId, waiting });
       calls.push(`ask ${words}`);
+      control.onAsk?.(utteranceId);
     },
     waitingQuestion: () => control.waiting,
     setMuted: (muted) => calls.push(`muted ${String(muted)}`),
@@ -63,6 +67,7 @@ function createSeen() {
     transcriptions: [] as Deferred<Transcription>[],
     syntheses: [] as Deferred<Synthesis>[],
     failures: [] as string[],
+    phases: [] as VoicePhase[],
   };
 }
 
@@ -85,6 +90,7 @@ export function createHarness(options: Options = {}) {
       seen.timeline.push("stop playback");
       seen.stops.push(payload);
     },
+    sendVoicePhase: (phase) => seen.phases.push(phase),
     transcribe: () =>
       new Promise((resolve) => seen.transcriptions.push({ text: "", resolve })),
     startFlux: () => null,
