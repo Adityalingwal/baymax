@@ -83,6 +83,7 @@ export function App() {
   const demoCardActions = useMemo(() => demoActions(dispatch), [dispatch]);
   const state = demo ? demoState : display;
   const actions: CardActions = demo ? demoCardActions : window.baymax;
+  const [draft, setDraft] = useState(false);
 
   useEffect(() => {
     const stopMicrophone = startMicrophone(window.baymax);
@@ -94,12 +95,7 @@ export function App() {
   }, []);
 
   return (
-    <NotchShell
-      state={state}
-      hold={hold}
-      needsAccess={accessibility === false}
-      actions={actions}
-    >
+    <NotchShell needsAccess={accessibility === false} draft={draft}>
       <TopBar
         hold={hold}
         holdKeyLabel={holdKeyLabel}
@@ -111,12 +107,12 @@ export function App() {
           window.baymax.openAccessibilitySettings()
         }
       />
-      <section className="flex min-h-0 shrink flex-col gap-2 overflow-y-auto px-3">
+      <section className="flex min-h-0 shrink flex-col gap-2 overflow-y-auto">
         {state.tasks.map((card) => (
           <TaskCard key={card.taskId} card={card} actions={actions} />
         ))}
       </section>
-      <TextBox submitQuestion={actions.submitQuestion} />
+      <TextBox submitQuestion={actions.submitQuestion} onDraft={setDraft} />
     </NotchShell>
   );
 }

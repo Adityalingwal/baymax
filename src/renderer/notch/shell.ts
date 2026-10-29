@@ -1,130 +1,126 @@
-import type { TaskCard } from "../../shared/cards";
-import { cardForm } from "../cards/forms";
+// When the panel opens and closes. Rules and timings: notch-design-locked.md, "Panel close and motion", with the demo's simple close rule.
+export const panelDelays = { dwellMs: 150, leaveMs: 300 } as const;
 
-export type ShellMode = "idle" | "dot" | "open";
-
-type CardFields = Pick<TaskCard, "taskId" | "state" | "folded">;
-
-// Everything but the pointer that may hold the shell open.
-export type ShellReasons = {
-  needsAccess: boolean; // the Accessibility hint in the top bar must stay visible
-  typing: boolean;
-  voice: boolean;
-  notice: string | null;
-  tasks: readonly CardFields[];
+// dwell and leave hold the token of their running timer, so a timer that fires after its reason is gone does nothing.
+export type PanelState = {
+  open: boolean;
+  closing: boolean; // closed, but the close motion still shows
+  inNotch: boolean; // in the notch's hover sensor
+  inOpenOutline: boolean; // in the open panel's full outline
+  inVisible: boolean; // in the shape as drawn right now
+  draft: boolean; // the field holds text
+  mouseDown: boolean; // a button pressed inside the panel is still down
+  needsAccess: boolean; // the Accessibility hint holds the panel open
+  waitForExit: boolean; // closed by Esc: no reopen until the pointer leaves the notch
+  dwell: number | null;
+  leave: number | null;
+  tokens: number;
 };
 
-export type PointerState = { hovered: boolean; waitForExit: boolean };
+export type PanelEvent =
+  | {
+      kind: "pointer";
+      inNotch: boolean;
+      inOpenOutline: boolean;
+      inVisible: boolean;
+    }
+  | { kind: "pointer-gone" }
+  | { kind: "dwell-elapsed"; token: number }
+  | { kind: "leave-elapsed"; token: number }
+  | { kind: "escape" }
+  | { kind: "draft"; draft: boolean }
+  | { kind: "mouse"; down: boolean }
+  | { kind: "access"; needed: boolean }
+  | { kind: "closed" };
 
-const isFolded = (card: CardFields) => cardForm(card) === "folded";
-
-export function shellMode(input: ShellReasons & PointerState): ShellMode {
-  const { needsAccess, typing, voice, notice, tasks } = input;
-  const unfolded = tasks.some((card) => !isFolded(card));
-  if (needsAccess || typing || voice || notice !== null || unfolded) {
-    return "open";
-  }
-  const { hovered, waitForExit } = input;
-  if (hovered && !waitForExit) return "open";
-  return tasks.some(isFolded) ? "dot" : "idle";
-}
-
-export function lastFoldedCard<C extends CardFields>(
-  tasks: readonly C[],
-): C | null {
-  for (let index = tasks.length - 1; index >= 0; index -= 1) {
-    if (isFolded(tasks[index])) return tasks[index];
-  }
-  return null;
-}
-
-// True when a card that was showing was folded or removed.
-export function foldedOrClosed(
-  previous: readonly CardFields[],
-  current: readonly CardFields[],
-): boolean {
-  const now = new Map(current.map((card) => [card.taskId, card]));
-  return previous.some((card) => {
-    if (isFolded(card)) return false;
-    const after = now.get(card.taskId);
-    return after === undefined || isFolded(after);
-  });
-}
-
-export type PointerChange =
-  | { kind: "inside" }
-  | { kind: "outside-after-delay" }
-  | { kind: "left-window" }
-  | { kind: "blur" }
-  | { kind: "folded-or-closed" }
-  | { kind: "outside-collapsed" };
-
-export const initialPointer: PointerState = {
-  hovered: false,
+export const initialPanel: PanelState = {
+  open: false,
+  closing: false,
+  inNotch: false,
+  inOpenOutline: false,
+  inVisible: false,
+  draft: false,
+  mouseDown: false,
+  needsAccess: false,
   waitForExit: false,
+  dwell: null,
+  leave: null,
+  tokens: 0,
 };
 
-function nextPointer(state: PointerState, event: PointerChange): PointerState {
+function close(state: PanelState): PanelState {
+  if (!state.open || state.needsAccess) return state;
+  return { ...state, open: false, closing: true };
+}
+
+function applyEvent(state: PanelState, event: PanelEvent): PanelState {
   switch (event.kind) {
-    case "inside":
-      return state.waitForExit ? state : { ...state, hovered: true };
-    case "outside-after-delay":
-    case "blur":
-      return { ...state, hovered: false };
-    case "left-window":
-      return initialPointer;
-    case "folded-or-closed":
-      return { hovered: false, waitForExit: state.hovered };
-    case "outside-collapsed":
-      return { ...state, waitForExit: false };
+    case "pointer": {
+      const { inNotch, inOpenOutline, inVisible } = event;
+      return { ...state, inNotch, inOpenOutline, inVisible };
+    }
+    case "pointer-gone":
+      return {
+        ...state,
+        inNotch: false,
+        inOpenOutline: false,
+        inVisible: false,
+      };
+    case "dwell-elapsed":
+      if (event.token !== state.dwell) return state;
+      return { ...state, open: true, closing: false };
+    case "leave-elapsed":
+      return event.token === state.leave ? close(state) : state;
+    case "escape": {
+      const closed = close(state);
+      return closed === state ? state : { ...closed, waitForExit: true };
+    }
+    case "draft":
+      return { ...state, draft: event.draft };
+    case "mouse":
+      return { ...state, mouseDown: event.down };
+    case "access":
+      return event.needed
+        ? { ...state, needsAccess: true, open: true, closing: false }
+        : { ...state, needsAccess: false };
+    case "closed":
+      return state.open ? state : { ...state, closing: false };
   }
+}
+
+// Derives what the facts imply: the end of the Esc wait, a reopen mid-close, and which timers run.
+function settle(state: PanelState): PanelState {
+  let next = state;
+  if (next.waitForExit && !next.inNotch && !next.inVisible) {
+    next = { ...next, waitForExit: false };
+  }
+  // The pointer came back onto the shrinking shape: the motion turns around.
+  if (!next.open && next.closing && next.inVisible && !next.waitForExit) {
+    next = { ...next, open: true, closing: false };
+  }
+  const inside = next.inNotch || next.inOpenOutline;
+  const held = next.needsAccess || next.draft || next.mouseDown;
+  const wantDwell = !next.open && next.inNotch && !next.waitForExit;
+  const wantLeave = next.open && !inside && !held;
+  let tokens = next.tokens;
+  const timer = (want: boolean, running: number | null) => {
+    if (!want) return null;
+    if (running !== null) return running;
+    tokens += 1;
+    return tokens;
+  };
+  const dwell = timer(wantDwell, next.dwell);
+  const leave = timer(wantLeave, next.leave);
+  return { ...next, dwell, leave, tokens };
+}
+
+function sameState(a: PanelState, b: PanelState): boolean {
+  const keys = Object.keys(a) as (keyof PanelState)[];
+  return keys.every((key) => a[key] === b[key]);
 }
 
 // Returns the same object when nothing changes, so React skips the render.
-export function pointerReducer(
-  state: PointerState,
-  event: PointerChange,
-): PointerState {
-  const next = nextPointer(state, event);
-  const same =
-    next.hovered === state.hovered && next.waitForExit === state.waitForExit;
-  return same ? state : next;
-}
-
-// Main reports "listening" at key-down; its hold filter (holdLimits.shortestMs, 300 ms) discards a shorter hold.
-export const voiceTiming = { thresholdMs: 300, lingerMs: 3000 } as const;
-
-// hold counts the holds, so a timer from an earlier hold is ignored.
-export type VoiceState = { hold: number; listening: boolean; voice: boolean };
-
-export type VoiceEvent =
-  | { kind: "listening-started" }
-  | { kind: "threshold-elapsed"; hold: number }
-  | { kind: "listening-ended" }
-  | { kind: "linger-elapsed"; hold: number };
-
-export const initialVoice: VoiceState = {
-  hold: 0,
-  listening: false,
-  voice: false,
-};
-
-export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
-  switch (event.kind) {
-    case "listening-started":
-      if (state.listening) return state;
-      return { ...state, hold: state.hold + 1, listening: true };
-    case "threshold-elapsed":
-      if (event.hold !== state.hold || !state.listening || state.voice) {
-        return state;
-      }
-      return { ...state, voice: true };
-    case "listening-ended":
-      return state.listening ? { ...state, listening: false } : state;
-    case "linger-elapsed":
-      if (event.hold !== state.hold || state.listening || !state.voice) {
-        return state;
-      }
-      return { ...state, voice: false };
-  }
+export function panelReducer(state: PanelState, event: PanelEvent): PanelState {
+  const next = settle(applyEvent(state, event));
+  return sameState(state, next) ? state : next;
 }

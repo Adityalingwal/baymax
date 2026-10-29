@@ -1,10 +1,15 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { CardActions } from "./actions";
 
-type TextBoxProps = { submitQuestion: CardActions["submitQuestion"] };
+type TextBoxProps = {
+  submitQuestion: CardActions["submitQuestion"];
+  onDraft: (hasDraft: boolean) => void; // the shell keeps the panel open while the field holds text
+};
 
-export function TextBox({ submitQuestion }: TextBoxProps) {
+export function TextBox({ submitQuestion, onDraft }: TextBoxProps) {
   const [draft, setDraft] = useState("");
+  const hasDraft = draft !== "";
+  useEffect(() => onDraft(hasDraft), [hasDraft, onDraft]);
   const ask = (event: FormEvent) => {
     event.preventDefault();
     const text = draft.trim();
@@ -13,7 +18,7 @@ export function TextBox({ submitQuestion }: TextBoxProps) {
     setDraft("");
   };
   return (
-    <form className="flex gap-2 p-3" onSubmit={ask}>
+    <form className="flex gap-2" onSubmit={ask}>
       <input
         aria-label="Ask Baymax"
         placeholder="Ask Baymax…"

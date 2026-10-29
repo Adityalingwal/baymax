@@ -4,7 +4,7 @@ import type { CardActions } from "../actions";
 import { canCancel, stateLabel } from "./forms";
 
 // The state dot colours, shared with the notch dot.
-export const dotColors: Record<TaskState, string> = {
+const dotColors: Record<TaskState, string> = {
   thinking: "bg-zinc-500",
   clarifying: "bg-amber-400",
   queued: "bg-zinc-500",
