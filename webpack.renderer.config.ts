@@ -26,7 +26,7 @@ const rendererRules: Required<ModuleOptions>["rules"] = [
     ],
   },
   {
-    test: /\.(png|jpe?g|gif|svg)$/i,
+    test: /\.(png|jpe?g|gif|svg|woff2?)$/i,
     type: "asset/resource",
   },
 ];
