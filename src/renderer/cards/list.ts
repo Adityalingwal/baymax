@@ -23,7 +23,7 @@ export function orderCards<C extends ListCard>(tasks: readonly C[]): C[] {
 }
 
 // A task counts as running while it runs or waits its turn; the notch ring uses the same rule.
-function isRunning(state: TaskState): boolean {
+export function isRunning(state: TaskState): boolean {
   return state === "running" || state === "queued";
 }
 

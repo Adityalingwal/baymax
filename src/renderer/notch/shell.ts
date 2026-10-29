@@ -31,7 +31,8 @@ export type PanelEvent =
   | { kind: "draft"; draft: boolean }
   | { kind: "mouse"; down: boolean }
   | { kind: "access"; needed: boolean }
-  | { kind: "closed" };
+  | { kind: "closed" }
+  | { kind: "open-result" };
 
 export const initialPanel: PanelState = {
   open: false,
@@ -57,7 +58,13 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
   switch (event.kind) {
     case "pointer": {
       const { inNotch, inOpenOutline, inVisible } = event;
-      return { ...state, inNotch, inOpenOutline, inVisible };
+      const moved = { ...state, inNotch, inOpenOutline, inVisible };
+      // Only a pointer coming onto the shrinking shape turns the motion around, not one the shrink left behind.
+      const reentered = inVisible && !state.inVisible;
+      if (!state.open && state.closing && reentered && !state.waitForExit) {
+        return { ...moved, open: true, closing: false };
+      }
+      return moved;
     }
     case "pointer-gone":
       return {
@@ -70,7 +77,9 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
       if (event.token !== state.dwell) return state;
       return { ...state, open: true, closing: false };
     case "leave-elapsed":
-      return event.token === state.leave ? close(state) : state;
+      return event.token === state.leave
+        ? { ...close(state), leave: null }
+        : state;
     case "escape": {
       const closed = close(state);
       return closed === state ? state : { ...closed, waitForExit: true };
@@ -85,6 +94,9 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
         : { ...state, needsAccess: false };
     case "closed":
       return state.open ? state : { ...state, closing: false };
+    // A click on the answer island's card: the one open that is not a hover.
+    case "open-result":
+      return { ...state, open: true, closing: false, waitForExit: false };
   }
 }
 
@@ -93,10 +105,6 @@ function settle(state: PanelState): PanelState {
   let next = state;
   if (next.waitForExit && !next.inNotch && !next.inVisible) {
     next = { ...next, waitForExit: false };
-  }
-  // The pointer came back onto the shrinking shape: the motion turns around.
-  if (!next.open && next.closing && next.inVisible && !next.waitForExit) {
-    next = { ...next, open: true, closing: false };
   }
   const inside = next.inNotch || next.inOpenOutline;
   const held = next.needsAccess || next.draft || next.mouseDown;

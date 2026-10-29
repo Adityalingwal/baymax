@@ -77,13 +77,19 @@ function demoActions(dispatch: Dispatch<DemoAction>): CardActions {
   };
 }
 
-export function App() {
-  const { accessibility, holdKeyLabel, display, phase } = useMainState();
+// The demo display state and its local actions while Cmd+Shift+D is on; main's state and window.baymax otherwise.
+function useShownState(display: DisplayState) {
   const demo = useDemoSwitch();
   const [demoState, dispatch] = useReducer(applyDemoAction, demoDisplayState);
   const demoCardActions = useMemo(() => demoActions(dispatch), [dispatch]);
   const state = demo ? demoState : display;
   const actions: CardActions = demo ? demoCardActions : window.baymax;
+  return { demo, state, actions };
+}
+
+export function App() {
+  const { accessibility, holdKeyLabel, display, phase } = useMainState();
+  const { demo, state, actions } = useShownState(display);
   const [draft, setDraft] = useState(false);
   const cards = orderCards(state.tasks);
 
@@ -101,6 +107,7 @@ export function App() {
       needsAccess={accessibility === false}
       draft={draft}
       phase={phase}
+      tasks={state.tasks}
       setMuted={actions.setMuted}
     >
       <TopBar

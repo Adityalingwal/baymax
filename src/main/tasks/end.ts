@@ -35,6 +35,7 @@ export function endDone(
 ): void {
   closeTask(change, record, "done", findings);
   record.spokenLine = spokenLine;
+  record.card.spokenLine = spokenLine;
   record.card.answer = findings;
   record.card.line = record.builtOnPartial ? fixedLines.builtOnPartial : null;
   const { taskId } = record.card;
@@ -47,6 +48,7 @@ export function endChat(change: Change, record: TaskRecord, text: string) {
   const findings: Findings = { cardText: text, sources: [], openPoints: [] };
   closeTask(change, record, "done", findings);
   record.spokenLine = text;
+  record.card.spokenLine = text;
   record.card.reply = text;
   record.card.question = null;
   record.card.answer = findings;

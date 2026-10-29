@@ -102,6 +102,7 @@ export function addRecord(
       sayBack: null,
       line: null,
       reply: null,
+      spokenLine: null,
       step: null,
       sourcesRead: 0,
       question: null,
