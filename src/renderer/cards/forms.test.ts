@@ -16,9 +16,9 @@ const formCases: [TaskState, boolean, string][] = [
   ["cancelled", false, "pill"],
   ["cancelled", true, "pill"],
   ["done", false, "open"],
-  ["done", true, "folded"],
+  ["done", true, "open"],
   ["incomplete", false, "open"],
-  ["incomplete", true, "folded"],
+  ["incomplete", true, "open"],
 ];
 
 describe("cardForm", () => {

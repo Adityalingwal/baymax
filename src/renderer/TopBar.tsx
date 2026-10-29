@@ -1,18 +1,19 @@
 import type { DisplayState } from "../shared/cards";
-import type { HoldState } from "../shared/ipc";
 import type { CardActions } from "./actions";
+import { statusLine } from "./cards/list";
+import { SpeakerIcon } from "./notch/VoicePill";
 
 function AccessibilityHint({ openSettings }: { openSettings: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-2">
-      <p className="text-xs text-amber-300">
+    <div className="flex flex-col items-start gap-2">
+      <p className="type-body">
         Grant Accessibility access to the running app, then restart. During{" "}
         <code>npm start</code> macOS may list it as Electron; packaged builds
         show Baymax.
       </p>
       <button
         type="button"
-        className="cursor-pointer rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-100 hover:bg-zinc-700"
+        className="action action-secondary glass"
         onClick={openSettings}
       >
         Open Accessibility settings
@@ -21,37 +22,24 @@ function AccessibilityHint({ openSettings }: { openSettings: () => void }) {
   );
 }
 
-type MuteProps = {
-  muted: boolean;
-  voiceAvailable: boolean;
-  setMuted: CardActions["setMuted"];
-};
+type MuteProps = { muted: boolean; setMuted: CardActions["setMuted"] };
 
-function MuteSwitch({ muted, voiceAvailable, setMuted }: MuteProps) {
+// The panel's mute switch until the panel-open voice rail exists; reachable muted or not, speaking or not.
+function MuteToggle({ muted, setMuted }: MuteProps) {
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      {!voiceAvailable && (
-        <span className="text-xs text-zinc-400">Voice off</span>
-      )}
-      <button
-        type="button"
-        aria-pressed={muted}
-        className={
-          muted
-            ? "cursor-pointer rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-900"
-            : "cursor-pointer rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-100 hover:bg-zinc-700"
-        }
-        onClick={() => setMuted({ muted: !muted })}
-      >
-        {muted ? "Muted" : "Mute"}
-      </button>
-    </div>
+    <button
+      type="button"
+      aria-label={muted ? "Unmute Baymax" : "Mute Baymax"}
+      aria-pressed={muted}
+      className="glass grid h-[22px] w-[22px] shrink-0 cursor-pointer place-items-center rounded-full"
+      onClick={() => setMuted({ muted: !muted })}
+    >
+      <SpeakerIcon crossed={muted} />
+    </button>
   );
 }
 
 type TopBarProps = {
-  hold: HoldState;
-  holdKeyLabel: string;
   accessibility: boolean | null;
   state: DisplayState;
   demo: boolean;
@@ -59,41 +47,29 @@ type TopBarProps = {
   openAccessibilitySettings: () => void;
 };
 
-function holdText(hold: HoldState, holdKeyLabel: string): string {
-  if (hold === "listening") return "Listening…";
-  if (holdKeyLabel === "") return "";
-  return `Hold ${holdKeyLabel} to talk, or type below.`;
-}
-
+// The 32 pt top strip (content only in its wings), then the Accessibility hint and the notice when there is one.
 export function TopBar(props: TopBarProps) {
-  const { hold, holdKeyLabel, accessibility, state, demo, setMuted } = props;
-  const { openAccessibilitySettings } = props;
-  const listening = hold === "listening";
+  const { accessibility, state, demo, setMuted } = props;
+  const needsAccess = accessibility === false;
   return (
-    <header className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <p
-          className={`min-w-0 flex-1 truncate text-sm ${listening ? "font-medium text-emerald-400" : "text-zinc-400"}`}
-        >
-          {holdText(hold, holdKeyLabel)}
-        </p>
-        {demo && (
-          <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300">
-            Demo
-          </span>
-        )}
-        <MuteSwitch
-          muted={state.muted}
-          voiceAvailable={state.voiceAvailable}
-          setMuted={setMuted}
-        />
+    <>
+      <div className="absolute inset-x-0 top-0 flex h-8 items-center justify-between px-[14px]">
+        <span className="type-label">{demo ? "Demo" : ""}</span>
+        <div className="flex items-center gap-2">
+          <span className="type-status">{statusLine(state.tasks)}</span>
+          <MuteToggle muted={state.muted} setMuted={setMuted} />
+        </div>
       </div>
-      {accessibility === false && (
-        <AccessibilityHint openSettings={openAccessibilitySettings} />
+      {(needsAccess || state.notice !== null) && (
+        <header className="flex flex-col gap-2">
+          {needsAccess && (
+            <AccessibilityHint openSettings={props.openAccessibilitySettings} />
+          )}
+          {state.notice !== null && (
+            <p className="type-body truncate">{state.notice}</p>
+          )}
+        </header>
       )}
-      {state.notice !== null && (
-        <p className="text-sm text-zinc-300">{state.notice}</p>
-      )}
-    </header>
+    </>
   );
 }

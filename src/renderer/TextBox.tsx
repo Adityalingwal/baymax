@@ -4,9 +4,15 @@ import type { CardActions } from "./actions";
 type TextBoxProps = {
   submitQuestion: CardActions["submitQuestion"];
   onDraft: (hasDraft: boolean) => void; // the shell keeps the panel open while the field holds text
+  holdKeyLabel: string; // main's label for the hold key, e.g. "⌥"
 };
 
-export function TextBox({ submitQuestion, onDraft }: TextBoxProps) {
+// The glass field: Enter asks; main binds the words to a waiting question or starts a new request.
+export function TextBox({
+  submitQuestion,
+  onDraft,
+  holdKeyLabel,
+}: TextBoxProps) {
   const [draft, setDraft] = useState("");
   const hasDraft = draft !== "";
   useEffect(() => onDraft(hasDraft), [hasDraft, onDraft]);
@@ -18,20 +24,20 @@ export function TextBox({ submitQuestion, onDraft }: TextBoxProps) {
     setDraft("");
   };
   return (
-    <form className="flex gap-2" onSubmit={ask}>
+    <form
+      className="glass flex h-10 items-center gap-3 rounded-full pr-4 pl-4"
+      onSubmit={ask}
+    >
       <input
         aria-label="Ask Baymax"
         placeholder="Ask Baymax…"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
-        className="min-w-0 flex-1 rounded-full bg-[#1C1C1E] px-4 py-2 text-sm text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+        className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-[#F5F5F7] placeholder:text-white/50 focus:outline-none"
       />
-      <button
-        type="submit"
-        className="cursor-pointer rounded-full bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
-      >
-        Ask
-      </button>
+      {holdKeyLabel !== "" && (
+        <span className="type-label shrink-0">{holdKeyLabel} hold to talk</span>
+      )}
     </form>
   );
 }

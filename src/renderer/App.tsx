@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useReducer, useState, type Dispatch } from "react";
 import type { DisplayState } from "../shared/cards";
-import type { HoldState, VoicePhase } from "../shared/ipc";
+import type { VoicePhase } from "../shared/ipc";
 import type { CardActions } from "./actions";
+import { orderCards } from "./cards/list";
 import { TaskCard } from "./cards/TaskCard";
 import { applyDemoAction, demoDisplayState, type DemoAction } from "./demo";
 import { startMicrophone } from "./microphone";
@@ -18,14 +19,12 @@ const emptyState: DisplayState = {
 };
 
 function useMainState() {
-  const [hold, setHold] = useState<HoldState>("idle");
   const [accessibility, setAccessibility] = useState<boolean | null>(null);
   const [holdKeyLabel, setHoldKeyLabel] = useState<string>("");
   const [display, setDisplay] = useState<DisplayState>(emptyState);
   const [phase, setPhase] = useState<VoicePhase>({ phase: "idle" });
 
   useEffect(() => {
-    const stopHold = window.baymax.onHoldState(setHold);
     const stopDisplay = window.baymax.onDisplayState(setDisplay);
     const stopPhase = window.baymax.onVoicePhase(setPhase);
     window.baymax
@@ -38,13 +37,12 @@ function useMainState() {
         console.error("[Renderer] Failed to get startup info:", error);
       });
     return () => {
-      stopHold();
       stopDisplay();
       stopPhase();
     };
   }, []);
 
-  return { hold, accessibility, holdKeyLabel, display, phase };
+  return { accessibility, holdKeyLabel, display, phase };
 }
 
 // Cmd+Shift+D or Ctrl+Shift+D; event.code, since Shift changes event.key per layout.
@@ -80,13 +78,14 @@ function demoActions(dispatch: Dispatch<DemoAction>): CardActions {
 }
 
 export function App() {
-  const { hold, accessibility, holdKeyLabel, display, phase } = useMainState();
+  const { accessibility, holdKeyLabel, display, phase } = useMainState();
   const demo = useDemoSwitch();
   const [demoState, dispatch] = useReducer(applyDemoAction, demoDisplayState);
   const demoCardActions = useMemo(() => demoActions(dispatch), [dispatch]);
   const state = demo ? demoState : display;
   const actions: CardActions = demo ? demoCardActions : window.baymax;
   const [draft, setDraft] = useState(false);
+  const cards = orderCards(state.tasks);
 
   useEffect(() => {
     const stopMicrophone = startMicrophone(window.baymax);
@@ -105,8 +104,6 @@ export function App() {
       setMuted={actions.setMuted}
     >
       <TopBar
-        hold={hold}
-        holdKeyLabel={holdKeyLabel}
         accessibility={accessibility}
         state={state}
         demo={demo}
@@ -115,12 +112,18 @@ export function App() {
           window.baymax.openAccessibilitySettings()
         }
       />
-      <section className="flex min-h-0 shrink flex-col gap-2 overflow-y-auto">
-        {state.tasks.map((card) => (
-          <TaskCard key={card.taskId} card={card} actions={actions} />
-        ))}
-      </section>
-      <TextBox submitQuestion={actions.submitQuestion} onDraft={setDraft} />
+      {cards.length > 0 && (
+        <section className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto">
+          {cards.map((card) => (
+            <TaskCard key={card.taskId} card={card} actions={actions} />
+          ))}
+        </section>
+      )}
+      <TextBox
+        submitQuestion={actions.submitQuestion}
+        onDraft={setDraft}
+        holdKeyLabel={holdKeyLabel}
+      />
     </NotchShell>
   );
 }
