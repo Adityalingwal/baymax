@@ -2,7 +2,8 @@ import { UiohookKey } from "uiohook-napi";
 
 export const isMac = process.platform === "darwin";
 
-export const holdKeyLabel = isMac ? "Option" : "Ctrl+Win";
+// Shown in the panel's field hint ("⌥ hold to talk") and the hotkey log.
+export const holdKeyLabel = isMac ? "⌥" : "Ctrl+Win";
 
 // Windows uses a combo because single keys conflict with the OS: Alt opens the menu bar, Win opens Start.
 export const holdKeys: readonly number[] = isMac
