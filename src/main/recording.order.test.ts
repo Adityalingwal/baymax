@@ -72,6 +72,22 @@ describe("not caught while a newer hold is open", () => {
     },
   );
 
+  it.each([
+    { outcome: "accept" as const, said: false },
+    { outcome: "discard" as const, said: true },
+  ])(
+    "says A's held not-caught only when B, held meanwhile, ends as $outcome = $said",
+    async ({ outcome, said }) => {
+      const h = createHarness();
+      const a = hold(h, "accept");
+      sendAudio(h, a);
+      h.flow.holdStarted();
+      await resolveCall(h, 0, { kind: "empty" });
+      h.flow.holdEnded(outcome);
+      expect(h.heard).toEqual(said ? [missed(a, "empty")] : []);
+    },
+  );
+
   it.each(lateRows)(
     "drops A's not-caught from $name while B waits for its words",
     async ({ finishA }) => {
@@ -85,7 +101,6 @@ describe("not caught while a newer hold is open", () => {
       expect(h.heard).toEqual([words(b, "newer")]);
     },
   );
-
 });
 
 describe("late transcript", () => {
