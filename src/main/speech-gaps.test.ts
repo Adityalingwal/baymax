@@ -38,6 +38,15 @@ const rows: { name: string; arrivals: Arrival[]; logs: string[] }[] = [
     logs: [],
   },
   {
+    name: "short shortfalls that do not add up",
+    arrivals: [
+      { at: 0, lineId: "a", seq: 0, ms: 500 },
+      { at: 590, lineId: "a", seq: 1, ms: 500 },
+      { at: 1180, lineId: "a", seq: 2, ms: 500 },
+    ],
+    logs: [],
+  },
+  {
     name: "a later chunk measured from where playback resumed",
     arrivals: [
       { at: 0, lineId: "a", seq: 0, ms: 500 },

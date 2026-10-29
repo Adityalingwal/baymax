@@ -21,8 +21,8 @@ export function createGapWatch(
       log(
         `speech gap: audio ran dry ${Math.round(dryMs)} ms before chunk ${chunk.seq}`,
       );
-      watched.startedAt += dryMs; // playback resumes with this chunk
     }
+    if (dryMs > 0) watched.startedAt += dryMs; // playback resumes with this chunk
     // linear16 mono: two bytes per sample
     watched.audioMs += (chunk.pcm.byteLength / 2 / chunk.sampleRate) * 1000;
   };
