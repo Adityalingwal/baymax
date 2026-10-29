@@ -2,7 +2,7 @@ import type { QuestionId, TaskId } from "../../shared/cards";
 import type { FailureKind } from "../../shared/engine";
 import { checkDecision } from "./decision";
 import { addExchange } from "./history";
-import { failureLine } from "./lines";
+import { frontFailureLine } from "./lines";
 import type { Attempt, Change, FrontParts, Model, TaskRecord } from "./record";
 import { dropped, say, talk } from "./record";
 import { applyDecision } from "./route";
@@ -44,10 +44,10 @@ function failFront(
   change: Change,
   record: TaskRecord,
   attempt: Attempt,
-  kind: FailureKind,
+  failure: { kind: FailureKind; spoke: boolean },
 ): boolean {
   record.failedAttempt = attempt;
-  const line = failureLine(kind);
+  const line = frontFailureLine(failure.kind, failure.spoke);
   record.card.line = line;
   record.card.canRetry = true;
   say(change, record.card.taskId, line, "failure");
@@ -75,7 +75,8 @@ export function receiveFront(
     line: reply.text ?? "",
   });
   if (reply.kind === "failed") {
-    return failFront(change, record, attempt, reply.failure);
+    const spoke = (reply.text ?? "").trim() !== "";
+    return failFront(change, record, attempt, { kind: reply.failure, spoke });
   }
   const context = {
     words: attempt.parts.words,
@@ -87,7 +88,7 @@ export function receiveFront(
   const check = checkDecision(raw, context);
   if (!check.ok) {
     change.log(`decision rejected for ${taskId}: ${check.reason}`);
-    return failFront(change, record, attempt, "error");
+    return failFront(change, record, attempt, { kind: "error", spoke: true });
   }
   if (check.note !== null) change.log(check.note);
   return applyDecision(change, record, attempt, check.decision, reply.text);

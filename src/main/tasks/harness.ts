@@ -43,7 +43,7 @@ export function createClock() {
     }
     now = target;
   };
-  return { setTimer, advance };
+  return { setTimer, advance, pending: () => pending.length };
 }
 
 type Reply = (command: EngineCommand) => EngineEvent | null;
@@ -67,7 +67,7 @@ export type Harness = {
   failOpen: (message: string) => void;
   failPublish: (message: string) => void;
   reply: (taskId: TaskId, decision: unknown, line?: string) => void;
-  replyFailed: (taskId: TaskId, failure: FailureKind) => void;
+  replyFailed: (taskId: TaskId, failure: FailureKind, text?: string) => void;
 };
 
 type Seen = Pick<
@@ -160,10 +160,11 @@ function repliers(
         text: line,
         decision,
       }),
-    replyFailed: (taskId, failure) =>
+    replyFailed: (taskId, failure, text) =>
       state.talkerReplied(taskId, attemptOf(taskId), {
         kind: "failed",
         failure,
+        ...(text === undefined ? {} : { text }),
       }),
   };
 }

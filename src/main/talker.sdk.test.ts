@@ -55,7 +55,7 @@ async function until(done: () => boolean): Promise<void> {
   if (!done()) throw new Error("timed out");
 }
 
-describe("the 10 s deadline through the SDK", () => {
+describe("the 30 s whole-call deadline through the SDK", () => {
   it("aborts a response that sent headers and words and then stalled, cuts the speech and reports once", async () => {
     const server = await startServer(stalled);
     stops.push(server.stop);
@@ -78,7 +78,7 @@ describe("the 10 s deadline through the SDK", () => {
     });
     talker.talk(frontRequest());
     await until(() => parts.length > 0);
-    clock.advance(10_000);
+    clock.advance(30_000);
     await until(() => replies.length > 0);
     expect(parts).toEqual(["I'll check", "<cut>"]);
     expect(replies).toEqual([

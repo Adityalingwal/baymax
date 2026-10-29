@@ -35,14 +35,14 @@ const rows: Row[] = [
       return "t1";
     },
     fail: (h) => h.replyFailed("t1", "modelsUnreachable"),
-    line: "I can't reach my models right now. Try again in a few minutes.",
+    line: "Sorry, I missed that. Ask again.",
     state: "thinking",
   },
   {
     name: "a question-card answer's failed call",
     setup: answerInFlight,
-    fail: (h) => h.replyFailed("t1", "searchDown"),
-    line: "Search isn't working right now. Try again in a few minutes.",
+    fail: (h) => h.replyFailed("t1", "error", "Checking the docs."),
+    line: "That didn't go through. Ask again.",
     state: "clarifying",
   },
   {
@@ -52,7 +52,7 @@ const rows: Row[] = [
       return "t1";
     },
     fail: (h) => h.reply("t1", { route: "newTask" }),
-    line: "I hit an error on that question. Try again.",
+    line: "That didn't go through. Ask again.",
     state: "thinking",
   },
 ];

@@ -28,7 +28,8 @@ export type TalkerDeps = {
 type Attempt = {
   abort: AbortController;
   line: LineFeed;
-  stopDeadline: () => void;
+  stopFirstWords: () => void; // the first words came, so only the whole-call deadline is left
+  stopDeadline: () => void; // both deadlines
   ended: boolean; // the line was ended (or cut), so nothing more is pushed to it
   spoken: string; // the text pushed to speech so far
 };
@@ -36,8 +37,10 @@ type Attempt = {
 const talkerModel = "claude-fable-5-1";
 // The line, the decide call and any adaptive thinking all count against this.
 const maxTokens = 2048;
-// One wall-clock limit for the whole attempt: the SDK's timeout stops counting once headers arrive.
-const frontDeadlineMs = 10_000;
+// Two wall-clock limits from the start of the call, since the SDK's timeout stops counting once headers arrive:
+// no words in time is a model that does not answer; a call that has begun may take longer.
+const firstWordsMs = 6_000;
+const wholeCallMs = 30_000;
 
 const failureKinds: Record<ModelFailure, FailureKind> = {
   keyRejected: "keyRejected",
@@ -73,7 +76,7 @@ async function call(
   try {
     return await deps.stream(
       body,
-      { timeoutMs: frontDeadlineMs, signal },
+      { timeoutMs: wholeCallMs, signal },
       onText,
       onToolStart,
     );
@@ -136,15 +139,25 @@ async function runCall(
 ): Promise<Outcome> {
   let timedOut = false;
   const deadline = new Promise<TextOutcome>((resolve) => {
-    attempt.stopDeadline = deps.timers.setTimer(frontDeadlineMs, () => {
+    const expire = (detail: string) => () => {
+      attempt.stopDeadline();
       timedOut = true;
       attempt.abort.abort();
-      resolve({
-        ok: false,
-        failure: "unreachable",
-        detail: "no finish in 10 s",
-      });
-    });
+      resolve({ ok: false, failure: "unreachable", detail });
+    };
+    const stopFirst = deps.timers.setTimer(
+      firstWordsMs,
+      expire("no first words in 6 s"),
+    );
+    const stopWhole = deps.timers.setTimer(
+      wholeCallMs,
+      expire("no finish in 30 s"),
+    );
+    attempt.stopFirstWords = stopFirst;
+    attempt.stopDeadline = () => {
+      stopFirst();
+      stopWhole();
+    };
   });
   const answered = call(
     deps,
@@ -152,6 +165,7 @@ async function runCall(
     attempt.abort.signal,
     (text) => {
       if (!alive() || attempt.ended) return;
+      if (text.trim() !== "") attempt.stopFirstWords();
       attempt.spoken += text;
       attempt.line.push(text);
     },
@@ -174,6 +188,7 @@ async function front(
   const attempt: Attempt = {
     abort: new AbortController(),
     line,
+    stopFirstWords: () => undefined,
     stopDeadline: () => undefined,
     ended: false,
     spoken: "",
@@ -185,11 +200,11 @@ async function front(
   if (!alive()) return;
   attempts.delete(talk.attemptId);
   attempt.stopDeadline();
-  if (timedOut) {
+  if (!timedOut) endLine(attempt);
+  else if (!attempt.ended) {
+    // A line that already ended is left alone; one still open is cut.
     attempt.ended = true;
     line.cut();
-  } else {
-    endLine(attempt);
   }
   const judged = outcome.ok
     ? judge(outcome.text.trim(), outcome.round)

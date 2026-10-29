@@ -155,33 +155,54 @@ describe("the front call's timing and record", () => {
 
 type Fail = { name: string; fail: (h: Harness) => void; line: string };
 
-const errorLine = "I hit an error on that question. Try again.";
+const missedLine = "Sorry, I missed that. Ask again.";
+const stalledLine = "That didn't go through. Ask again.";
 
 const failures: Fail[] = [
   {
-    name: "a failed call",
-    fail: (h) => h.replyFailed("t1", "modelsUnreachable" as FailureKind),
-    line: "I can't reach my models right now. Try again in a few minutes.",
-  },
-  {
-    name: "a rejected key",
+    name: "a rejected key with nothing spoken",
     fail: (h) => h.replyFailed("t1", "keyRejected"),
     line: "Baymax's model service rejected its key. Please tell the person who set up Baymax.",
   },
   {
+    name: "no credit with nothing spoken",
+    fail: (h) => h.replyFailed("t1", "noCredit"),
+    line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
+  },
+  {
+    name: "unreachable models with nothing spoken",
+    fail: (h) => h.replyFailed("t1", "modelsUnreachable" as FailureKind),
+    line: missedLine,
+  },
+  {
+    name: "an error with nothing spoken",
+    fail: (h) => h.replyFailed("t1", "error"),
+    line: missedLine,
+  },
+  {
+    name: "an error after the line was spoken",
+    fail: (h) => h.replyFailed("t1", "error", "I'll check laptops."),
+    line: stalledLine,
+  },
+  {
+    name: "unreachable models after the line was spoken",
+    fail: (h) => h.replyFailed("t1", "modelsUnreachable", "I'll check."),
+    line: stalledLine,
+  },
+  {
     name: "a call with no tool",
     fail: (h) => h.reply("t1", null, "It's four."),
-    line: errorLine,
+    line: stalledLine,
   },
   {
     name: "a decision that fails a check",
     fail: (h) => h.reply("t1", decision({ route: "newTask", topic: "x" })),
-    line: errorLine,
+    line: stalledLine,
   },
   {
     name: "an unknown route",
     fail: (h) => h.reply("t1", decision({ route: "dance" })),
-    line: errorLine,
+    line: stalledLine,
   },
 ];
 

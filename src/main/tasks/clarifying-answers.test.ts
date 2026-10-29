@@ -82,7 +82,7 @@ describe("how a clicked answer is routed when it is not a task", () => {
     h.reply("t1", raw);
     expect(h.card("t1")).toMatchObject({
       state: "clarifying",
-      line: "I hit an error on that question. Try again.",
+      line: "That didn't go through. Ask again.",
       canRetry: true,
     });
     expect(h.sent).toEqual([]);

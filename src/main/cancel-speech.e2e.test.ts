@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { TaskId } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
-import { failureLine } from "./tasks/lines";
+import { frontFailureLine } from "./tasks/lines";
 import { failFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 // Each task's spoken line here is its fixed failure line.
-const firstLine = failureLine("modelsUnreachable");
-const secondLine = failureLine("keyRejected");
+const firstLine = frontFailureLine("modelsUnreachable", false);
+const secondLine = frontFailureLine("keyRejected", false);
 
 type SpeechRow = {
   name: string;

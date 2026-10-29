@@ -17,6 +17,8 @@ export const fixedLines = {
     "Voice isn't working right now. You can type your question instead.",
   restarting: "Baymax hit a problem and is restarting.",
   builtOnPartial: "Built on the partial findings of an earlier question.",
+  frontMissed: "Sorry, I missed that. Ask again.",
+  frontStalled: "That didn't go through. Ask again.",
 } as const;
 
 const failureLines: Record<FailureKind, string> = {
@@ -32,6 +34,12 @@ const failureLines: Record<FailureKind, string> = {
 
 export function failureLine(kind: FailureKind): string {
   return failureLines[kind];
+}
+
+// The line of a failed front call: setup problems name the fix; otherwise it depends on whether Baymax had already spoken.
+export function frontFailureLine(kind: FailureKind, spoke: boolean): string {
+  if (kind === "keyRejected" || kind === "noCredit") return failureLine(kind);
+  return spoke ? fixedLines.frontStalled : fixedLines.frontMissed;
 }
 
 export function taskShortForm(

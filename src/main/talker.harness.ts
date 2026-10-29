@@ -58,7 +58,15 @@ export function createHarness(
     timers: { setTimer: clock.setTimer },
     log: (message) => logs.push(message),
   });
-  return { talker, calls, lines, replies, logs, advance: clock.advance };
+  return {
+    talker,
+    calls,
+    lines,
+    replies,
+    logs,
+    advance: clock.advance,
+    pendingTimers: clock.pending,
+  };
 }
 
 export const flush = () =>

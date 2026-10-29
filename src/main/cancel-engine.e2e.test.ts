@@ -10,7 +10,7 @@ import {
   until,
 } from "./tasks/flow.harness";
 import { newTask } from "./tasks/harness";
-import { failureLine } from "./tasks/lines";
+import { frontFailureLine } from "./tasks/lines";
 import { failFront, streamFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
@@ -101,7 +101,7 @@ describe("cancel with the models unreachable: a failed front call", () => {
     await failFront(w);
     expect(w.card("t1")).toMatchObject({
       state: "thinking",
-      line: failureLine("modelsUnreachable"),
+      line: frontFailureLine("modelsUnreachable", false),
       canRetry: true,
     });
     cancel(w, "t1");
