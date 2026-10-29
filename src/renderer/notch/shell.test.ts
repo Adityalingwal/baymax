@@ -14,6 +14,8 @@ const onNotch = pointer(true, true, true);
 const onPanel = pointer(false, true, true);
 // Inside the open outline but where nothing is drawn yet (or any more).
 const onUndrawn = pointer(false, true, false);
+// Outside the shrunk open outline but still inside the old, still-animating shape.
+const inOldShapeOnly = pointer(false, false, true);
 const away = pointer(false, false, false);
 const gone: PanelEvent = { kind: "pointer-gone" };
 // The running timer fires.
@@ -147,6 +149,25 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     name: "the pointer back on the shrinking shape reopens at once",
     steps: [...opened, away, leave, onPanel],
     expected: { open: true, closing: false, dwelling: false },
+  },
+  {
+    name: "a pointer the shrink leaves behind does not hold the close open",
+    steps: [...opened, onPanel, inOldShapeOnly, leave, away],
+    expected: { open: false, closing: true, leaving: false },
+  },
+  {
+    name: "after such a close the pointer coming back reopens, and the close can run again",
+    steps: [
+      ...opened,
+      onPanel,
+      inOldShapeOnly,
+      leave,
+      away,
+      onPanel,
+      away,
+      leave,
+    ],
+    expected: { open: false, closing: true, leaving: false },
   },
   {
     name: "the close motion ending clears closing",
