@@ -10,8 +10,8 @@ export type Exchange = {
   result: string | null; // the spoken line of the task's result, once it ended done
 };
 
-const WINDOW = 10;
-const KEEP = 20;
+const WINDOW = 20;
+const KEEP = 30;
 
 export function addExchange(
   exchanges: Exchange[],

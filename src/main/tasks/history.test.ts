@@ -35,13 +35,14 @@ describe("the conversation history", () => {
     ]);
   });
 
-  it("keeps the last 10 exchanges", () => {
+  it("keeps the last 20 exchanges in the window and 30 stored, oldest first", () => {
     const exchanges: Exchange[] = [];
-    for (let n = 1; n <= 25; n += 1) add(exchanges, `t${n}`, n);
+    for (let n = 1; n <= 35; n += 1) add(exchanges, `t${n}`, n);
     const turns = conversationHistory(exchanges);
-    expect(turns).toHaveLength(20);
+    expect(exchanges).toHaveLength(30);
+    expect(turns).toHaveLength(40);
     expect(turns[0]).toEqual({ role: "user", text: "words 16" });
-    expect(turns.at(-1)).toEqual({ role: "assistant", text: "line 25" });
+    expect(turns.at(-1)).toEqual({ role: "assistant", text: "line 35" });
   });
 
   it("skips an exchange with nothing said", () => {
