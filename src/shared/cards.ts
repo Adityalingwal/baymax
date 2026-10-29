@@ -47,6 +47,7 @@ export type TaskCard = {
   sayBack: string | null; // always null since the front call's spoken line replaced the say-back
   line: string | null; // a fixed status or failure line
   reply: string | null; // the front call's spoken line, so what was said is also on screen
+  spokenLine: string | null; // a done task's result line as spoken (the answer island shows it), else null
   step: string | null; // latest progress, e.g. "searching: how Hermes works"
   sourcesRead: number;
   question: (ClarifyingQuestion & { answered: boolean }) | null;

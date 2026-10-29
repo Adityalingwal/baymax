@@ -17,6 +17,7 @@ function demoCard(taskId: TaskId, fields: Partial<TaskCard>): TaskCard {
     sayBack: null,
     line: null,
     reply: null,
+    spokenLine: null,
     step: null,
     sourcesRead: 0,
     question: null,
