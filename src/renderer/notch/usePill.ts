@@ -1,0 +1,29 @@
+import { useEffect, useReducer } from "react";
+import type { Dispatch } from "react";
+import type { VoicePhase } from "../../shared/ipc";
+import { initialPill, pillDelays, pillReducer } from "./pill";
+import type { PillEvent, PillState } from "./pill";
+
+// The pill's state from main's voice phase; its two timers are keyed by token, so a render never restarts them.
+export function usePill(phase: VoicePhase): {
+  pill: PillState;
+  dispatch: Dispatch<PillEvent>;
+} {
+  const [pill, dispatch] = useReducer(pillReducer, initialPill);
+  useEffect(() => dispatch({ kind: "phase", phase }), [phase]);
+  const wait = pill.wait;
+  const token = wait?.token ?? null;
+  const kind = wait?.kind ?? null;
+  useEffect(() => {
+    if (token === null || kind === null) return;
+    const ms =
+      kind === "threshold" ? pillDelays.thresholdMs : pillDelays.holdMs;
+    const event: PillEvent =
+      kind === "threshold"
+        ? { kind: "threshold-elapsed", token }
+        : { kind: "hold-elapsed", token };
+    const timer = setTimeout(() => dispatch(event), ms);
+    return () => clearTimeout(timer);
+  }, [token, kind]);
+  return { pill, dispatch };
+}

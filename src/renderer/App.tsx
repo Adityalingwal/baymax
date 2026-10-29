@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useState, type Dispatch } from "react";
 import type { DisplayState } from "../shared/cards";
-import type { HoldState } from "../shared/ipc";
+import type { HoldState, VoicePhase } from "../shared/ipc";
 import type { CardActions } from "./actions";
 import { TaskCard } from "./cards/TaskCard";
 import { applyDemoAction, demoDisplayState, type DemoAction } from "./demo";
@@ -22,10 +22,12 @@ function useMainState() {
   const [accessibility, setAccessibility] = useState<boolean | null>(null);
   const [holdKeyLabel, setHoldKeyLabel] = useState<string>("");
   const [display, setDisplay] = useState<DisplayState>(emptyState);
+  const [phase, setPhase] = useState<VoicePhase>({ phase: "idle" });
 
   useEffect(() => {
     const stopHold = window.baymax.onHoldState(setHold);
     const stopDisplay = window.baymax.onDisplayState(setDisplay);
+    const stopPhase = window.baymax.onVoicePhase(setPhase);
     window.baymax
       .getStartupInfo()
       .then((info) => {
@@ -38,10 +40,11 @@ function useMainState() {
     return () => {
       stopHold();
       stopDisplay();
+      stopPhase();
     };
   }, []);
 
-  return { hold, accessibility, holdKeyLabel, display };
+  return { hold, accessibility, holdKeyLabel, display, phase };
 }
 
 // Cmd+Shift+D or Ctrl+Shift+D; event.code, since Shift changes event.key per layout.
@@ -77,7 +80,7 @@ function demoActions(dispatch: Dispatch<DemoAction>): CardActions {
 }
 
 export function App() {
-  const { hold, accessibility, holdKeyLabel, display } = useMainState();
+  const { hold, accessibility, holdKeyLabel, display, phase } = useMainState();
   const demo = useDemoSwitch();
   const [demoState, dispatch] = useReducer(applyDemoAction, demoDisplayState);
   const demoCardActions = useMemo(() => demoActions(dispatch), [dispatch]);
@@ -95,7 +98,12 @@ export function App() {
   }, []);
 
   return (
-    <NotchShell needsAccess={accessibility === false} draft={draft}>
+    <NotchShell
+      needsAccess={accessibility === false}
+      draft={draft}
+      phase={phase}
+      setMuted={actions.setMuted}
+    >
       <TopBar
         hold={hold}
         holdKeyLabel={holdKeyLabel}
