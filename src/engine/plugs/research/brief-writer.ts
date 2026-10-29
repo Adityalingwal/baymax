@@ -81,7 +81,7 @@ async function askOnce(
     : { kind: "parts", parts };
 }
 
-// A thrown call is a failed step, as with the judge; only a cancel is not.
+// A thrown call is a failed step; only a cancel is not.
 async function ask(
   deps: DispatchDeps,
   job: DispatchJob,

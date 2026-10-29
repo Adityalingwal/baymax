@@ -17,6 +17,7 @@ import { createRecording } from "./recording";
 import type { Heard, NotCaughtCause } from "./recording";
 import { createSpeech } from "./speech";
 import type { LineFeed } from "./speech";
+import { createGapWatch } from "./speech-gaps";
 import type { Spoken } from "./speech-model";
 import { createTalkerTiming } from "./talker-timing";
 import type { SaidLine, Timers } from "./tasks/state";
@@ -177,6 +178,7 @@ function holdChanged(
 
 function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
   const timing = createTalkerTiming({ now: deps.now, log: deps.log });
+  const gaps = createGapWatch(deps.now, deps.log);
   const recording = createRecording({
     sendRecording: (command) => sendRecording(model, deps, command),
     startFlux: deps.startFlux,
@@ -194,6 +196,7 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
     },
     sendChunk: (chunk) => {
       firstAudio(model, deps);
+      gaps(chunk);
       deps.sendChunk(chunk);
     },
     sendEnd: deps.sendEnd,

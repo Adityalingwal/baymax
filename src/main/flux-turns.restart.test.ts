@@ -5,7 +5,6 @@ import {
   end,
   frame,
   hold,
-  missed,
   resolveCall,
   sendAudio,
   words,
@@ -35,7 +34,8 @@ describe("a final that may never come", () => {
     const b = h.last();
     frame(h, b, 2);
     h.clock.advance(2000);
-    expect(h.heard).toEqual([missed(a, "empty")]);
+    // A's not-caught is dropped: the user is already holding again.
+    expect(h.heard).toEqual([]);
     frame(h, b, 3);
     expect(flux.sent).toEqual(["audio 1", "endTurn", "audio 2", "restart"]);
     flux.open();
@@ -44,7 +44,7 @@ describe("a final that may never come", () => {
     flux.emit({ kind: "endOfTurn", trigger: "manual", transcript: "stale" });
     expect(pcmOf(h, 0)).toEqual([2, 0, 0, 0, 3, 0, 0, 0]);
     await resolveCall(h, 0, { kind: "words", words: "whole b" });
-    expect(h.heard).toEqual([missed(a, "empty"), words(b, "whole b")]);
+    expect(h.heard).toEqual([words(b, "whole b")]);
   });
 });
 

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelOutcome } from "../providers/anthropic";
 import type { SearchOutcome } from "../providers/search";
-import type { Findings } from "../shared/cards";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
@@ -10,9 +9,7 @@ import {
   pageUrl,
   runTask,
   startRun,
-  strayLinks,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 import type { FakeSearchStep } from "./run.harness";
@@ -22,58 +19,44 @@ afterEach(closeRuns);
 const nudgeText =
   "You made no new search and read no new page in this round. Research the gaps in the check result above before you answer: make a search and read at least one new page for each gap, then write the whole answer again as the JSON object.";
 
-const goodFindings: Findings = {
-  cardText: "## How it works\n\nHermes runs a loop with tools.",
-  sources: [
-    { id: "s1", url: pageUrl("one"), title: "Page one" },
-    { id: "s2", url: pageUrl("two"), title: "Page two" },
-  ],
-  openPoints: goodAnswer.openPoints,
-};
-
 const reading: FakeStep[] = [
   toolUseReply([{ search: "hermes" }]),
   toolUseReply([{ read: pageUrl("one") }]),
   toolUseReply([{ read: pageUrl("two") }]),
 ];
 const firstSearch = hits(pageUrl("one"), pageUrl("two"));
-const unmet = (gaps: string[] = ["the price"]) =>
-  verdictReply({ goalMet: false, gaps });
+// A complete answer that cites a page it never read: the code check fails it.
+const unread = workerAnswer({
+  claims: [{ claim: "Hermes runs a loop", sourceIds: ["s9"] }],
+});
 
 async function run(steps: FakeStep[], searches: FakeSearchStep[] = []) {
   const started = await startRun(steps, [firstSearch, ...searches]);
   started.port.send(runTask());
   const events = await started.ended();
   const nudges = started.entries.filter((e) => e.event === "retryNudge");
-  const judged = started.entries.filter(
-    (e) => e.event === "doneCheck" && e.stage === "judge",
+  const checked = started.entries.filter(
+    (e) => e.event === "doneCheck" && e.stage === "code",
   );
   return {
     ...started,
     events,
     last: events[events.length - 1],
     nudges,
-    judged,
+    checked,
   };
 }
 
 describe("runTask nudge", () => {
-  it("holds back a retry answer made without new research once, then judges the next one", async () => {
+  it("holds back a retry answer made without new research once, then checks the next one", async () => {
     const unresearched = workerAnswer();
-    const ran = await run([
-      ...reading,
-      workerAnswer(),
-      unmet(),
-      unresearched,
-      workerAnswer(),
-      verdictReply(),
-    ]);
+    const ran = await run([...reading, unread, unresearched, workerAnswer()]);
     expect(ran.last).toMatchObject({ type: "result" });
     expect(ran.nudges).toEqual([
       { event: "retryNudge", taskId: "task-1", round: 1 },
     ]);
-    expect(ran.judged).toHaveLength(2);
-    const [retry, afterNudge] = ran.loopRequests().slice(5);
+    expect(ran.checked).toHaveLength(2);
+    const [retry, afterNudge] = ran.loopRequests().slice(4);
     const content = unresearched.ok ? unresearched.message.content : [];
     expect(afterNudge.messages).toEqual([
       ...retry.messages,
@@ -85,18 +68,15 @@ describe("runTask nudge", () => {
   it("nudges once in each retry round", async () => {
     const ran = await run([
       ...reading,
-      workerAnswer(),
-      unmet(),
-      workerAnswer(),
-      workerAnswer(),
-      unmet(),
+      unread,
+      unread,
+      unread,
       workerAnswer(),
       workerAnswer(),
-      verdictReply(),
     ]);
     expect(ran.last).toMatchObject({ type: "result" });
     expect(ran.nudges.map((entry) => entry.round)).toEqual([1, 2]);
-    expect(ran.judged).toHaveLength(3);
+    expect(ran.checked).toHaveLength(3);
   });
 });
 
@@ -126,12 +106,10 @@ describe("runTask new research in a retry round", () => {
       const ran = await run(
         [
           ...reading,
-          workerAnswer(),
-          unmet(),
+          unread,
           tools,
           workerAnswer(),
           ...(counts ? [] : [workerAnswer()]),
-          verdictReply(),
         ],
         found,
       );
@@ -141,100 +119,28 @@ describe("runTask new research in a retry round", () => {
   );
 });
 
-// Every retry round researches nothing, so each has a nudge before its judged answer.
-const unmetEveryRound = (verdict: FakeStep, last: ModelOutcome) => [
+// Tool turns to the end of the model-call limit, which counts the brief writer's call too, the first of the task.
+const untilTheLimit = (): FakeStep[] => [
   ...reading,
+  unread,
+  toolUseReply([{ read: pageUrl("three") }]),
+  ...Array.from({ length: 24 }, () => toolUseReply([{ read: pageUrl("one") }])),
   workerAnswer(),
-  verdict,
-  workerAnswer(),
-  workerAnswer(),
-  verdict,
-  workerAnswer(),
-  last,
-  verdict,
 ];
 
-type EndingRow = { name: string; gaps: string[]; line: string; open: string[] };
-
-const endingRows: EndingRow[] = [
-  {
-    name: "its gaps, duplicates dropped",
-    gaps: ["How it stores memory", " the price ", "the price"],
-    line: "**Not found:** How it stores memory; the price",
-    open: ["How it stores memory", "the price"],
-  },
-  {
-    name: "the judge's fallback when it named no gap",
-    gaps: [" "],
-    line: "**Not found:** whether the answer meets the goal",
-    open: ["How it stores memory", "whether the answer meets the goal"],
-  },
-  {
-    name: "a gap with Markdown, a tag and two lines escaped",
-    gaps: ["[s2](https://evil.example) *now*\n# </card> `x`"],
-    line: "**Not found:** \\[s2\\]\\(https://evil.example\\) \\*now\\* \\# \\</card\\> \\`x\\`",
-    open: [
-      "How it stores memory",
-      "[s2](https://evil.example) *now*\n# </card> `x`",
-    ],
-  },
-];
-
-describe("runTask ending after the last round", () => {
-  it.each(endingRows)(
-    "ends a goal still unmet as a result naming $name",
-    async (row) => {
-      const last = workerAnswer({ spokenLine: " The last spoken line. " });
-      const ran = await run(unmetEveryRound(unmet(row.gaps), last));
-      expect(ran.last).toEqual({
-        type: "result",
-        taskId: "task-1",
-        spokenLine: "The last spoken line.",
-        findings: {
-          ...goodFindings,
-          cardText: `${goodFindings.cardText}\n\n${row.line}`,
-          openPoints: row.open,
-        },
-      });
-      if (ran.last.type !== "result") throw new Error("no result");
-      expect(strayLinks(ran.last.findings)).toEqual([]);
-    },
-  );
-
-  it("ends unchecked when a claim is still unbacked", async () => {
-    const unbacked = verdictReply({
-      goalMet: false,
-      claimsBacked: false,
-      gaps: ["the price"],
-    });
-    const ran = await run(unmetEveryRound(unbacked, workerAnswer()));
-    expect(ran.last).toEqual({
-      type: "incomplete",
-      taskId: "task-1",
-      incomplete: {
-        kind: "unchecked",
-        uncheckedPart: "the price",
-        findings: goodFindings,
-      },
-    });
-  });
-});
-
-// The model-call limit counts the brief writer's call too, the first of the task.
 describe("runTask other retry rounds", () => {
   it("gives a rewrite round after a cut-off answer no nudge", async () => {
     const cut = workerAnswer();
     if (cut.ok) cut.message.stop_reason = "max_tokens";
-    const ran = await run([...reading, cut, workerAnswer(), verdictReply()]);
+    const ran = await run([...reading, cut, workerAnswer()]);
     expect(ran.last).toMatchObject({ type: "result" });
     expect(ran.nudges).toEqual([]);
   });
 
-  it("ends sourcesThin given in a retry round as sourcesThin, unjudged", async () => {
+  it("ends sourcesThin given in a retry round as sourcesThin, unchecked", async () => {
     const ran = await run([
       ...reading,
-      workerAnswer(),
-      unmet(),
+      unread,
       workerAnswer({ status: "sourcesThin" }),
     ]);
     expect(ran.last).toMatchObject({
@@ -242,31 +148,29 @@ describe("runTask other retry rounds", () => {
       incomplete: { kind: "sourcesThin" },
     });
     expect(ran.nudges).toEqual([]);
-    expect(ran.judged).toHaveLength(1);
+    expect(ran.checked).toHaveLength(1);
   });
 
-  it("ends limitHit with the retry card when the model-call limit comes before its judge", async () => {
-    const repeats = Array.from({ length: 22 }, () =>
-      toolUseReply([{ read: pageUrl("one") }]),
-    );
-    const ran = await run([
-      ...reading,
-      workerAnswer(),
-      unmet(),
-      toolUseReply([{ read: pageUrl("three") }]),
-      ...repeats,
-      workerAnswer(),
-    ]);
+  it("ends limitHit with the retry card when the model-call limit comes during the retry round", async () => {
+    const ran = await run(untilTheLimit());
     expect(ran.requests).toHaveLength(30);
     expect(ran.last).toEqual({
       type: "incomplete",
       taskId: "task-1",
-      incomplete: { kind: "limitHit", findings: goodFindings },
+      incomplete: {
+        kind: "limitHit",
+        findings: {
+          cardText: goodAnswer.cardText,
+          sources: [],
+          openPoints: goodAnswer.openPoints,
+        },
+        spokenLine: goodAnswer.spokenLine,
+      },
     });
     expect(ran.entries).toContainEqual({
       event: "limitHit",
       taskId: "task-1",
-      role: "judge",
+      role: "worker",
       limit: "modelCalls",
     });
   });

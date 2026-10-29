@@ -16,11 +16,23 @@ const part = findings("Part.");
 
 const rows: Row[] = [
   {
-    name: "limitHit",
+    name: "limitHit with an answer",
+    incomplete: {
+      kind: "limitHit",
+      findings: { ...part, openPoints: ["the price"] },
+      spokenLine: "Hermes runs a loop.",
+    },
+    line: null,
+    missing: "Not found: the price",
+    said: "Hermes runs a loop.",
+    kind: "answer",
+  },
+  {
+    name: "limitHit with pages only",
     incomplete: { kind: "limitHit", findings: part },
-    line: "Hermes reached its limit; here is what I found.",
+    line: "I couldn't finish an answer on hermes; here are the pages I read.",
     missing: null,
-    said: "Hermes reached its limit; here is what I found.",
+    said: "I couldn't finish an answer on hermes; here are the pages I read.",
     kind: "failure",
   },
   {
@@ -94,7 +106,7 @@ describe("an incomplete task", () => {
         step: null,
         sourcesRead: 2,
       });
-      // The worker's next question is said as given; fixed lines are said as written.
+      // The worker's own text (its question or its answer) is said as given; fixed lines are said as written.
       expect(h.said.at(-1)).toEqual({ taskId: "t1", text: said, kind });
       expect(h.talked).toHaveLength(1);
     },

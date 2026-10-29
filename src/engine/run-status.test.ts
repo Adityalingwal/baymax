@@ -7,7 +7,6 @@ import {
   runTask,
   startRun,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 import type { AnswerFields } from "./run.harness";
@@ -67,22 +66,19 @@ const statusRows: StatusRow[] = [
   },
 ];
 
-// No verdict step is given: a judge call or a retry round would fail the test in settle.
+// A retry round would ask for a model step that is not given, so settle fails.
 describe("runTask answer status", () => {
-  it.each(statusRows)(
-    "ends $name without the judge or a retry",
-    async (row) => {
-      const run = await startRun([
-        toolUseReply([{ read: pageUrl("one") }]),
-        workerAnswer(row.answer),
-      ]);
-      run.port.send(runTask());
-      const events = await run.ended();
-      expect(events.filter((event) => event.type !== "progress")).toEqual([
-        { type: "incomplete", taskId: "task-1", incomplete: row.ending },
-      ]);
-    },
-  );
+  it.each(statusRows)("ends $name without a retry", async (row) => {
+    const run = await startRun([
+      toolUseReply([{ read: pageUrl("one") }]),
+      workerAnswer(row.answer),
+    ]);
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events.filter((event) => event.type !== "progress")).toEqual([
+      { type: "incomplete", taskId: "task-1", incomplete: row.ending },
+    ]);
+  });
 });
 
 const invalidRows: { name: string; answer: AnswerFields }[] = [
@@ -116,7 +112,6 @@ describe("runTask invalid answer status", () => {
       toolUseReply([{ read: pageUrl("one") }]),
       workerAnswer({ ...cited, ...row.answer }),
       workerAnswer(cited),
-      verdictReply(),
     ]);
     run.port.send(runTask());
     const events = await run.ended();
@@ -148,7 +143,7 @@ type ThinRow = {
 const thinRows: ThinRow[] = [
   {
     name: "a zero-read sourcesThin in round 0, then research and a complete answer",
-    steps: () => [thin(), readOne(), workerAnswer(cited), verdictReply()],
+    steps: () => [thin(), readOne(), workerAnswer(cited)],
     nudges: 1,
     codeChecks: 1,
     ending: "result",

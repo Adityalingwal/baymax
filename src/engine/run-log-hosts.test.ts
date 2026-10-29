@@ -7,7 +7,6 @@ import {
   runTask,
   startRun,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 
@@ -29,7 +28,6 @@ describe("runTask dev log hosts", () => {
     const run = await startRun([
       toolUseReply([{ read: pageUrl("one") }]),
       workerAnswer(oneCited),
-      verdictReply(),
     ]);
     run.port.send(runTask());
     await run.ended();
@@ -69,7 +67,6 @@ describe("runTask dev log cardSources", () => {
     const run = await startRun([
       toolUseReply([{ read: pageUrl("one") }, { read: pageUrl("two") }]),
       workerAnswer(),
-      verdictReply(),
     ]);
     run.port.send(runTask());
     await run.ended();
@@ -130,7 +127,6 @@ describe("runTask dev log privacy", () => {
           { read: `https://elsewhere.test${secret}` },
         ]),
         workerAnswer(oneCited),
-        verdictReply(),
       ],
       [hits(`https://elsewhere.test${secret}`)],
     );
@@ -160,7 +156,6 @@ describe("runTask dev log redirects", () => {
     const run = await startRun([
       toolUseReply([{ read: "http://a.example/start?q=user+words" }]),
       workerAnswer(oneCited),
-      verdictReply(),
     ]);
     run.network.answer("a.example", ["93.184.216.34"]);
     run.network.answer("b.example", ["93.184.216.34"]);

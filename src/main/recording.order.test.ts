@@ -59,6 +59,50 @@ describe("late not caught", () => {
   });
 });
 
+describe("not caught while a newer hold is open", () => {
+  it.each(lateRows)(
+    "drops A's not-caught from $name while B is still held",
+    async ({ finishA }) => {
+      const h = createHarness();
+      const a = hold(h, "accept");
+      sendAudio(h, a);
+      h.flow.holdStarted();
+      await finishA(h, a);
+      expect(h.heard).toEqual([]);
+    },
+  );
+
+  it.each([
+    { outcome: "accept" as const, said: false },
+    { outcome: "discard" as const, said: true },
+  ])(
+    "says A's held not-caught only when B, held meanwhile, ends as $outcome = $said",
+    async ({ outcome, said }) => {
+      const h = createHarness();
+      const a = hold(h, "accept");
+      sendAudio(h, a);
+      h.flow.holdStarted();
+      await resolveCall(h, 0, { kind: "empty" });
+      h.flow.holdEnded(outcome);
+      expect(h.heard).toEqual(said ? [missed(a, "empty")] : []);
+    },
+  );
+
+  it.each(lateRows)(
+    "drops A's not-caught from $name while B waits for its words",
+    async ({ finishA }) => {
+      const h = createHarness();
+      const a = hold(h, "accept");
+      sendAudio(h, a);
+      const b = hold(h, "accept");
+      sendAudio(h, b);
+      await finishA(h, a);
+      await resolveCall(h, 1, { kind: "words", words: "newer" });
+      expect(h.heard).toEqual([words(b, "newer")]);
+    },
+  );
+});
+
 describe("late transcript", () => {
   it("drops an older transcript that resolves after a newer question's words", async () => {
     const h = createHarness();

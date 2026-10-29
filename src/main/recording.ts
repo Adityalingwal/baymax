@@ -32,6 +32,7 @@ type RecordingState = {
   accepted: Map<UtteranceId, number>; // an accepted utterance's place in hold order, until it is heard
   nextSeq: number;
   lastWordsSeq: number;
+  held: { heard: Heard; seq: number } | null; // an older hold's not-caught, waiting on the hold being recorded now
 };
 
 // An utterance that never resolves (a lost renderer message) must not keep its place forever.
@@ -72,8 +73,41 @@ function deliver(
     console.log("[Voice] late transcript dropped");
     return;
   }
+  if (retryable(heard) && newerAccepted(state, seq)) {
+    console.log("[Voice] not caught dropped: the user already asked again");
+    return;
+  }
+  if (retryable(heard) && (state.recording?.seq ?? 0) > seq) {
+    state.held = { heard, seq };
+    return;
+  }
   if (heard.kind === "words") state.lastWordsSeq = seq;
   deps.onHeard(heard);
+}
+
+// A "didn't catch that" that a newer hold makes needless: the user already asked again.
+function retryable(heard: Heard): boolean {
+  return (
+    heard.kind === "notCaught" &&
+    (heard.cause === "empty" || heard.cause === "error")
+  );
+}
+
+function newerAccepted(state: RecordingState, seq: number): boolean {
+  return [...state.accepted.values()].some((other) => other > seq);
+}
+
+// The hold being recorded ended: accepted, it answers for the held not-caught; discarded (a tap), the not-caught is said after all.
+function settleHeld(
+  state: RecordingState,
+  deps: RecordingDeps,
+  outcome: HoldOutcome,
+): void {
+  const held = state.held;
+  state.held = null;
+  if (held === null || outcome !== "discard") return;
+  if (held.seq < state.lastWordsSeq || newerAccepted(state, held.seq)) return;
+  deps.onHeard(held.heard);
 }
 
 function accept(state: RecordingState, utteranceId: UtteranceId, seq: number) {
@@ -96,9 +130,10 @@ function endHold(
   state.recording = null;
   const { utteranceId, seq } = recording;
   deps.sendRecording({ type: "stop", utteranceId });
-  if (outcome === "discard") return turns.drop(utteranceId);
-  accept(state, utteranceId, seq);
-  turns.released(utteranceId);
+  if (outcome === "discard") turns.drop(utteranceId);
+  else accept(state, utteranceId, seq);
+  settleHeld(state, deps, outcome);
+  if (outcome !== "discard") turns.released(utteranceId);
 }
 
 function receive(
@@ -120,6 +155,7 @@ export function createRecording(deps: RecordingDeps): RecordingFlow {
     accepted: new Map(),
     nextSeq: 1,
     lastWordsSeq: 0,
+    held: null,
   };
   const turns = createTurns({
     ...deps,
@@ -139,10 +175,12 @@ export function createRecording(deps: RecordingDeps): RecordingFlow {
     micAudio: (audio) => receive(state, deps, turns, audio),
     rendererReset: () => {
       state.recording = null;
+      state.held = null;
       state.accepted.clear();
       turns.reset();
     },
     stop: () => {
+      state.held = null;
       endHold(state, deps, turns, "discard");
       state.accepted.clear();
       turns.stop();

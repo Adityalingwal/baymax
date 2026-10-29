@@ -1,7 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Findings, TaskId } from "../../../shared/cards";
 import type { EngineEvent } from "../../../shared/engine";
-import { withNotFound } from "./found";
 import { checkRound, incomplete, readTurn } from "./run-checks";
 import type { AnswerTurn, CheckRun, Fault, RoundEnd } from "./run-checks";
 import { nudgeMessage, retryMessage, thinNudgeMessage } from "./worker-prompt";
@@ -83,17 +82,12 @@ async function answeredRound(
   }
 }
 
-// After the last round, only a goal the web could not fully meet ends as a result, with its gaps named; an unbacked claim never does.
+// After the last round, a fault that still stands ends incomplete, never as a result.
 function lastEnding(
   taskId: TaskId,
   fault: Fault,
   found: Findings | null,
 ): EngineEvent {
-  if (fault.stage === "judge" && fault.flags.every((f) => f === "goalMet")) {
-    const gaps = fault.gaps.length > 0 ? fault.gaps : [fault.part];
-    const findings = withNotFound(fault.findings, gaps);
-    return { type: "result", taskId, spokenLine: fault.spokenLine, findings };
-  }
   if (fault.findings !== null) {
     const { part: uncheckedPart, findings } = fault;
     return incomplete(taskId, { kind: "unchecked", uncheckedPart, findings });

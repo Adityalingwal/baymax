@@ -7,7 +7,6 @@ import {
   runTask,
   startRun,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 
@@ -25,7 +24,6 @@ const steps = () => [
   toolUseReply([{ search: "hermes" }]),
   toolUseReply([{ read: pageUrl("one") }, { read: pageUrl("missing") }]),
   workerAnswer(oneCited),
-  verdictReply(),
 ];
 
 describe("runTask page reads in tests", () => {

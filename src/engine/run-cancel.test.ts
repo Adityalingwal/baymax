@@ -8,7 +8,6 @@ import {
   runTask,
   startRun,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 
@@ -98,7 +97,6 @@ describe("runTask cancel at the end", () => {
         cardText: "A loop.",
         claims: [{ claim: "A loop", sourceIds: ["s1"] }],
       }),
-      verdictReply(),
     ]);
     run.port.onMessage((event) => {
       if (event.type === "result") run.port.send(cancel);

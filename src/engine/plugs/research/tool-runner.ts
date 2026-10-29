@@ -31,8 +31,7 @@ const searchDown: ToolStep = {
 
 function counterLine(runner: ToolRunner, counts: Counts): string {
   const searches = taskLimits.searches - counts.searches;
-  // One model call stays kept for the judge.
-  const steps = taskLimits.modelCalls - runner.job.budget.modelCalls - 1;
+  const steps = taskLimits.modelCalls - runner.job.budget.modelCalls;
   const pages = runner.web.pages().length;
   return `Pages read: ${pages}. Searches left: ${searches}. Steps left: ${Math.max(0, steps)}.`;
 }
