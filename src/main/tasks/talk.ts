@@ -1,40 +1,61 @@
-import type { TaskId, TaskState, UtteranceId } from "../../shared/cards";
 import type {
-  FailureKind,
-  RecentExchange,
-  WaitingQuestion,
-} from "../../shared/engine";
+  ClarifyingQuestion,
+  TaskId,
+  TaskState,
+  UtteranceId,
+} from "../../shared/cards";
+import type { FailureKind } from "../../shared/engine";
 
-// A task the talker hears about, so its reply fits what is already running or waiting.
+// A task the front call hears about, so its line and route fit what is already running or waiting.
 export type TaskSummary = {
   taskId: TaskId;
   state: TaskState;
   words: string;
-  sayBack: string | null;
+  topic: string | null;
 };
 
-// What main asks the talker to say: its reply to new words, or a clarifying question or result in its own words.
-export type TalkRequest =
-  | {
-      kind: "reply";
-      taskId: TaskId;
-      utteranceId: UtteranceId | null; // null for a typed question
-      words: string;
-      recent: RecentExchange[];
-      tasks: TaskSummary[];
-      waiting: WaitingQuestion | null;
-    }
-  | { kind: "question"; taskId: TaskId; question: string; choices: string[] }
-  | { kind: "result"; taskId: TaskId; text: string };
+// Main's short record of a recent task: the question, the spoken answer and a bounded excerpt of the card.
+export type RecentExchange = {
+  taskId: TaskId;
+  state: TaskState;
+  question: string;
+  answer: string | null; // the spoken line; null until the task ends
+  cardText: string | null;
+};
 
-// The generation a reply belongs to, for its timing: its utterance, or its typed question.
-export function replyKey(talk: {
+// The clarifying question shown when the words were asked, with the request it belongs to.
+export type WaitingQuestion = {
+  taskId: TaskId;
+  words: string; // the request's original words
+  question: ClarifyingQuestion;
+};
+
+// One turn of the conversation so far, as plain text.
+export type HistoryTurn = { role: "user" | "assistant"; text: string };
+
+// What main asks the front call for: a spoken line about new words, then a decision about them.
+export type TalkRequest = {
+  kind: "front";
+  attemptId: string; // unique per call, so a late result of an older call is ignored
+  taskId: TaskId;
+  utteranceId: UtteranceId | null; // null for a typed question or a card answer
+  words: string;
+  history: HistoryTurn[];
+  recent: RecentExchange[];
+  tasks: TaskSummary[];
+  waiting: WaitingQuestion | null;
+};
+
+// The generation a front call belongs to, for its timing: its utterance, or its typed question.
+export function frontKey(talk: {
   taskId: TaskId;
   utteranceId: UtteranceId | null;
 }): string {
   return talk.utteranceId ?? `typed:${talk.taskId}`;
 }
 
-// How the talker's reply to new words went; a chat card waits for it.
+// How a front call went; decision is the decide tool's raw input, or null when no tool came.
+// A failed call still carries the line it spoke before failing, so the conversation keeps it.
 export type TalkerReply =
-  { kind: "said"; text: string } | { kind: "failed"; failure: FailureKind };
+  | { kind: "said"; text: string; decision: unknown }
+  | { kind: "failed"; failure: FailureKind; text?: string };

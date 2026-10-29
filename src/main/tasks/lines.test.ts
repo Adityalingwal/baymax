@@ -17,7 +17,6 @@ const fixedRows: { name: keyof typeof fixedLines; line: string }[] = [
     name: "queueFull",
     line: "I already have three waiting. Cancel one or ask again later.",
   },
-  { name: "outsideResearch", line: "I can't do that yet in this version." },
   { name: "wordsNotCaught", line: "I didn't catch that, say it again." },
   {
     name: "micBlocked",

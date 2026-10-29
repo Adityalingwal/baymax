@@ -73,7 +73,7 @@ describe("runTask nudge", () => {
       { event: "retryNudge", taskId: "task-1", round: 1 },
     ]);
     expect(ran.judged).toHaveLength(2);
-    const [retry, afterNudge] = ran.requests.slice(5);
+    const [retry, afterNudge] = ran.loopRequests().slice(5);
     const content = unresearched.ok ? unresearched.message.content : [];
     expect(afterNudge.messages).toEqual([
       ...retry.messages,
@@ -220,6 +220,7 @@ describe("runTask ending after the last round", () => {
   });
 });
 
+// The model-call limit counts the brief writer's call too, the first of the task.
 describe("runTask other retry rounds", () => {
   it("gives a rewrite round after a cut-off answer no nudge", async () => {
     const cut = workerAnswer();
@@ -245,7 +246,7 @@ describe("runTask other retry rounds", () => {
   });
 
   it("ends limitHit with the retry card when the model-call limit comes before its judge", async () => {
-    const repeats = Array.from({ length: 18 }, () =>
+    const repeats = Array.from({ length: 22 }, () =>
       toolUseReply([{ read: pageUrl("one") }]),
     );
     const ran = await run([
@@ -256,7 +257,7 @@ describe("runTask other retry rounds", () => {
       ...repeats,
       workerAnswer(),
     ]);
-    expect(ran.requests).toHaveLength(25);
+    expect(ran.requests).toHaveLength(30);
     expect(ran.last).toEqual({
       type: "incomplete",
       taskId: "task-1",

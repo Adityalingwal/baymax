@@ -1,24 +1,13 @@
 import type { DisplayState, TaskId, UtteranceId } from "../../shared/cards";
-import type {
-  EngineCommand,
-  EngineEvent,
-  IntakeOutcome,
-  WaitingQuestion,
-} from "../../shared/engine";
+import type { EngineCommand, EngineEvent } from "../../shared/engine";
 import type {
   AnswerQuestion,
   OpenSource,
   SetCardFolded,
 } from "../../shared/ipc";
-import { receiveReply } from "./chat";
+import { ask, bindAnswer } from "./ask";
 import { buildDisplay, waitingQuestion } from "./display";
-import {
-  applyIntakeOutcome,
-  ask,
-  bindAnswer,
-  failIntake,
-  retryTask,
-} from "./intake";
+import { receiveFront, retryTask } from "./front";
 import { setVoiceAvailable, showNotice } from "./notices";
 import type { Notice } from "./notices";
 import type {
@@ -28,20 +17,11 @@ import type {
   Output,
   SaidKind as RecordSaidKind,
   SaidLine as RecordSaidLine,
-  TaskRecord,
 } from "./record";
+import { createModel, dropped, isEnded, silence } from "./record";
+import { showNextQuestion } from "./questions";
+import type { TalkRequest, TalkerReply, WaitingQuestion } from "./talk";
 import {
-  closeIntakeStep,
-  createModel,
-  dropped,
-  holdsIntake,
-  isEnded,
-  showNextQuestion,
-  silence,
-} from "./record";
-import type { TalkRequest, TalkerReply } from "./talk";
-import {
-  admit,
   cancelTask,
   receiveRunEvent,
   receiveUnaskedCancel,
@@ -62,6 +42,7 @@ export type MainStateDeps = {
   say: (line: SaidLine) => void;
   silence: (taskId: TaskId) => void;
   talk: (request: TalkRequest) => void;
+  cancelAttempt: (attemptId: string) => void;
   openUrl: (url: string) => Promise<void>;
   log: (message: string) => void;
   timers: Timers;
@@ -84,7 +65,11 @@ export type MainState = {
   setMuted: (muted: boolean) => void;
   setVoiceAvailable: (available: boolean) => void;
   showNotice: (notice: Notice) => void;
-  talkerReplied: (taskId: TaskId, reply: TalkerReply) => void;
+  talkerReplied: (
+    taskId: TaskId,
+    attemptId: string,
+    reply: TalkerReply,
+  ) => void;
   receive: (event: EngineEvent) => void;
   displayState: () => DisplayState;
 };
@@ -106,11 +91,44 @@ export function createMainState(deps: MainStateDeps): MainState {
     setVoiceAvailable: (available) =>
       update((c) => setVoiceAvailable(c, available)),
     showNotice: (notice) => update((c) => showNotice(c, notice)),
-    talkerReplied: (taskId, reply) =>
-      update((c) => receiveReply(c, taskId, reply)),
+    talkerReplied: (taskId, attemptId, reply) =>
+      update((c) => receiveFront(c, taskId, attemptId, reply)),
     receive: (event) => update((c) => receiveEvent(c, event)),
     displayState: () => buildDisplay(model),
   };
+}
+
+// A closed window or a failed line must not stop the other outputs or the inbox.
+function guarded(deps: MainStateDeps, what: string, call: () => void): void {
+  try {
+    call();
+  } catch (error: unknown) {
+    deps.log(`${what} failed: ${String(error)}`);
+  }
+}
+
+function flushOutput(
+  deps: MainStateDeps,
+  update: (input: Input) => void,
+  output: Output,
+): void {
+  const guard = (what: string, call: () => void) => guarded(deps, what, call);
+  // A failed send leaves a command the model counts as held, so it surfaces to main's restart path.
+  if (output.kind === "send") {
+    deps.send(output.command);
+  } else if (output.kind === "say") {
+    guard("say", () => deps.say(output.line));
+  } else if (output.kind === "silence") {
+    guard("silence", () => deps.silence(output.taskId));
+  } else if (output.kind === "talk") {
+    guard("talk", () => deps.talk(output.request));
+  } else if (output.kind === "cancelAttempt") {
+    guard("cancelAttempt", () => deps.cancelAttempt(output.attemptId));
+  } else {
+    guard("timer", () =>
+      deps.timers.setTimer(output.ms, () => update(output.fire)),
+    );
+  }
 }
 
 // One path for every change; an input that arrives while it runs (the engine may reply inside send) waits its turn.
@@ -120,37 +138,13 @@ function createUpdatePath(
 ): (input: Input) => void {
   const inbox: Input[] = [];
   let running = false;
-  // A closed window or a failed line must not stop the other outputs or the inbox.
-  const guarded = (what: string, call: () => void): void => {
-    try {
-      call();
-    } catch (error: unknown) {
-      deps.log(`${what} failed: ${String(error)}`);
-    }
-  };
-  const flush = (output: Output): void => {
-    // A failed send leaves a command the model counts as held, so it surfaces to main's restart path.
-    if (output.kind === "send") {
-      deps.send(output.command);
-    } else if (output.kind === "say") {
-      guarded("say", () => deps.say(output.line));
-    } else if (output.kind === "silence") {
-      guarded("silence", () => deps.silence(output.taskId));
-    } else if (output.kind === "talk") {
-      guarded("talk", () => deps.talk(output.request));
-    } else {
-      guarded("timer", () =>
-        deps.timers.setTimer(output.ms, () => update(output.fire)),
-      );
-    }
-  };
   const apply = (input: Input): void => {
     const change: Change = { model, outputs: [], log: deps.log };
     if (!input(change)) return;
     startNext(change);
     showNextQuestion(change);
-    guarded("publish", () => deps.publish(buildDisplay(model)));
-    change.outputs.forEach(flush);
+    guarded(deps, "publish", () => deps.publish(buildDisplay(model)));
+    change.outputs.forEach((output) => flushOutput(deps, update, output));
   };
   const update = (input: Input): void => {
     inbox.push(input);
@@ -176,34 +170,9 @@ function receiveEvent(change: Change, event: EngineEvent): boolean {
   switch (event.type) {
     case "cancelled":
       return receiveUnaskedCancel(change, record, event.findings);
-    case "intake":
-      return receiveIntake(change, record, event.outcome);
-    case "failure":
-      return failIntake(change, record, event.kind);
     default:
       return receiveRunEvent(change, record, event);
   }
-}
-
-function receiveIntake(
-  change: Change,
-  record: TaskRecord,
-  outcome: IntakeOutcome,
-): boolean {
-  if (!holdsIntake(record)) {
-    return dropped(change, `intake for ${record.card.taskId}`);
-  }
-  if (outcome.route === "answer" && record.sent?.type === "clarifyingAnswer") {
-    change.log(
-      `answer route in reply to a clarifying answer for ${record.card.taskId}`,
-    );
-    return failIntake(change, record, "error");
-  }
-  closeIntakeStep(record);
-  if (outcome.route === "newTask" || outcome.route === "followUp") {
-    return admit(change, record, outcome);
-  }
-  return applyIntakeOutcome(change, record, outcome);
 }
 
 function closeCard(change: Change, taskId: TaskId): boolean {

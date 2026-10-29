@@ -6,7 +6,6 @@ import {
   createHarness,
   findings,
   finish,
-  intake,
   newTask,
 } from "./harness";
 
@@ -25,9 +24,9 @@ const acceptedRows: Row[] = [
     act: (h) => h.state.ask("hi", null, null),
   },
   {
-    name: "intake",
+    name: "front reply",
     setup: (h) => h.state.ask("hi", null, null),
-    act: (h) => h.state.receive(intake("t1", newTask("hermes"))),
+    act: (h) => h.reply("t1", newTask("hermes")),
   },
   {
     name: "progress",
@@ -115,15 +114,33 @@ const droppedRows: Row[] = [
       h.state.receive({ type: "cancelled", taskId: "t1", findings: null }),
   },
   {
-    name: "intake for a running task",
-    setup: (h) => askNew(h, "hermes"),
-    act: (h) => h.state.receive(intake("t1", newTask("again"))),
-  },
-  {
-    name: "failure for a running task",
+    name: "a front reply for a running task",
     setup: (h) => askNew(h, "hermes"),
     act: (h) =>
-      h.state.receive({ type: "failure", taskId: "t1", kind: "error" }),
+      h.state.talkerReplied("t1", "t1#1", {
+        kind: "said",
+        text: "again",
+        decision: newTask("again"),
+      }),
+  },
+  {
+    name: "a front failure for a running task",
+    setup: (h) => askNew(h, "hermes"),
+    act: (h) =>
+      h.state.talkerReplied("t1", "t1#1", { kind: "failed", failure: "error" }),
+  },
+  {
+    name: "a front reply for a cancelled task",
+    setup: (h) => {
+      h.state.ask("hi", null, null);
+      h.state.cancelTask("t1");
+    },
+    act: (h) =>
+      h.state.talkerReplied("t1", "t1#1", {
+        kind: "said",
+        text: "hi",
+        decision: newTask("hermes"),
+      }),
   },
   {
     name: "a cancelled event for a queued task",
@@ -132,7 +149,7 @@ const droppedRows: Row[] = [
       h.state.receive({ type: "cancelled", taskId: "t2", findings: null }),
   },
   {
-    name: "1.5 s after the intake, when no timer is left",
+    name: "1.5 s after the front reply, when no timer is left",
     setup: (h) => askNew(h, "hermes"),
     act: (h) => h.advance(1500),
   },
@@ -197,15 +214,14 @@ describe("re-entry", () => {
         : null,
     );
     h.state.ask("hi", null, null);
-    h.state.receive(intake("t1", newTask("hermes")));
+    h.reply("t1", newTask("hermes"));
     expect(h.timeline).toEqual([
       "publish",
-      "send question t1",
-      "talk reply t1",
+      "talk front t1",
       "publish",
       "send runTask t1",
       "publish",
-      "talk result t1",
+      "say answer",
     ]);
     expect(h.card("t1")?.state).toBe("done");
   });

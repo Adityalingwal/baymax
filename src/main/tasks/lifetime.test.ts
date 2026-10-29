@@ -8,7 +8,7 @@ type Setup = (h: Harness) => void;
 const thinking: Setup = (h) => h.state.ask("hi", null, null);
 const failed: Setup = (h) => {
   thinking(h);
-  h.state.receive({ type: "failure", taskId: "t1", kind: "modelsUnreachable" });
+  h.replyFailed("t1", "modelsUnreachable");
 };
 const running: Setup = (h) => {
   askNew(h, "hermes");
@@ -48,11 +48,11 @@ type CancelRow = {
 
 const cancelRows: CancelRow[] = [
   {
-    name: "thinking, engine holds it",
+    name: "thinking, front call in flight",
     setup: thinking,
     taskId: "t1",
-    state: "cancelling",
-    sendsCancel: true,
+    state: "cancelled",
+    sendsCancel: false,
   },
   {
     name: "thinking after a failure",

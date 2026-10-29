@@ -5,14 +5,14 @@ import type { RendererIpc, RendererSender } from "./renderer-actions";
 import { createTalker } from "./talker";
 import { createMainState } from "./tasks/state";
 import type { MainState, MainStateDeps } from "./tasks/state";
-import { replyKey } from "./tasks/talk";
+import { frontKey } from "./tasks/talk";
 import type { TalkRequest } from "./tasks/talk";
 import { createVoice } from "./voice";
 import type { Voice, VoiceDeps } from "./voice";
 
 export type WiringDeps = Omit<
   MainStateDeps,
-  "send" | "say" | "silence" | "talk"
+  "send" | "say" | "silence" | "talk" | "cancelAttempt"
 > & {
   port: EnginePort;
   talkerStream: TextStream | null; // null when there is no Anthropic key
@@ -33,15 +33,13 @@ export function wireMain(deps: WiringDeps): Wiring {
   const talker = createTalker({
     stream: talkerStream,
     talk: voice.talk,
-    onReply: (taskId, reply) =>
-      forwardFailure(fail, () => state.talkerReplied(taskId, reply)),
+    onReply: (taskId, attemptId, reply) =>
+      forwardFailure(fail, () => state.talkerReplied(taskId, attemptId, reply)),
     timers: deps.timers,
     log: deps.log,
   });
   const talk = (request: TalkRequest): void => {
-    if (request.kind === "reply" && request.utteranceId === null) {
-      voice.submitted(replyKey(request));
-    }
+    if (request.utteranceId === null) voice.submitted(frontKey(request));
     talker.talk(request);
   };
   const state = createMainState({
@@ -50,6 +48,7 @@ export function wireMain(deps: WiringDeps): Wiring {
     say: voice.say,
     silence: voice.silence,
     talk,
+    cancelAttempt: talker.cancel,
   });
   voice.start(state);
   // The port only logs a throwing listener, so a state bug is forwarded here.
@@ -67,6 +66,7 @@ export function wireMain(deps: WiringDeps): Wiring {
     closed = true;
     removeActions();
     unsubscribe();
+    talker.shutdown();
     voice.stop();
     port.close();
   };

@@ -3,7 +3,7 @@ import type { Synthesis } from "../providers/deepgram";
 import type { UtteranceId } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
 import { fixedLines } from "./tasks/lines";
-import { fakeSender, wire } from "./wiring.harness";
+import { failFront, fakeSender, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -67,9 +67,9 @@ describe("the mic audio channel", () => {
     w.send(ipcChannels.micAudio, { type: "end", utteranceId });
     w.transcriptions[0].resolve({ kind: "words", words: "how does it work" });
     await flush();
-    expect(w.port.sent).toMatchObject([
-      { type: "question", utteranceId, words: "how does it work" },
-    ]);
+    expect(w.port.sent).toEqual([]);
+    expect(w.card("t1")).toMatchObject({ words: "how does it work" });
+    expect(w.talkerCalls).toHaveLength(1);
   });
 });
 
@@ -95,7 +95,7 @@ describe("main's lines and voice", () => {
     const w = wire();
     w.send(ipcChannels.submitQuestion, { text: "how does hermes work" });
     await flush();
-    w.port.emit({ type: "failure", taskId: "t1", kind: "error" });
+    await failFront(w, "error");
     expect(w.syntheses).toHaveLength(1);
     w.send(ipcChannels.cancelTask, { taskId: "t1" });
     w.syntheses[0].resolve(audio);

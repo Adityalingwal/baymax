@@ -62,7 +62,7 @@ describe("runTask with Exa Contents", () => {
         sources: [{ id: "s1", url: pageUrl("one"), title: "Hermes from Exa" }],
       },
     });
-    const results = JSON.stringify(run.requests[1].messages[2].content);
+    const results = JSON.stringify(run.workerRequests()[1].messages[2].content);
     expect(results).toContain("Exa read this page with its own crawler.");
     expect(run.network.targets).toHaveLength(0);
   });

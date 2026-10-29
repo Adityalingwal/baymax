@@ -112,21 +112,56 @@ export type TextRequest = Omit<
   "stream"
 >;
 
+export type ToolUse = { name: string; input: unknown };
+
+// What a tool-enabled call adds: how it stopped, its tool blocks with their completed input, and its usage.
+export type ToolRound = {
+  stopReason: string | null;
+  toolUses: ToolUse[];
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number | null;
+  };
+};
+
+// text is only what came before the first tool block; round is present only for a request that carries tools.
 export type TextOutcome =
-  | { ok: true; text: string }
+  | { ok: true; text: string; round?: ToolRound }
   | { ok: false; failure: ModelFailure; detail: string }; // detail goes only to the dev log
 
-// Streams one reply's text; onText gets each piece as it arrives.
+// Streams one reply's text; onText gets each piece as it arrives, onToolStart is told when the first tool block starts.
 export type TextStream = (
   request: TextRequest,
   options: { timeoutMs: number; signal: AbortSignal },
   onText: (text: string) => void,
+  onToolStart?: () => void,
 ) => Promise<TextOutcome>;
+
+function roundOf(message: Anthropic.Message): ToolRound {
+  const toolUses: ToolUse[] = [];
+  for (const block of message.content) {
+    if (block.type === "tool_use") {
+      toolUses.push({ name: block.name, input: block.input });
+    }
+  }
+  const { usage } = message;
+  return {
+    stopReason: message.stop_reason,
+    toolUses,
+    usage: {
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cacheReadInputTokens: usage.cache_read_input_tokens ?? null,
+    },
+  };
+}
 
 export function createTextStream(params: ClientParams): TextStream {
   const client = createClient(params);
-  return async (request, options, onText) => {
+  return async (request, options, onText, onToolStart) => {
     let text = "";
+    let toolStarted = false;
     try {
       const stream = client.messages.stream(request, {
         timeout: options.timeoutMs,
@@ -134,6 +169,14 @@ export function createTextStream(params: ClientParams): TextStream {
       });
       for await (const event of stream) {
         if (
+          event.type === "content_block_start" &&
+          event.content_block.type === "tool_use" &&
+          !toolStarted
+        ) {
+          toolStarted = true;
+          onToolStart?.();
+        } else if (
+          !toolStarted &&
           event.type === "content_block_delta" &&
           event.delta.type === "text_delta"
         ) {
@@ -141,8 +184,12 @@ export function createTextStream(params: ClientParams): TextStream {
           onText(event.delta.text);
         }
       }
-      await stream.finalMessage();
-      return { ok: true, text };
+      // The completed tool input comes from the final message; partial JSON from the stream can look whole when a stream is cut.
+      const message = await stream.finalMessage();
+      const withTools = (request.tools ?? []).length > 0;
+      return withTools
+        ? { ok: true, text, round: roundOf(message) }
+        : { ok: true, text };
     } catch (error) {
       return failed(error, options.signal, params.apiKey);
     }

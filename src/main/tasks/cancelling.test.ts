@@ -1,39 +1,40 @@
 import { describe, expect, it } from "vitest";
-import type { EngineEvent } from "../../shared/engine";
 import {
   askFollowUp,
   askNew,
   counts,
   createHarness,
   findings,
-  intake,
   newTask,
 } from "./harness";
 
-const thinkingReplies: { name: string; reply: EngineEvent }[] = [
-  { name: "an intake", reply: intake("t1", newTask("hermes")) },
-  {
-    name: "a failure",
-    reply: { type: "failure", taskId: "t1", kind: "modelsUnreachable" },
-  },
-];
+describe("cancelling a task whose front call is in flight", () => {
+  it("cancels it at once with no engine message, and a late reply or failure changes nothing", () => {
+    const h = createHarness();
+    h.state.ask("hi", null, null);
+    const [{ attemptId }] = h.talked;
+    h.state.cancelTask("t1");
+    expect(h.card("t1")).toMatchObject({ state: "cancelled", line: null });
+    expect(h.cancelled).toEqual([attemptId]);
+    expect(h.silenced).toEqual(["t1"]);
+    expect(h.sent).toEqual([]);
+    const [published, sent, said] = counts(h);
+    h.state.talkerReplied("t1", attemptId, {
+      kind: "said",
+      text: "Hello.",
+      decision: newTask("hermes"),
+    });
+    h.state.talkerReplied("t1", attemptId, {
+      kind: "failed",
+      failure: "error",
+    });
+    h.state.receive({ type: "cancelled", taskId: "t1", findings: null });
+    expect(counts(h)).toEqual([published, sent, said]);
+    expect(h.card("t1")).toMatchObject({ state: "cancelled", answer: null });
+  });
+});
 
 describe("a reply that ends the step while cancelling", () => {
-  it.each(thinkingReplies)(
-    "$name ends a thinking task cancelled and drops later events",
-    ({ reply }) => {
-      const h = createHarness();
-      h.state.ask("hi", null, null);
-      h.state.cancelTask("t1");
-      const [published, sent, said] = counts(h);
-      h.state.receive(reply);
-      expect(counts(h)).toEqual([published + 1, sent, said]);
-      expect(h.card("t1")).toMatchObject({ state: "cancelled", line: null });
-      h.state.receive({ type: "cancelled", taskId: "t1", findings: null });
-      expect(counts(h)).toEqual([published + 1, sent, said]);
-    },
-  );
-
   it("an incomplete ends a running task cancelled and its follow-up gets the findings", () => {
     const h = createHarness();
     askNew(h, "hermes");

@@ -13,6 +13,8 @@ import type { TaskBudget } from "../../core/limits";
 import type { LoopEnding, ToolTurn } from "../../core/tool-batch";
 import { runWorkerLoop } from "../../core/worker-loop";
 import { answerSchema } from "./answer";
+import type { WorkerBrief } from "./brief";
+import { writeBrief } from "./brief-writer";
 import type { Connect, LookupAll } from "./connection";
 import { foundFindings } from "./found";
 import { cardSourcesEntry } from "./log-hosts";
@@ -98,7 +100,7 @@ async function work(worker: Worker): Promise<WorkTurn> {
   return { kind: "turn", turn: outcome };
 }
 
-function startRounds(run: ResearchRun): Rounds {
+function startRounds(run: ResearchRun, brief: WorkerBrief): Rounds {
   const { taskId } = run.task;
   const web = createWebTool(run.access);
   let built: Findings | null = null;
@@ -109,13 +111,13 @@ function startRounds(run: ResearchRun): Rounds {
     run.progress({ type: "progress", taskId, step, sourcesRead });
   const first = firstWorkerMessage({
     today: run.today,
-    brief: run.command.brief,
+    brief,
     parent: run.command.parent,
   });
   const checks: CheckRun = {
     deps: run.deps,
     task: run.task,
-    brief: run.command.brief,
+    brief,
     today: run.today,
     pages: web.pages,
     found,
@@ -132,11 +134,20 @@ function startRounds(run: ResearchRun): Rounds {
   };
 }
 
-// One task's research: returns its one terminal event, or null once cancelled; progress goes out on the way.
+// One task's research: the brief first, then the rounds. Returns its one terminal event, or null once cancelled; progress goes out on the way.
 export async function runResearch(
   run: ResearchRun,
 ): Promise<EngineEvent | null> {
-  const event = await runRounds(startRounds(run));
+  const { deps, task, command } = run;
+  const brief = await writeBrief(
+    deps,
+    task,
+    command.ask,
+    command.parent,
+    run.today,
+  );
+  if (brief === null) return null;
+  const event = await runRounds(startRounds(run, brief));
   const entry = cardSourcesEntry(run.task.taskId, event);
   if (entry !== null) run.deps.log(entry);
   return event;

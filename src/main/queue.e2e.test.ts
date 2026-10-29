@@ -6,9 +6,9 @@ import type { Wired } from "./wiring.harness";
 
 const names = ["hermes", "rust", "zig", "go", "ocaml"];
 
-function fiveAsked(): Wired {
+async function fiveAsked(): Promise<Wired> {
   const w = wire();
-  names.forEach((name, index) => admitAs(w, `t${index + 1}`, name));
+  for (const name of names) await admitAs(w, name);
   return w;
 }
 
@@ -24,12 +24,13 @@ const finish = (w: Wired, taskId: TaskId) =>
   });
 
 describe("five typed questions through the wiring", () => {
-  it("runs the first, queues the next three and refuses the fifth", () => {
-    const w = fiveAsked();
+  it("runs the first, queues the next three and refuses the fifth", async () => {
+    const w = await fiveAsked();
     expect(runTaskIds(w)).toEqual(["t1"]);
     expect(w.card("t1")).toMatchObject({
       state: "running",
-      line: "Looking into hermes.",
+      reply: "Checking hermes.",
+      line: null,
     });
     for (const taskId of ["t2", "t3", "t4"]) {
       expect(w.card(taskId)).toMatchObject({
@@ -45,8 +46,8 @@ describe("five typed questions through the wiring", () => {
     expect(w.failures).toEqual([]);
   });
 
-  it("takes the refused card away at 3000 ms and leaves the other four", () => {
-    const w = fiveAsked();
+  it("takes the refused card away at 3000 ms and leaves the other four", async () => {
+    const w = await fiveAsked();
     const others = () => ["t1", "t2", "t3", "t4"].map((id) => w.card(id));
     const before = others();
     w.advance(2999);
@@ -66,24 +67,27 @@ describe("five typed questions through the wiring", () => {
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("speech for five typed questions", () => {
-  it("says only the queue-full line; the start line and the queued lines show on the cards", async () => {
-    const w = fiveAsked();
-    // Without an Anthropic key the talker's replies end empty and are dropped.
+  it("says each front line and the queue-full line; the queued lines show on the cards only", async () => {
+    const w = await fiveAsked();
     await flush();
     await w.playAll();
-    expect(w.spoken()).toEqual([fixedLines.queueFull]);
+    expect(w.spoken()).toEqual([
+      ...names.map((name) => `Checking ${name}.`),
+      fixedLines.queueFull,
+    ]);
     expect(w.card("t2")?.line).toBe(fixedLines.queued);
   });
 });
 
 describe("the queue moving on through the wiring", () => {
-  it("starts the oldest queued task when the running one ends, and keeps the rest in order", () => {
-    const w = fiveAsked();
+  it("starts the oldest queued task when the running one ends, and keeps the rest in order", async () => {
+    const w = await fiveAsked();
     finish(w, "t1");
     expect(runTaskIds(w)).toEqual(["t1", "t2"]);
     expect(w.card("t2")).toMatchObject({
       state: "running",
-      line: "Looking into rust.",
+      reply: "Checking rust.",
+      line: null,
     });
     expect(w.card("t3")?.state).toBe("queued");
     expect(w.card("t4")?.state).toBe("queued");

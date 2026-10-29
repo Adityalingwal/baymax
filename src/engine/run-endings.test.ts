@@ -57,7 +57,7 @@ describe("runTask search endings", () => {
         [searchFailed(cause)],
       );
       expect(last).toEqual([searchDown]);
-      expect(run.requests).toHaveLength(1);
+      expect(run.loopRequests()).toHaveLength(1);
     },
   );
 
@@ -67,7 +67,7 @@ describe("runTask search endings", () => {
       [searchFailed("timeout")],
     );
     expect(last).toEqual([errorEnd]);
-    expect(lastResults(run.requests[1])).toEqual([
+    expect(lastResults(run.workerRequests()[1])).toEqual([
       expect.objectContaining({
         is_error: true,
         content: expect.stringContaining("Search failed (timeout)"),
@@ -89,15 +89,15 @@ describe("runTask search limits", () => {
     expect(run.queries).toHaveLength(2);
   });
 
-  it("ends limitHit at the ninth search without sending it", async () => {
-    const steps = Array.from({ length: 9 }, (_, index) =>
+  it("ends limitHit at the 21st search without sending it", async () => {
+    const steps = Array.from({ length: 21 }, (_, index) =>
       toolUseReply([{ search: `query ${index + 1}` }]),
     );
-    const searches = Array.from({ length: 9 }, () => hits(pageUrl("one")));
+    const searches = Array.from({ length: 21 }, () => hits(pageUrl("one")));
     const { run, last } = await runOf(steps, searches);
     expect(last).toEqual([limitHit]);
-    expect(run.queries).toHaveLength(8);
-    expect(lastResults(run.requests[8])).toEqual([
+    expect(run.queries).toHaveLength(20);
+    expect(lastResults(run.workerRequests()[20])).toEqual([
       expect.objectContaining({
         content: expect.stringContaining("Searches left: 0."),
       }),
@@ -112,7 +112,7 @@ describe("runTask other endings", () => {
       modelError,
     ]);
     expect(last).toEqual([errorEnd]);
-    expect(lastResults(run.requests[1])).toEqual([
+    expect(lastResults(run.workerRequests()[1])).toEqual([
       expect.objectContaining({
         is_error: true,
         content: expect.stringContaining(
@@ -123,8 +123,9 @@ describe("runTask other endings", () => {
   });
 
   it("ends limitHit before a tool batch once the active time is used up", async () => {
-    const times = [0, 130_000];
-    const now = () => times.shift() ?? 130_000;
+    // the brief writer's call takes the first two readings
+    const times = [0, 0, 0, 250_000];
+    const now = () => times.shift() ?? 250_000;
     const run = await startRun(
       [toolUseReply([{ search: "hermes" }])],
       [hits(pageUrl("one"))],
@@ -141,7 +142,7 @@ describe("runTask other endings", () => {
     if (costly.ok) costly.message.usage.input_tokens = 248_000;
     const { run, last } = await runOf([costly], [hits(pageUrl("one"))]);
     expect(last).toEqual([limitHit]);
-    expect(run.requests).toHaveLength(1);
+    expect(run.loopRequests()).toHaveLength(1);
   });
 });
 
@@ -193,7 +194,7 @@ const malformedAnswers: { name: string; step: ModelOutcome }[] = [
 describe("runTask active time", () => {
   it("counts a tool batch's time as active time", async () => {
     const sent: { queries: string[] } = { queries: [] };
-    const now = () => (sent.queries.length > 0 ? 130_000 : 0);
+    const now = () => (sent.queries.length > 0 ? 250_000 : 0);
     const run = await startRun(
       [toolUseReply([{ search: "hermes" }])],
       [hits(pageUrl("one"))],
@@ -206,7 +207,7 @@ describe("runTask active time", () => {
       limitHit,
     ]);
     expect(run.queries).toEqual(["hermes"]);
-    expect(run.requests).toHaveLength(1);
+    expect(run.loopRequests()).toHaveLength(1);
   });
 });
 

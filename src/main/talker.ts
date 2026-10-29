@@ -3,21 +3,15 @@ import type {
   TextOutcome,
   TextRequest,
   TextStream,
+  ToolRound,
 } from "../providers/anthropic";
 import type { TaskId } from "../shared/cards";
 import type { FailureKind } from "../shared/engine";
 import type { LineFeed } from "./speech";
 import type { SaidKind, Timers } from "./tasks/state";
-import { replyKey } from "./tasks/talk";
+import { frontKey } from "./tasks/talk";
 import type { TalkRequest, TalkerReply } from "./tasks/talk";
-import {
-  givenText,
-  questionInstructions,
-  replyInstructions,
-  replyMessage,
-  resultInstructions,
-  rewriteMessage,
-} from "./talker-prompt";
+import { decideTool, frontInstructions, frontMessages } from "./talker-prompt";
 
 export type TalkerDeps = {
   stream: TextStream | null; // null when there is no Anthropic key
@@ -26,21 +20,27 @@ export type TalkerDeps = {
     kind: SaidKind;
     key: string | null;
   }) => LineFeed;
-  onReply: (taskId: TaskId, reply: TalkerReply) => void;
+  onReply: (taskId: TaskId, attemptId: string, reply: TalkerReply) => void;
   timers: Timers;
   log: (message: string) => void;
 };
 
-type Reply = Extract<TalkRequest, { kind: "reply" }>;
-type Rewrite = Exclude<TalkRequest, Reply>;
+type Attempt = {
+  abort: AbortController;
+  line: LineFeed;
+  stopFirstWords: () => void; // the first words came, so only the whole-call deadline is left
+  stopDeadline: () => void; // both deadlines
+  ended: boolean; // the line was ended (or cut), so nothing more is pushed to it
+  spoken: string; // the text pushed to speech so far
+};
 
 const talkerModel = "claude-fable-5-1";
-// Adaptive thinking counts against the ceiling, so it leaves room beyond the short spoken line.
-const maxTokens = 1024;
-const replyTimeoutMs = 10_000;
-// A rewrite with no words after about 3 s, or not finished after about 6 s, gives way to the given text.
-const firstWordsMs = 3000;
-const rewriteTotalMs = 6000;
+// The line, the decide call and any adaptive thinking all count against this.
+const maxTokens = 2048;
+// Two wall-clock limits from the start of the call, since the SDK's timeout stops counting once headers arrive:
+// no words in time is a model that does not answer; a call that has begun may take longer.
+const firstWordsMs = 6_000;
+const wholeCallMs = 30_000;
 
 const failureKinds: Record<ModelFailure, FailureKind> = {
   keyRejected: "keyRejected",
@@ -50,14 +50,15 @@ const failureKinds: Record<ModelFailure, FailureKind> = {
   error: "error",
 };
 
-// Fable rejects disabled thinking, so the thinking field is left out; at low effort it measured about 0.75 s to the first words.
-function request(system: string, content: string): TextRequest {
+// Fable rejects disabled thinking and a forced tool, so the thinking and tool_choice fields are left out.
+function request(talk: TalkRequest): TextRequest {
   return {
     model: talkerModel,
     max_tokens: maxTokens,
     output_config: { effort: "low" },
-    system,
-    messages: [{ role: "user", content }],
+    system: frontInstructions,
+    tools: [decideTool],
+    messages: frontMessages(talk),
   };
 }
 
@@ -67,6 +68,7 @@ async function call(
   body: TextRequest,
   signal: AbortSignal,
   onText: (text: string) => void,
+  onToolStart: () => void,
 ): Promise<TextOutcome> {
   if (deps.stream === null) {
     return { ok: false, failure: "keyRejected", detail: "no Anthropic key" };
@@ -74,90 +76,185 @@ async function call(
   try {
     return await deps.stream(
       body,
-      { timeoutMs: replyTimeoutMs, signal },
+      { timeoutMs: wholeCallMs, signal },
       onText,
+      onToolStart,
     );
   } catch (error) {
     return { ok: false, failure: "error", detail: String(error) };
   }
 }
 
-async function reply(deps: TalkerDeps, talk: Reply): Promise<void> {
-  const key = replyKey(talk);
-  const line = deps.talk({ taskId: talk.taskId, kind: "talk", key });
-  const body = request(replyInstructions, replyMessage(talk));
-  const signal = new AbortController().signal;
-  const outcome = await call(deps, body, signal, line.push);
-  line.end();
-  const text = outcome.ok ? outcome.text.trim() : "";
-  if (text !== "") return deps.onReply(talk.taskId, { kind: "said", text });
-  // A talker failure is only logged: the intake goes on without it.
-  deps.log(`talker reply failed: ${outcome.ok ? "no text" : outcome.detail}`);
-  const failure = outcome.ok ? "error" : failureKinds[outcome.failure];
-  deps.onReply(talk.taskId, { kind: "failed", failure });
-}
+type Judged = { reply: TalkerReply; detail: string | null }; // detail is set when the call failed
 
-// Resolves when a rewrite runs out of time: no words by 3 s, or not finished by 6 s; the call is aborted.
-function rewriteDeadline(
-  deps: TalkerDeps,
-  abort: AbortController,
-  started: () => boolean,
-): { passed: Promise<TextOutcome>; cancel: () => void } {
-  const cancels: (() => void)[] = [];
-  const passed = new Promise<TextOutcome>((resolve) => {
-    const stop = (detail: string) => {
-      abort.abort();
-      resolve({ ok: false, failure: "aborted", detail });
-    };
-    cancels.push(
-      deps.timers.setTimer(firstWordsMs, () => {
-        if (!started()) stop("no words within 3 s");
-      }),
-      deps.timers.setTimer(rewriteTotalMs, () => stop("not done within 6 s")),
+const failedError = (detail: string, text: string): Judged => ({
+  reply: { kind: "failed", failure: "error", ...spokenText(text) },
+  detail,
+});
+
+const spokenText = (text: string) => (text === "" ? {} : { text });
+
+// A routable response is text, then exactly one decide call, stopped at the tool; no tool at all hands main a null decision.
+function judge(text: string, round: ToolRound | undefined): Judged {
+  if (text === "") return failedError("no text", text);
+  if (round === undefined) return failedError("no tool round", text);
+  const { toolUses, stopReason } = round;
+  if (toolUses.length === 0) {
+    if (stopReason !== "end_turn")
+      return failedError(`stopped: ${stopReason}`, text);
+    return { reply: { kind: "said", text, decision: null }, detail: null };
+  }
+  if (toolUses.length !== 1 || toolUses[0].name !== "decide") {
+    return failedError(
+      `tools: ${toolUses.map((tool) => tool.name).join(",")}`,
+      text,
     );
-  });
-  return { passed, cancel: () => cancels.forEach((cancel) => cancel()) };
+  }
+  if (stopReason !== "tool_use")
+    return failedError(`stopped: ${stopReason}`, text);
+  const decision = toolUses[0].input;
+  return { reply: { kind: "said", text, decision }, detail: null };
 }
 
-async function rewrite(deps: TalkerDeps, talk: Rewrite): Promise<void> {
-  const kind: SaidKind = talk.kind === "result" ? "answer" : "question";
-  const spoken = { taskId: talk.taskId, kind };
-  const line = deps.talk({ ...spoken, key: null });
-  const abort = new AbortController();
-  let started = false;
-  const deadline = rewriteDeadline(deps, abort, () => started);
-  const system =
-    talk.kind === "result" ? resultInstructions : questionInstructions;
-  const body = request(system, rewriteMessage(talk));
-  const answered = call(deps, body, abort.signal, (text) => {
-    if (abort.signal.aborted) return;
-    started = true;
-    line.push(text);
-  });
-  const outcome = await Promise.race([answered, deadline.passed]);
-  deadline.cancel();
-  abort.abort();
-  if (outcome.ok && started) return line.end();
-  if (!outcome.ok) deps.log(`talker rewrite failed: ${outcome.detail}`);
-  // A failed or stalled rewrite gives way to the given text, whole, so no choice or number is lost;
-  // words already spoken are stopped first and the text comes as a fresh line.
-  const given = started ? deps.talk({ ...spoken, key: null }) : line;
-  if (started) line.cut();
-  given.push(givenText(talk));
-  given.end();
+function usageNote(round: ToolRound | undefined): string {
+  if (round === undefined) return "";
+  const { usage } = round;
+  const cache = usage.cacheReadInputTokens ?? "none";
+  return ` (in ${usage.inputTokens}, out ${usage.outputTokens}, cache read ${cache})`;
 }
 
-// The talker is Baymax's only voice for model text: its reply to new words, and the clarifying question and the result in its own words.
+function endLine(attempt: Attempt): void {
+  if (attempt.ended) return;
+  attempt.ended = true;
+  attempt.line.end();
+}
+
+type Outcome = { outcome: TextOutcome; timedOut: boolean };
+
+async function runCall(
+  deps: TalkerDeps,
+  talk: TalkRequest,
+  attempt: Attempt,
+  alive: () => boolean,
+): Promise<Outcome> {
+  let timedOut = false;
+  const deadline = new Promise<TextOutcome>((resolve) => {
+    const expire = (detail: string) => () => {
+      attempt.stopDeadline();
+      timedOut = true;
+      attempt.abort.abort();
+      resolve({ ok: false, failure: "unreachable", detail });
+    };
+    const stopFirst = deps.timers.setTimer(
+      firstWordsMs,
+      expire("no first words in 6 s"),
+    );
+    const stopWhole = deps.timers.setTimer(
+      wholeCallMs,
+      expire("no finish in 30 s"),
+    );
+    attempt.stopFirstWords = stopFirst;
+    attempt.stopDeadline = () => {
+      stopFirst();
+      stopWhole();
+    };
+  });
+  const answered = call(
+    deps,
+    request(talk),
+    attempt.abort.signal,
+    (text) => {
+      if (!alive() || attempt.ended) return;
+      if (text.trim() !== "") attempt.stopFirstWords();
+      attempt.spoken += text;
+      attempt.line.push(text);
+    },
+    () => endLine(attempt),
+  );
+  const outcome = await Promise.race([answered, deadline]);
+  return { outcome, timedOut };
+}
+
+async function front(
+  deps: TalkerDeps,
+  attempts: Map<string, Attempt>,
+  talk: TalkRequest,
+): Promise<void> {
+  const line = deps.talk({
+    taskId: talk.taskId,
+    kind: "talk",
+    key: frontKey(talk),
+  });
+  const attempt: Attempt = {
+    abort: new AbortController(),
+    line,
+    stopFirstWords: () => undefined,
+    stopDeadline: () => undefined,
+    ended: false,
+    spoken: "",
+  };
+  attempts.set(talk.attemptId, attempt);
+  const alive = () => attempts.get(talk.attemptId) === attempt;
+  const { outcome, timedOut } = await runCall(deps, talk, attempt, alive);
+  // A cancelled, replaced or closed attempt has been removed and its speech cut: it reports nothing.
+  if (!alive()) return;
+  attempts.delete(talk.attemptId);
+  attempt.stopDeadline();
+  if (!timedOut) endLine(attempt);
+  else if (!attempt.ended) {
+    // A line that already ended is left alone; one still open is cut.
+    attempt.ended = true;
+    line.cut();
+  }
+  const judged = outcome.ok
+    ? judge(outcome.text.trim(), outcome.round)
+    : {
+        reply: failedReply(outcome, attempt.spoken.trim()),
+        detail: outcome.detail,
+      };
+  const note = outcome.ok ? usageNote(outcome.round) : "";
+  if (judged.detail === null) deps.log(`talker front call done${note}`);
+  else deps.log(`talker front call failed: ${judged.detail}`);
+  deps.onReply(talk.taskId, talk.attemptId, judged.reply);
+}
+
+function failedReply(
+  outcome: Extract<TextOutcome, { ok: false }>,
+  text: string,
+): TalkerReply {
+  return {
+    kind: "failed",
+    failure: failureKinds[outcome.failure],
+    ...spokenText(text),
+  };
+}
+
+function cancel(attempts: Map<string, Attempt>, attemptId: string): void {
+  const attempt = attempts.get(attemptId);
+  if (attempt === undefined) return;
+  attempts.delete(attemptId);
+  attempt.stopDeadline();
+  attempt.abort.abort();
+  attempt.ended = true;
+  attempt.line.cut();
+}
+
+// The front call is Baymax's only model voice: a spoken line, then the decision about the words.
 export function createTalker(deps: TalkerDeps): {
   talk: (request: TalkRequest) => void;
+  cancel: (attemptId: string) => void;
+  shutdown: () => void;
 } {
+  const attempts = new Map<string, Attempt>();
   return {
     talk: (talk) => {
-      const run =
-        talk.kind === "reply" ? reply(deps, talk) : rewrite(deps, talk);
-      run.catch((error: unknown) => {
+      front(deps, attempts, talk).catch((error: unknown) => {
         deps.log(`talker threw: ${String(error)}`);
       });
+    },
+    cancel: (attemptId) => cancel(attempts, attemptId),
+    shutdown: () => {
+      for (const attemptId of [...attempts.keys()]) cancel(attempts, attemptId);
     },
   };
 }

@@ -1,5 +1,4 @@
 import type {
-  ClarifyingQuestion,
   DisplayState,
   Findings,
   TaskCard,
@@ -8,10 +7,11 @@ import type {
 import type {
   EngineCommand,
   EngineEvent,
-  IntakeOutcome,
-  WorkerBrief,
+  FailureKind,
+  TaskAsk,
 } from "../../shared/engine";
-import type { TalkRequest } from "./talk";
+import type { AnswerQuestion } from "../../shared/ipc";
+import type { TalkRequest, WaitingQuestion } from "./talk";
 import type { MainState, MainStateDeps, SaidLine, Timers } from "./state";
 import { createMainState } from "./state";
 
@@ -43,7 +43,7 @@ export function createClock() {
     }
     now = target;
   };
-  return { setTimer, advance };
+  return { setTimer, advance, pending: () => pending.length };
 }
 
 type Reply = (command: EngineCommand) => EngineEvent | null;
@@ -54,6 +54,7 @@ export type Harness = {
   sent: EngineCommand[];
   said: SaidLine[];
   talked: TalkRequest[];
+  cancelled: string[]; // front call attempts aborted
   silenced: TaskId[];
   logs: string[];
   opened: string[];
@@ -65,6 +66,8 @@ export type Harness = {
   replyWith: (reply: Reply) => void;
   failOpen: (message: string) => void;
   failPublish: (message: string) => void;
+  reply: (taskId: TaskId, decision: unknown, line?: string) => void;
+  replyFailed: (taskId: TaskId, failure: FailureKind, text?: string) => void;
 };
 
 type Seen = Pick<
@@ -73,6 +76,7 @@ type Seen = Pick<
   | "sent"
   | "said"
   | "talked"
+  | "cancelled"
   | "silenced"
   | "logs"
   | "opened"
@@ -84,6 +88,14 @@ type Controls = {
   publishFailure: string | null;
   ids: number;
 };
+
+function opening(seen: Seen, controls: Controls, url: string): Promise<void> {
+  seen.opened.push(url);
+  const failure = controls.openFailure;
+  return failure === null
+    ? Promise.resolve()
+    : Promise.reject(new Error(failure));
+}
 
 function fakeDeps(
   seen: Seen,
@@ -117,19 +129,43 @@ function fakeDeps(
       seen.talked.push(request);
       seen.timeline.push(`talk ${request.kind} ${request.taskId}`);
     },
-    openUrl: (url) => {
-      seen.opened.push(url);
-      const failure = controls.openFailure;
-      return failure === null
-        ? Promise.resolve()
-        : Promise.reject(new Error(failure));
+    cancelAttempt: (attemptId) => {
+      seen.cancelled.push(attemptId);
+      seen.timeline.push(`cancel ${attemptId}`);
     },
+    openUrl: (url) => opening(seen, controls, url),
     log: (message) => seen.logs.push(message),
     timers: { setTimer },
     newTaskId: () => {
       controls.ids += 1;
       return `t${controls.ids}`;
     },
+  };
+}
+
+// A test answers the latest front call asked for a task.
+function repliers(
+  state: MainState,
+  talked: TalkRequest[],
+): Pick<Harness, "reply" | "replyFailed"> {
+  const attemptOf = (taskId: TaskId): string => {
+    const latest = talked.filter((request) => request.taskId === taskId).at(-1);
+    if (latest === undefined) throw new Error(`no front call for ${taskId}`);
+    return latest.attemptId;
+  };
+  return {
+    reply: (taskId, decision, line = "Okay.") =>
+      state.talkerReplied(taskId, attemptOf(taskId), {
+        kind: "said",
+        text: line,
+        decision,
+      }),
+    replyFailed: (taskId, failure, text) =>
+      state.talkerReplied(taskId, attemptOf(taskId), {
+        kind: "failed",
+        failure,
+        ...(text === undefined ? {} : { text }),
+      }),
   };
 }
 
@@ -140,6 +176,7 @@ export function createHarness(): Harness {
     sent: [],
     said: [],
     talked: [],
+    cancelled: [],
     silenced: [],
     logs: [],
     opened: [],
@@ -172,17 +209,12 @@ export function createHarness(): Harness {
     failPublish: (message) => {
       controls.publishFailure = message;
     },
+    ...repliers(state, seen.talked),
   };
 }
 
-export function brief(goal: string): WorkerBrief {
-  return {
-    goal,
-    resultShape: "a short answer",
-    sources: "the web",
-    limits: "normal",
-    userWords: goal,
-  };
+export function ask(goal: string, userWords = goal): TaskAsk {
+  return { goal, userWords };
 }
 
 export function findings(text: string, urls: string[] = []): Findings {
@@ -197,66 +229,83 @@ export function findings(text: string, urls: string[] = []): Findings {
   };
 }
 
-export function newTask(sayBack: string): IntakeOutcome {
+// The decide tool's input: every field present, unused ones empty.
+export function decision(fields: Record<string, unknown>) {
   return {
-    route: "newTask",
-    sayBack,
-    startLine: `Looking into ${sayBack}.`,
-    brief: brief(sayBack),
+    route: "chat",
+    topic: null,
+    parentTaskId: null,
+    answerTo: null,
+    choices: [],
+    goal: null,
+    ...fields,
   };
 }
 
-export function intake(taskId: TaskId, outcome: IntakeOutcome): EngineEvent {
-  return { type: "intake", taskId, outcome };
-}
+export const chat = () => decision({ route: "chat" });
 
-export function askNew(h: Harness, sayBack: string): TaskId {
-  h.state.ask(`tell me ${sayBack}`, null, null);
-  const taskId = h.lastTaskId();
-  h.state.receive(intake(taskId, newTask(sayBack)));
-  return taskId;
-}
+export const outsideResearch = () => decision({ route: "outsideResearch" });
 
-export function followUp(parentTaskId: TaskId, sayBack: string): IntakeOutcome {
-  return {
+export const newTask = (topic: string, answerTo: string | null = null) =>
+  decision({ route: "newTask", topic, goal: topic, answerTo });
+
+export const followUp = (parentTaskId: TaskId, topic: string) =>
+  decision({
     route: "followUp",
+    topic,
     parentTaskId,
-    sayBack,
-    startLine: `Looking into ${sayBack}.`,
-    brief: brief(sayBack),
-  };
+    goal: topic,
+  });
+
+export const clarify = (choices = ["First", "Second", "Third"]) =>
+  decision({ route: "clarify", topic: "about it", choices });
+
+// Asks the words and answers the front call with a new task; returns the task's id.
+export function askNew(h: Harness, topic: string): TaskId {
+  h.state.ask(`tell me ${topic}`, null, null);
+  const taskId = h.lastTaskId();
+  h.reply(taskId, newTask(topic), `Checking ${topic}.`);
+  return taskId;
 }
 
 export function askFollowUp(
   h: Harness,
   parentTaskId: TaskId,
-  sayBack: string,
+  topic: string,
 ): TaskId {
-  h.state.ask(`and ${sayBack}`, null, null);
+  h.state.ask(`and ${topic}`, null, null);
   const taskId = h.lastTaskId();
-  h.state.receive(intake(taskId, followUp(parentTaskId, sayBack)));
+  h.reply(taskId, followUp(parentTaskId, topic), `Checking ${topic}.`);
   return taskId;
 }
 
-export function question(questionId: string): ClarifyingQuestion {
-  return {
-    questionId,
-    text: `Question ${questionId}?`,
-    choices: ["First", "Second", "Third"],
-  };
+// The id the front call's clarifying question gets: one question per task.
+export const questionIdOf = (taskId: TaskId) => `${taskId}:question`;
+
+export function askClarify(
+  h: Harness,
+  choices?: string[],
+  words = "about it",
+): TaskId {
+  h.state.ask(words, null, null);
+  const taskId = h.lastTaskId();
+  h.reply(taskId, clarify(choices), `Which one for ${taskId}?`);
+  return taskId;
 }
 
-export function askClarify(h: Harness, questionId: string): TaskId {
-  h.state.ask(`about ${questionId}`, null, null);
-  const taskId = h.lastTaskId();
-  h.state.receive(
-    intake(taskId, {
-      route: "clarify",
-      sayBack: `about ${questionId}`,
-      question: question(questionId),
-    }),
-  );
-  return taskId;
+// A click on a choice of the task's question card.
+export function click(
+  taskId: TaskId,
+  index = 0,
+  questionId = questionIdOf(taskId),
+): AnswerQuestion {
+  return { taskId, questionId, reply: { kind: "choice", index } };
+}
+
+export function waitingOf(h: Harness): WaitingQuestion {
+  const waiting = h.state.waitingQuestion();
+  if (waiting === null) throw new Error("no question is waiting");
+  return waiting;
 }
 
 export function finish(h: Harness, taskId: TaskId, text = "Done."): void {

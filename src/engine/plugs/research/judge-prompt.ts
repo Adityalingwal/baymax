@@ -1,5 +1,5 @@
-import type { WorkerBrief } from "../../../shared/engine";
 import type { Answer } from "./answer";
+import type { WorkerBrief } from "./brief";
 import { briefForModel, pageForModel, taggedText } from "./model-text";
 import type { ReadPage } from "./page-text";
 

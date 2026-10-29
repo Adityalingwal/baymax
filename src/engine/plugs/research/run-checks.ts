@@ -1,9 +1,5 @@
 import type { Findings, TaskId } from "../../../shared/cards";
-import type {
-  EngineEvent,
-  Incomplete,
-  WorkerBrief,
-} from "../../../shared/engine";
+import type { EngineEvent, Incomplete } from "../../../shared/engine";
 import type { DispatchDeps } from "../../core/dispatch";
 import { runJudge } from "../../core/judge";
 import type { JudgeFlag, JudgeOutcome } from "../../core/judge";
@@ -12,6 +8,7 @@ import { parseAnswer } from "./answer";
 import type { Answer } from "./answer";
 import { answerFindings, checkAnswer } from "./answer-check";
 import type { CodeCheck } from "./answer-check";
+import type { WorkerBrief } from "./brief";
 import { judgeInstructions, judgeMessage } from "./judge-prompt";
 import type { ReadPage } from "./page-text";
 import { answerFaults } from "./worker-prompt";

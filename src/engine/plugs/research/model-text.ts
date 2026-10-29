@@ -1,5 +1,7 @@
 import type { SearchHit } from "../../../providers/search";
-import type { WorkerBrief } from "../../../shared/engine";
+import type { Findings } from "../../../shared/cards";
+import type { ParentResult } from "../../../shared/engine";
+import type { WorkerBrief } from "./brief";
 import type { ReadPage } from "./page-text";
 
 // Page text and snippets are untrusted: escaping keeps them from closing or opening a block.
@@ -52,4 +54,26 @@ export function briefForModel(brief: WorkerBrief): string {
     taggedText("user_words", brief.userWords),
   ];
   return `<brief>\n${parts.join("\n")}\n</brief>`;
+}
+
+function findingsLines(findings: Findings | null): string[] {
+  if (findings === null) return ["No findings."];
+  const sources = findings.sources.map(
+    (source) => `- ${source.id} ${source.url} | ${source.title}`,
+  );
+  const open = findings.openPoints.map((point) => `- ${point}`);
+  return [
+    taggedText("card_text", findings.cardText),
+    taggedText("sources", sources.join("\n") || "none"),
+    taggedText("open_points", open.join("\n") || "none"),
+  ];
+}
+
+// What an earlier task left, for the brief writer and the worker alike.
+export function parentResultBlock(parent: ParentResult): string {
+  const lines = [
+    `outcome: ${parent.outcome}`,
+    ...findingsLines(parent.findings),
+  ];
+  return `<parent_result>\n${lines.join("\n")}\n</parent_result>`;
 }

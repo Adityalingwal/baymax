@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Findings } from "../shared/cards";
-import type { EngineCommand } from "../shared/engine";
-import { question, startTestEngine } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
@@ -18,30 +16,6 @@ import type { FakeSearchStep } from "./run.harness";
 afterEach(closeRuns);
 
 const cancel = { type: "cancel" as const, taskId: "task-1" };
-const clarifyingAnswer: EngineCommand = {
-  type: "clarifyingAnswer",
-  taskId: "task-1",
-  words: "how does Hermes work?",
-  question: { questionId: "q-1", text: "Which Hermes?", choices: ["a", "b"] },
-  reply: { kind: "choice", index: 0 },
-  recent: [],
-};
-
-describe("startEngine cancel during intake", () => {
-  it.each([
-    { name: "a question", command: question("how does Hermes work?") },
-    { name: "a clarifying answer", command: clarifyingAnswer },
-  ])("stops the intake of $name with one cancelled", async (row) => {
-    const engine = startTestEngine(["waitForAbort"]);
-    engine.port.send(row.command);
-    await engine.settle();
-    engine.port.send(cancel);
-    const cancelled = { type: "cancelled", taskId: "task-1", findings: null };
-    expect(await engine.settle(1)).toEqual([cancelled]);
-    expect(await engine.settle(2)).toEqual([cancelled]);
-    expect(engine.requests).toHaveLength(1);
-  });
-});
 
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const readOne = () => toolUseReply([{ read: pageUrl("one") }]);
@@ -134,7 +108,7 @@ describe("runTask cancel at each stage", () => {
     async (row) => {
       const run = await startRun(row.steps(), row.searches ?? []);
       const sent = (): Sent => ({
-        calls: run.requests.length,
+        calls: run.loopRequests().length, // the worker's and the judge's calls; the stage is counted after the brief writer
         queries: run.queries.length,
         connects: run.network.targets.length,
       });
@@ -166,7 +140,7 @@ describe("runTask repeated cancel", () => {
   it("sends one cancelled when cancels keep coming until it arrives", async () => {
     const run = await startRun(["waitForAbort"]);
     run.port.send(runTask());
-    await until(() => run.requests.length === 1);
+    await until(() => run.loopRequests().length === 1);
     run.port.send(cancel);
     for (let turn = 0; turn < 100; turn += 1) {
       await Promise.resolve();
@@ -186,7 +160,7 @@ describe("runTask repeated cancel", () => {
       run.port.send(cancel);
     });
     run.port.send(runTask());
-    await until(() => run.requests.length === 1);
+    await until(() => run.loopRequests().length === 1);
     run.port.send(cancel);
     expect(await run.ended()).toEqual([cancelledNull]);
     expect(await run.settle(2)).toEqual([cancelledNull]);

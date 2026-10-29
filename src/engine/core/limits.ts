@@ -1,12 +1,17 @@
 export const taskLimits = {
-  modelCalls: 25,
-  searches: 8,
-  activeMs: 120_000,
+  modelCalls: 30,
+  searches: 20,
+  activeMs: 240_000,
   dollars: 0.5,
 } as const;
 
 export const roles = {
-  intake: { model: "claude-sonnet-5-5", maxTokens: 1024, timeoutMs: 15_000 },
+  briefWriter: {
+    model: "claude-sonnet-5-5",
+    maxTokens: 1024,
+    timeoutMs: 20_000,
+  },
+  briefRetry: { model: "claude-opus-5-5", maxTokens: 2048, timeoutMs: 20_000 }, // Opus always thinks, and thinking counts against max_tokens
   worker: { model: "claude-sonnet-5-5", maxTokens: 2048, timeoutMs: 60_000 },
   judge: { model: "claude-sonnet-5-5", maxTokens: 1024, timeoutMs: 30_000 },
 } as const;

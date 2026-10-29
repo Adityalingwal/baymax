@@ -1,8 +1,7 @@
 import type { DisplayState, TaskCard, TaskId } from "../../shared/cards";
-import type { RecentExchange, WaitingQuestion } from "../../shared/engine";
-import type { TaskSummary } from "./talk";
 import type { Model } from "./record";
-import { shownQuestion } from "./record";
+import { shownQuestion } from "./questions";
+import type { RecentExchange, TaskSummary, WaitingQuestion } from "./talk";
 
 const RECENT_COUNT = 5;
 const CARD_COUNT = 2;
@@ -64,6 +63,7 @@ export function waitingQuestion(model: Model): WaitingQuestion | null {
   const { questionId, text, choices } = question;
   return {
     taskId: record.card.taskId,
+    words: record.card.words,
     question: { questionId, text, choices: [...choices] },
   };
 }
@@ -75,10 +75,10 @@ export function taskSummaries(model: Model, forTaskId: TaskId): TaskSummary[] {
   return [...model.records.values()]
     .filter(({ card }) => card.taskId !== forTaskId)
     .filter(({ card }) => activeStates.has(card.state))
-    .map(({ card }) => ({
+    .map(({ card, topic }) => ({
       taskId: card.taskId,
       state: card.state,
       words: card.words,
-      sayBack: card.sayBack,
+      topic,
     }));
 }

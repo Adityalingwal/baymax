@@ -1,73 +1,69 @@
 import { describe, expect, it } from "vitest";
-import type { ClarifyingReply } from "../../shared/cards";
 import type { Harness } from "./harness";
-import { askClarify, createHarness, finish, intake, newTask } from "./harness";
+import {
+  askClarify,
+  createHarness,
+  finish,
+  newTask,
+  questionIdOf,
+} from "./harness";
 
 type AnswerRow = {
   name: string;
-  reply: ClarifyingReply;
-  answer: (h: Harness, reply: ClarifyingReply) => void;
+  answer: (h: Harness) => void;
+  words: string;
 };
-
-// The intake reads the words as the answer to the waiting question.
-function answerRoute(h: Harness, reply: ClarifyingReply): void {
-  expect(h.sent.at(-1)).toMatchObject({
-    type: "question",
-    waiting: { taskId: "t1", question: { questionId: "q1" } },
-  });
-  h.state.receive(
-    intake(h.lastTaskId(), {
-      route: "answer",
-      waitingTaskId: "t1",
-      questionId: "q1",
-      reply,
-    }),
-  );
-}
 
 const rows: AnswerRow[] = [
   {
     name: "a click",
-    reply: { kind: "choice", index: 1 },
-    answer: (h, reply) =>
-      h.state.answerQuestion({ taskId: "t1", questionId: "q1", reply }),
+    words: "Second",
+    answer: (h) => {
+      h.state.answerQuestion({
+        taskId: "t1",
+        questionId: questionIdOf("t1"),
+        reply: { kind: "choice", index: 1 },
+      });
+      h.reply("t1", newTask("about it"), "Checking.");
+    },
   },
   {
     name: "typed words",
-    reply: { kind: "text", text: "the cheaper one" },
-    answer: (h, reply) => {
+    words: "the cheaper one",
+    answer: (h) => {
       h.state.ask("the cheaper one", null, h.state.waitingQuestion());
-      answerRoute(h, reply);
+      h.reply("t2", newTask("about it", questionIdOf("t1")), "Checking.");
     },
   },
   {
     name: "voice",
-    reply: { kind: "choice", index: 2 },
-    answer: (h, reply) => {
+    words: "the third one",
+    answer: (h) => {
       const snapshot = h.state.waitingQuestion();
-      expect(snapshot?.question.questionId).toBe("q1");
+      expect(snapshot?.question.questionId).toBe("t1:question");
       h.state.ask("the third one", "u1", snapshot);
-      answerRoute(h, reply);
+      h.reply("t2", newTask("about it", questionIdOf("t1")), "Checking.");
     },
   },
 ];
 
 describe("a clarifying task answered end to end", () => {
   it.each(rows)(
-    "continues to done when answered by $name",
-    ({ reply, answer }) => {
+    "continues to done in one front call when answered by $name",
+    ({ answer, words }) => {
       const h = createHarness();
-      askClarify(h, "q1");
-      answer(h, reply);
-      expect(h.sent.at(-1)).toMatchObject({
-        type: "clarifyingAnswer",
-        taskId: "t1",
-        question: { questionId: "q1" },
-        reply,
-      });
-      h.state.receive(intake("t1", newTask("about q1")));
+      askClarify(h);
+      answer(h);
+      // One call for the question and one for the answer; the engine is never asked to route.
+      expect(h.talked.map((request) => request.words)).toEqual(
+        expect.arrayContaining([words]),
+      );
       expect(h.card("t1")?.state).toBe("running");
-      expect(h.sent.at(-1)).toMatchObject({ type: "runTask", taskId: "t1" });
+      expect(h.sent.map((command) => command.type)).toEqual(["runTask"]);
+      expect(h.sent[0]).toMatchObject({
+        taskId: "t1",
+        ask: { userWords: expect.stringContaining(words) },
+      });
       finish(h, "t1", "The answer.");
       expect(h.last().tasks).toEqual([
         expect.objectContaining({

@@ -2,15 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { ModelOutcome } from "../providers/anthropic";
 import type { EngineEvent } from "../shared/engine";
 import { startEngine } from "./index";
-import { question, questionReply, startTestEngine } from "./harness";
+import { startTestEngine } from "./harness";
+import { ask, runTask, workerAnswer } from "./run.harness";
 
-const words = "how does Hermes agent work inside?";
-
-const task = {
-  sayBack: "how Hermes works inside",
-  startLine: "Okay, looking at how Hermes works.",
-  brief: { goal: "g", resultShape: "r", sources: "s", limits: "l" },
-};
+const failedCall: ModelOutcome = { ok: false, failure: "error", detail: "x" };
 
 const cancelled = (taskId: string): EngineEvent => ({
   type: "cancelled",
@@ -21,9 +16,9 @@ const cancelled = (taskId: string): EngineEvent => ({
 const cancel = (taskId: string) => ({ type: "cancel" as const, taskId });
 
 describe("startEngine cancel", () => {
-  it("stops an intake in flight with one cancelled and nothing else", async () => {
+  it("stops a run in flight with one cancelled and nothing else", async () => {
     const engine = startTestEngine(["waitForAbort"]);
-    engine.port.send(question(words));
+    engine.port.send(runTask());
     engine.port.send(cancel("task-1"));
     expect(await engine.settle(1)).toEqual([cancelled("task-1")]);
     expect(await engine.settle(2)).toEqual([cancelled("task-1")]);
@@ -40,23 +35,27 @@ describe("startEngine cancel", () => {
     let answer: (outcome: ModelOutcome) => void = () => undefined;
     const late = new Promise<ModelOutcome>((resolve) => (answer = resolve));
     const engine = startTestEngine([late]);
-    engine.port.send(question(words));
+    engine.port.send(runTask());
     engine.port.send(cancel("task-1"));
-    answer(questionReply(task));
+    answer(workerAnswer());
     expect(await engine.settle(2)).toEqual([cancelled("task-1")]);
   });
 });
 
 describe("startEngine port delivery", () => {
   it("uses the command as sent, whatever the caller changes after", async () => {
-    const engine = startTestEngine([questionReply(task)]);
-    const command = question(words);
+    const engine = startTestEngine(["waitForAbort"]);
+    const command = { ...runTask(), ask: { ...ask } };
     engine.port.send(command);
-    if (command.type === "question") command.words = "changed";
-    const [event] = await engine.settle(1);
-    expect(event.type === "intake" && event.outcome).toMatchObject({
-      brief: { userWords: words },
-    });
+    command.ask.goal = "changed";
+    await engine.settle();
+    expect(JSON.stringify(engine.briefRequests()[0].messages)).toContain(
+      ask.goal,
+    );
+    expect(JSON.stringify(engine.workerRequests()[0].messages)).toContain(
+      ask.goal,
+    );
+    engine.port.close();
   });
 
   it("gives each listener its own copy of an event", async () => {
@@ -112,9 +111,9 @@ describe("startEngine port lifecycle", () => {
   });
 
   it("does nothing after close", async () => {
-    const engine = startTestEngine([questionReply(task)]);
+    const engine = startTestEngine([failedCall]);
     engine.port.close();
-    engine.port.send(question(words));
+    engine.port.send(runTask());
     engine.port.send(cancel("task-1"));
     expect(await engine.settle()).toEqual([]);
     expect(engine.requests).toHaveLength(0);
@@ -122,10 +121,10 @@ describe("startEngine port lifecycle", () => {
 
   it("ignores a second command for a task it holds", async () => {
     const engine = startTestEngine(["waitForAbort"]);
-    engine.port.send(question(words));
-    engine.port.send(question(words));
+    engine.port.send(runTask());
+    engine.port.send(runTask());
     await engine.settle();
-    expect(engine.requests).toHaveLength(1);
+    expect(engine.loopRequests()).toHaveLength(1);
     expect(engine.entries).toContainEqual({
       event: "duplicateTask",
       taskId: "task-1",
@@ -135,16 +134,16 @@ describe("startEngine port lifecycle", () => {
 });
 
 describe("startEngine robustness", () => {
-  it("drops the answer of an intake in flight at close", async () => {
+  it("drops the answer of a run in flight at close", async () => {
     let answer: (outcome: ModelOutcome) => void = () => undefined;
     const pending = new Promise<ModelOutcome>((resolve) => (answer = resolve));
     const engine = startTestEngine([pending]);
-    engine.port.send(question(words));
+    engine.port.send(runTask());
     await engine.settle();
     engine.port.close();
-    answer(questionReply(task));
+    answer(workerAnswer());
     expect(await engine.settle()).toEqual([]);
-    expect(engine.requests).toHaveLength(1);
+    expect(engine.loopRequests()).toHaveLength(1);
   });
 
   it("never throws on a malformed command and logs it", async () => {
@@ -170,55 +169,78 @@ describe("startEngine dev log", () => {
     const port = startEngine(
       { anthropicKey: "test-key", searchKey: "" },
       {
-        model: async () => ({ ok: false, failure: "error", detail: "boom" }),
+        model: async () => failedCall,
         log: () => {
           throw new Error("log broke");
         },
       },
     );
     port.onMessage((event) => events.push(event));
-    port.send(question(words));
-    port.send(question(words, { taskId: "task-2" }));
+    port.send(runTask());
+    port.send(runTask({ taskId: "task-2" }));
     port.send(cancel("task-2"));
     await new Promise((resolve) => setTimeout(resolve, 20));
+    // task-2 is cancelled during its brief writer, so its event comes before task-1's, which still runs three more calls.
     expect(events).toEqual([
-      { type: "failure", taskId: "task-1", kind: "error" },
       cancelled("task-2"),
+      {
+        type: "incomplete",
+        taskId: "task-1",
+        incomplete: { kind: "error", cause: "error", findings: null },
+      },
     ]);
+  });
+
+  it("logs each call by task and role, without the key or the words", async () => {
+    const engine = startTestEngine([failedCall, failedCall]);
+    engine.port.send(runTask());
+    engine.port.send(runTask({ taskId: "task-2" }));
+    await engine.settle(2);
+    const calls = engine.entries.filter((entry) => entry.event === "modelCall");
+    expect(calls).toHaveLength(4);
+    for (const taskId of ["task-1", "task-2"]) {
+      expect(calls).toContainEqual(
+        expect.objectContaining({ taskId, role: "briefWriter" }),
+      );
+      expect(calls).toContainEqual(
+        expect.objectContaining({ taskId, role: "worker" }),
+      );
+    }
+    const logged = JSON.stringify(engine.entries);
+    expect(logged).not.toContain("test-key");
+    expect(logged).not.toContain(ask.userWords);
   });
 });
 
 describe("startEngine command from a listener", () => {
-  it("runs a task sent from a listener of that task's intake event, and holds and cancels it", async () => {
-    const engine = startTestEngine([questionReply(task), "waitForAbort"]);
-    const run = {
-      type: "runTask" as const,
-      taskId: "task-1",
-      goalVersion: 1,
-      depth: "normal" as const,
-      brief: { ...task.brief, userWords: words },
-      parent: null,
-    };
+  it("runs a task sent from a listener of that task's last event, and holds and cancels it", async () => {
+    const engine = startTestEngine([failedCall, "waitForAbort"]);
+    let resent = false;
     engine.port.onMessage((event) => {
-      if (event.type === "intake") engine.port.send(run);
+      if (event.type !== "incomplete" || resent) return;
+      resent = true;
+      engine.port.send(runTask());
     });
-    engine.port.send(question(words));
+    engine.port.send(runTask());
     await engine.settle(1);
-    expect(engine.requests).toHaveLength(2);
+    expect(engine.loopRequests()).toHaveLength(2);
     expect(engine.entries).not.toContainEqual({
       event: "duplicateTask",
       taskId: "task-1",
     });
-    // The intake's cleanup must not drop the run's hold: a second run is refused and cancel reaches the run.
-    engine.port.send(run);
+    // The first run's cleanup must not drop the second run's hold: a third run is refused and cancel reaches the second.
+    engine.port.send(runTask());
     expect(engine.entries).toContainEqual({
       event: "duplicateTask",
       taskId: "task-1",
     });
     engine.port.send(cancel("task-1"));
     const events = await engine.settle(2);
-    expect(events.map((event) => event.type)).toEqual(["intake", "cancelled"]);
-    expect(engine.requests).toHaveLength(2);
+    expect(events.map((event) => event.type)).toEqual([
+      "incomplete",
+      "cancelled",
+    ]);
+    expect(engine.loopRequests()).toHaveLength(2);
     engine.port.close();
   });
 });

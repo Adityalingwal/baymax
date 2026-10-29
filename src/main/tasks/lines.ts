@@ -8,7 +8,6 @@ import type {
 export const fixedLines = {
   queued: "Okay, I'll look at that after the current one.",
   queueFull: "I already have three waiting. Cancel one or ask again later.",
-  outsideResearch: "I can't do that yet in this version.",
   wordsNotCaught: "I didn't catch that, say it again.",
   micBlocked:
     "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question.",
@@ -18,6 +17,8 @@ export const fixedLines = {
     "Voice isn't working right now. You can type your question instead.",
   restarting: "Baymax hit a problem and is restarting.",
   builtOnPartial: "Built on the partial findings of an earlier question.",
+  frontMissed: "Sorry, I missed that. Ask again.",
+  frontStalled: "That didn't go through. Ask again.",
 } as const;
 
 const failureLines: Record<FailureKind, string> = {
@@ -35,22 +36,28 @@ export function failureLine(kind: FailureKind): string {
   return failureLines[kind];
 }
 
+// The line of a failed front call: setup problems name the fix; otherwise it depends on whether Baymax had already spoken.
+export function frontFailureLine(kind: FailureKind, spoke: boolean): string {
+  if (kind === "keyRejected" || kind === "noCredit") return failureLine(kind);
+  return spoke ? fixedLines.frontStalled : fixedLines.frontMissed;
+}
+
 export function taskShortForm(
-  sayBack: string | null,
+  topic: string | null,
   fallback = "This task",
 ): string {
-  const short = (sayBack ?? "").split(",")[0].trim();
+  const short = (topic ?? "").split(",")[0].trim();
   if (short === "") return fallback;
   return short[0].toUpperCase() + short.slice(1);
 }
 
-// The start line of a follow-up whose parent did not end done; null for a done parent.
+// The line of a follow-up whose parent did not end done; null for a done parent.
 export function partialParentLine(
   parent: ParentResult,
-  parentSayBack: string | null,
+  parentTopic: string | null,
 ): string | null {
   if (parent.outcome === "done") return null;
-  const name = taskShortForm(parentSayBack, "The earlier question");
+  const name = taskShortForm(parentTopic, "The earlier question");
   const found = parent.findings !== null;
   if (parent.outcome === "incomplete") {
     return found
@@ -85,9 +92,9 @@ type IncompleteLines = {
 
 export function incompleteLines(
   incomplete: Incomplete,
-  sayBack: string | null,
+  topic: string | null,
 ): IncompleteLines {
-  const task = taskShortForm(sayBack);
+  const task = taskShortForm(topic);
   const found = incomplete.findings !== null;
   switch (incomplete.kind) {
     case "needsUser":

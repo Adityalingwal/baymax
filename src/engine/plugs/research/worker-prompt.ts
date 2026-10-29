@@ -1,9 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { Findings } from "../../../shared/cards";
-import type { ParentResult, WorkerBrief } from "../../../shared/engine";
+import type { ParentResult } from "../../../shared/engine";
 import { judgeFlags } from "../../core/judge";
 import type { JudgeFlag } from "../../core/judge";
-import { briefForModel, taggedText } from "./model-text";
+import type { WorkerBrief } from "./brief";
+import { briefForModel, parentResultBlock, taggedText } from "./model-text";
 
 export type ThinkingMode = "off" | "low";
 
@@ -48,19 +48,6 @@ export function workerInstructions(mode: ThinkingMode): string {
   return mode === "off" ? `${instructions}\n- ${jsonAfterTools}` : instructions;
 }
 
-function findingsLines(findings: Findings | null): string[] {
-  if (findings === null) return ["No findings."];
-  const sources = findings.sources.map(
-    (source) => `- ${source.id} ${source.url} | ${source.title}`,
-  );
-  const open = findings.openPoints.map((point) => `- ${point}`);
-  return [
-    taggedText("card_text", findings.cardText),
-    taggedText("sources", sources.join("\n") || "none"),
-    taggedText("open_points", open.join("\n") || "none"),
-  ];
-}
-
 // A parent that did not end done gets one sentence on how to use what it left.
 function partialNote(parent: ParentResult): string[] {
   if (parent.outcome === "done") return [];
@@ -76,12 +63,8 @@ function partialNote(parent: ParentResult): string[] {
 }
 
 function parentBlock(parent: ParentResult): string {
-  const lines = [
-    `outcome: ${parent.outcome}`,
-    ...findingsLines(parent.findings),
-  ];
   return [
-    `<parent_result>\n${lines.join("\n")}\n</parent_result>`,
+    parentResultBlock(parent),
     "This task follows up on the result above. Its pages are not read in this task: read a page again before you cite it.",
     ...partialNote(parent),
   ].join("\n");

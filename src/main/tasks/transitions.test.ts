@@ -1,22 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { askClarify, askNew, createHarness, intake } from "./harness";
+import {
+  askClarify,
+  askNew,
+  createHarness,
+  outsideResearch,
+  questionIdOf,
+} from "./harness";
 
 describe("card fields per transition", () => {
-  it("ends an outside-research request cancelled with its line", () => {
+  it("ends an outside-research request cancelled with the spoken line on it and says nothing more", () => {
     const h = createHarness();
     h.state.ask("book me a flight", null, null);
-    h.state.receive(intake("t1", { route: "outsideResearch" }));
+    h.reply("t1", outsideResearch(), "I can't book flights; I only research.");
     expect(h.card("t1")).toMatchObject({
       state: "cancelled",
-      line: "I can't do that yet in this version.",
+      reply: "I can't book flights; I only research.",
+      line: null,
       canRetry: false,
     });
-    expect(h.said.at(-1)).toEqual({
-      taskId: "t1",
-      text: "I can't do that yet in this version.",
-      kind: "failure",
-    });
-    expect(h.sent.map((command) => command.type)).toEqual(["question"]);
+    expect(h.said).toEqual([]);
+    expect(h.silenced).toEqual([]);
+    expect(h.sent).toEqual([]);
     h.advance(3000);
     expect(h.card("t1")).toBeUndefined();
   });
@@ -53,14 +57,13 @@ describe("card fields on cancel", () => {
 
   it("clears the card's fields when a cancelled task ends", () => {
     const h = createHarness();
-    askClarify(h, "q1");
+    const taskId = askClarify(h);
     h.state.answerQuestion({
-      taskId: "t1",
-      questionId: "q1",
+      taskId,
+      questionId: questionIdOf(taskId),
       reply: { kind: "choice", index: 0 },
     });
     h.state.cancelTask("t1");
-    h.state.receive({ type: "cancelled", taskId: "t1", findings: null });
     expect(h.card("t1")).toMatchObject({
       state: "cancelled",
       line: null,
@@ -79,7 +82,7 @@ describe("a throwing dependency", () => {
     h.failPublish("window gone");
     h.state.ask("hi", null, null);
     expect(h.logs).toContain("publish failed: Error: window gone");
-    expect(h.sent.map((command) => command.type)).toEqual(["question"]);
+    expect(h.talked).toHaveLength(1);
   });
 
   it("lets a failed send surface to main's restart path", () => {
@@ -87,6 +90,6 @@ describe("a throwing dependency", () => {
     h.replyWith(() => {
       throw new Error("port closed");
     });
-    expect(() => h.state.ask("hi", null, null)).toThrow("port closed");
+    expect(() => askNew(h, "hermes")).toThrow("port closed");
   });
 });

@@ -5,8 +5,9 @@ import {
   askNew,
   createHarness,
   finish,
-  intake,
   newTask,
+  outsideResearch,
+  questionIdOf,
 } from "./harness";
 import { fixedLines } from "./lines";
 
@@ -16,9 +17,9 @@ type SilenceRow = {
   silenced: string[];
 };
 
-function failedIntake(h: Harness): void {
+function failedFront(h: Harness): void {
   h.state.ask("hi", null, null);
-  h.state.receive({ type: "failure", taskId: "t1", kind: "modelsUnreachable" });
+  h.replyFailed("t1", "modelsUnreachable");
 }
 
 const silenceRows: SilenceRow[] = [
@@ -34,7 +35,15 @@ const silenceRows: SilenceRow[] = [
   {
     name: "cancelling a thinking task with nothing sent",
     act: (h) => {
-      failedIntake(h);
+      failedFront(h);
+      h.state.cancelTask("t1");
+    },
+    silenced: ["t1"],
+  },
+  {
+    name: "cancelling a thinking task whose front call is in flight",
+    act: (h) => {
+      h.state.ask("hi", null, null);
       h.state.cancelTask("t1");
     },
     silenced: ["t1"],
@@ -68,16 +77,9 @@ const silenceRows: SilenceRow[] = [
   {
     name: "nothing when removing the thinking card of words that answer the question, whose talker reply still plays",
     act: (h) => {
-      askClarify(h, "q1");
+      askClarify(h);
       h.state.ask("the second", null, h.state.waitingQuestion());
-      h.state.receive(
-        intake("t2", {
-          route: "answer",
-          waitingTaskId: "t1",
-          questionId: "q1",
-          reply: { kind: "choice", index: 1 },
-        }),
-      );
+      h.reply("t2", newTask("x", questionIdOf("t1")));
     },
     silenced: [],
   },
@@ -90,18 +92,24 @@ describe("silencing a task's speech", () => {
     expect(h.silenced).toEqual(silenced);
   });
 
-  it.each(["thinking", "running"])(
-    "silences a %s task before the cancel is sent",
-    (state) => {
-      const h = createHarness();
-      if (state === "running") askNew(h, "hermes");
-      else h.state.ask("hi", null, null);
-      h.state.cancelTask("t1");
-      const silencedAt = h.timeline.indexOf("silence t1");
-      expect(silencedAt).toBeGreaterThanOrEqual(0);
-      expect(h.timeline.indexOf("send cancel t1")).toBeGreaterThan(silencedAt);
-    },
-  );
+  it("silences a running task before its cancel is sent", () => {
+    const h = createHarness();
+    askNew(h, "hermes");
+    h.state.cancelTask("t1");
+    const silencedAt = h.timeline.indexOf("silence t1");
+    expect(silencedAt).toBeGreaterThanOrEqual(0);
+    expect(h.timeline.indexOf("send cancel t1")).toBeGreaterThan(silencedAt);
+  });
+
+  it("silences a thinking task and aborts its front call, sending no cancel", () => {
+    const h = createHarness();
+    h.state.ask("hi", null, null);
+    h.state.cancelTask("t1");
+    expect(h.timeline).toEqual(
+      expect.arrayContaining(["silence t1", "cancel t1#1"]),
+    );
+    expect(h.sent).toEqual([]);
+  });
 });
 
 type SaidRow = { name: string; act: (h: Harness) => void; line: string };
@@ -115,14 +123,6 @@ const saidRows: SaidRow[] = [
       }
     },
     line: fixedLines.queueFull,
-  },
-  {
-    name: "outside research",
-    act: (h) => {
-      h.state.ask("book a flight", null, null);
-      h.state.receive(intake("t1", { route: "outsideResearch" }));
-    },
-    line: fixedLines.outsideResearch,
   },
 ];
 
@@ -151,8 +151,17 @@ describe("ending cancelled with a line", () => {
   it("silences nothing for a new task that starts", () => {
     const h = createHarness();
     h.state.ask("hi", null, null);
-    h.state.receive(intake("t1", newTask("hermes")));
+    h.reply("t1", newTask("hermes"));
     finish(h, "t1");
+    expect(h.silenced).toEqual([]);
+  });
+
+  it("says nothing and silences nothing for outside research, even after the leave timer", () => {
+    const h = createHarness();
+    h.state.ask("book a flight", null, null);
+    h.reply("t1", outsideResearch(), "I can't book flights.");
+    h.advance(3000);
+    expect(h.said).toEqual([]);
     expect(h.silenced).toEqual([]);
   });
 });

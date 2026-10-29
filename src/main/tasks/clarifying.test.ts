@@ -4,28 +4,13 @@ import type { Harness } from "./harness";
 import {
   askClarify,
   askNew,
+  click,
   counts,
   createHarness,
   finish,
-  intake,
   newTask,
-  question,
+  questionIdOf,
 } from "./harness";
-
-function click(taskId: string, questionId: string, index = 0): AnswerQuestion {
-  return { taskId, questionId, reply: { kind: "choice", index } };
-}
-
-function answerRoute(h: Harness, taskId: string, questionId: string): void {
-  h.state.receive(
-    intake(taskId, {
-      route: "answer",
-      waitingTaskId: "t1",
-      questionId,
-      reply: { kind: "choice", index: 1 },
-    }),
-  );
-}
 
 type DroppedRow = {
   name: string;
@@ -36,45 +21,45 @@ type DroppedRow = {
 const droppedRows: DroppedRow[] = [
   {
     name: "a second click",
-    setup: (h) => h.state.answerQuestion(click("t1", "q1")),
-    payload: click("t1", "q1", 1),
+    setup: (h) => h.state.answerQuestion(click("t1")),
+    payload: click("t1", 1),
   },
   {
     name: "a second click after the answer failed",
     setup: (h) => {
-      h.state.answerQuestion(click("t1", "q1"));
-      h.state.receive({ type: "failure", taskId: "t1", kind: "error" });
+      h.state.answerQuestion(click("t1"));
+      h.replyFailed("t1", "error");
     },
-    payload: click("t1", "q1", 1),
+    payload: click("t1", 1),
   },
   {
     name: "a late answer",
     setup: (h) => h.state.cancelTask("t1"),
-    payload: click("t1", "q1"),
+    payload: click("t1"),
   },
   {
     name: "a wrong question id",
     setup: () => undefined,
-    payload: click("t1", "q9"),
+    payload: click("t1", 0, "q9"),
   },
   {
     name: "an out-of-range choice",
     setup: () => undefined,
-    payload: click("t1", "q1", 3),
+    payload: click("t1", 3),
   },
   {
     name: "blank text",
     setup: () => undefined,
     payload: {
       taskId: "t1",
-      questionId: "q1",
+      questionId: questionIdOf("t1"),
       reply: { kind: "text", text: "  " },
     },
   },
   {
     name: "an answer to a hidden question",
-    setup: (h) => askClarify(h, "q2"),
-    payload: click("t2", "q2"),
+    setup: (h) => askClarify(h),
+    payload: click("t2"),
   },
 ];
 
@@ -83,82 +68,108 @@ type ReleaseRow = { name: string; release: (h: Harness) => void };
 const releaseRows: ReleaseRow[] = [
   {
     name: "the first is answered",
-    release: (h) => h.state.answerQuestion(click("t1", "q1")),
+    release: (h) => h.state.answerQuestion(click("t1")),
   },
   { name: "the first is cancelled", release: (h) => h.state.cancelTask("t1") },
   {
-    name: "the first task ends from cancelling",
+    name: "the first is answered and then cancelled",
     release: (h) => {
-      h.state.answerQuestion(click("t1", "q1"));
+      h.state.answerQuestion(click("t1"));
       h.state.cancelTask("t1");
-      h.state.receive({ type: "cancelled", taskId: "t1", findings: null });
     },
   },
 ];
 
 describe("the shown question", () => {
-  it("shows and says a clarify outcome's question until it is answered", () => {
+  it("shows the spoken line as the question and says nothing more, until it is answered", () => {
     const h = createHarness();
-    askClarify(h, "q1");
+    askClarify(h);
     expect(h.card("t1")).toEqual({
       taskId: "t1",
       state: "clarifying",
-      words: "about q1",
+      words: "about it",
       parentTaskId: null,
-      sayBack: "about q1",
+      sayBack: null,
       line: null,
       reply: null,
       step: null,
       sourcesRead: 0,
-      question: { ...question("q1"), answered: false },
+      question: {
+        questionId: "t1:question",
+        text: "Which one for t1?",
+        choices: ["First", "Second", "Third"],
+        answered: false,
+      },
       answer: null,
       missing: null,
       canRetry: false,
       folded: false,
     });
-    // The talker says the question in its own words; the card shows it in full.
-    expect(h.talked.at(-1)).toEqual({
-      kind: "question",
-      taskId: "t1",
-      question: "Question q1?",
-      choices: question("q1").choices,
-    });
+    expect(h.said).toEqual([]);
+    expect(h.talked).toHaveLength(1);
     expect(h.state.waitingQuestion()).toEqual({
       taskId: "t1",
-      question: question("q1"),
+      words: "about it",
+      question: {
+        questionId: "t1:question",
+        text: "Which one for t1?",
+        choices: ["First", "Second", "Third"],
+      },
     });
-    h.state.answerQuestion(click("t1", "q1"));
+    h.state.answerQuestion(click("t1"));
     expect(h.state.waitingQuestion()).toBeNull();
     expect(h.card("t1")?.question?.answered).toBe(true);
   });
+});
 
-  it("passes waiting into the question command unchanged", () => {
+describe("the question's other forms", () => {
+  it("shows an open question with no choices", () => {
     const h = createHarness();
-    const waiting = { taskId: "t7", question: question("q7") };
+    askClarify(h, []);
+    expect(h.card("t1")?.question).toMatchObject({ choices: [] });
+    expect(h.state.waitingQuestion()?.question.choices).toEqual([]);
+  });
+
+  it("passes waiting into the front call unchanged", () => {
+    const h = createHarness();
+    const waiting = {
+      taskId: "t7",
+      words: "find me a laptop",
+      question: { questionId: "q7", text: "Use?", choices: ["a", "b"] },
+    };
     h.state.ask(" hi ", "u1", waiting);
-    expect(h.sent.at(-1)).toEqual({
-      type: "question",
+    expect(h.talked.at(-1)).toEqual({
+      kind: "front",
+      attemptId: "t1#1",
       taskId: "t1",
       utteranceId: "u1",
       words: "hi",
+      history: [],
       recent: [],
+      tasks: [],
       waiting,
     });
   });
 });
 
-describe("binding an answer", () => {
-  it("binds a click and sends clarifyingAnswer with the task's words", () => {
+describe("binding a click", () => {
+  it("runs the front call with the chosen text, the question as waiting, the history and the recent tasks", () => {
     const h = createHarness();
     finish(h, askNew(h, "hermes"));
-    askClarify(h, "q2");
-    h.state.answerQuestion(click("t2", "q2", 1));
-    expect(h.sent.at(-1)).toEqual({
-      type: "clarifyingAnswer",
+    askClarify(h, ["Office", "Gaming"]);
+    h.state.answerQuestion(click("t2", 1));
+    expect(h.talked.at(-1)).toEqual({
+      kind: "front",
+      attemptId: "t2#2",
       taskId: "t2",
-      words: "about q2",
-      question: question("q2"),
-      reply: { kind: "choice", index: 1 },
+      utteranceId: null,
+      words: "Gaming",
+      history: [
+        { role: "user", text: "tell me hermes" },
+        { role: "assistant", text: "Checking hermes.\nDone. spoken" },
+        { role: "user", text: "about it" },
+        { role: "assistant", text: "Which one for t2?" },
+      ],
       recent: [
         {
           taskId: "t1",
@@ -168,12 +179,25 @@ describe("binding an answer", () => {
           cardText: "Done.",
         },
       ],
+      tasks: [],
+      waiting: {
+        taskId: "t2",
+        words: "about it",
+        question: {
+          questionId: "t2:question",
+          text: "Which one for t2?",
+          choices: ["Office", "Gaming"],
+        },
+      },
     });
+    expect(h.sent).toHaveLength(1);
   });
+});
 
+describe("an answer that is dropped", () => {
   it.each(droppedRows)("drops $name", ({ setup, payload }) => {
     const h = createHarness();
-    askClarify(h, "q1");
+    askClarify(h);
     setup(h);
     const before = counts(h);
     h.state.answerQuestion(payload);
@@ -183,96 +207,53 @@ describe("binding an answer", () => {
 
 describe("a second question", () => {
   it.each(releaseRows)(
-    "stays hidden, then shows and is said after $name",
+    "stays hidden, then shows and is said as given after $name",
     ({ release }) => {
       const h = createHarness();
-      askClarify(h, "q1");
-      askClarify(h, "q2");
+      askClarify(h);
+      askClarify(h);
       expect(h.card("t2")?.question).toBeNull();
-      const questions = () => h.talked.filter((r) => r.kind === "question");
-      expect(questions()).toHaveLength(1);
+      expect(h.said).toEqual([]);
       release(h);
-      expect(h.state.waitingQuestion()).toEqual({
-        taskId: "t2",
-        question: question("q2"),
-      });
-      expect(questions().filter((r) => r.taskId === "t2")).toEqual([
-        {
-          kind: "question",
-          taskId: "t2",
-          question: "Question q2?",
-          choices: question("q2").choices,
-        },
+      expect(h.state.waitingQuestion()).toMatchObject({ taskId: "t2" });
+      expect(h.said).toEqual([
+        { taskId: "t2", text: "Which one for t2?", kind: "question" },
       ]);
     },
   );
 
   it("lets words that do not answer go through as a new task while the question stays shown", () => {
     const h = createHarness();
-    askClarify(h, "q1");
+    askClarify(h);
     h.state.ask("something else", null, h.state.waitingQuestion());
-    h.state.receive(intake("t2", newTask("rust")));
+    h.reply("t2", newTask("rust"));
     expect(h.card("t2")?.state).toBe("running");
-    expect(h.state.waitingQuestion()).toEqual({
-      taskId: "t1",
-      question: question("q1"),
-    });
-  });
-});
-
-describe("the answer route", () => {
-  it.each([0, 4])(
-    "deletes the thinking card and binds, with %i tasks admitted",
-    (admitted) => {
-      const h = createHarness();
-      askClarify(h, "q1");
-      for (let i = 0; i < admitted; i += 1) askNew(h, `task ${i}`);
-      const states = h.last().tasks.map((card) => card.state);
-      h.state.ask("the second one", null, h.state.waitingQuestion());
-      answerRoute(h, h.lastTaskId(), "q1");
-      expect(h.card(h.lastTaskId())).toBeUndefined();
-      expect(h.last().tasks.map((card) => card.state)).toEqual(states);
-      expect(h.sent.at(-1)).toMatchObject({
-        type: "clarifyingAnswer",
-        taskId: "t1",
-      });
-      expect(h.card("t1")?.question?.answered).toBe(true);
-    },
-  );
-
-  it("deletes the thinking card of a late answer and sends nothing", () => {
-    const h = createHarness();
-    askClarify(h, "q1");
-    h.state.answerQuestion(click("t1", "q1"));
-    h.state.ask("the second one", null, null);
-    const sent = h.sent.length;
-    answerRoute(h, "t2", "q1");
-    expect(h.card("t2")).toBeUndefined();
-    expect(h.sent.length).toBe(sent);
+    expect(h.state.waitingQuestion()).toMatchObject({ taskId: "t1" });
   });
 });
 
 describe("cancelling a clarifying task", () => {
   it("ends it at once when no answer is in flight and shows the next question", () => {
     const h = createHarness();
-    askClarify(h, "q1");
-    askClarify(h, "q2");
+    askClarify(h);
+    askClarify(h);
     const sent = h.sent.length;
     h.state.cancelTask("t1");
     expect(h.card("t1")?.state).toBe("cancelled");
     expect(h.sent.length).toBe(sent);
-    expect(h.card("t2")?.question).toEqual({
-      ...question("q2"),
+    expect(h.card("t2")?.question).toMatchObject({
+      questionId: "t2:question",
       answered: false,
     });
   });
 
-  it("sends cancel when an answer is in flight", () => {
+  it("aborts the front call at once, with no engine message, when an answer is in flight", () => {
     const h = createHarness();
-    askClarify(h, "q1");
-    h.state.answerQuestion(click("t1", "q1"));
+    askClarify(h);
+    h.state.answerQuestion(click("t1"));
     h.state.cancelTask("t1");
-    expect(h.card("t1")?.state).toBe("cancelling");
-    expect(h.sent.at(-1)).toEqual({ type: "cancel", taskId: "t1" });
+    expect(h.card("t1")?.state).toBe("cancelled");
+    expect(h.cancelled).toEqual(["t1#2"]);
+    expect(h.sent).toEqual([]);
   });
 });
