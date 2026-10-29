@@ -192,7 +192,7 @@ describe("runTask counter line", () => {
       .map((request) => {
         const text = textOf(request.messages[request.messages.length - 1]);
         const counter =
-          /Pages read: (\d+)\. Searches left: 8\. Steps left: \d+\./;
+          /Pages read: (\d+)\. Searches left: 20\. Steps left: \d+\./;
         return counter.exec(text)?.[1];
       });
     expect(counters).toEqual(["1", "1", "1", "2"]);

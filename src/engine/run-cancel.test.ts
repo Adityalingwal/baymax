@@ -173,12 +173,12 @@ describe("runTask tool batches", () => {
   });
 
   it("sends only the searches left when one turn crosses the search limit", async () => {
-    const queries = Array.from({ length: 10 }, (_, index) => ({
+    const queries = Array.from({ length: 22 }, (_, index) => ({
       search: `query ${index + 1}`,
     }));
     const run = await startRun(
       [toolUseReply(queries)],
-      Array.from({ length: 10 }, () => hits(pageUrl("one"))),
+      Array.from({ length: 22 }, () => hits(pageUrl("one"))),
     );
     run.port.send(runTask());
     const events = await run.ended();
@@ -187,6 +187,8 @@ describe("runTask tool batches", () => {
       taskId: "task-1",
       incomplete: { kind: "limitHit", findings: null },
     });
-    expect(run.queries).toEqual(queries.slice(0, 8).map((call) => call.search));
+    expect(run.queries).toEqual(
+      queries.slice(0, 20).map((call) => call.search),
+    );
   });
 });

@@ -246,7 +246,7 @@ describe("runTask other retry rounds", () => {
   });
 
   it("ends limitHit with the retry card when the model-call limit comes before its judge", async () => {
-    const repeats = Array.from({ length: 17 }, () =>
+    const repeats = Array.from({ length: 22 }, () =>
       toolUseReply([{ read: pageUrl("one") }]),
     );
     const ran = await run([
@@ -257,7 +257,7 @@ describe("runTask other retry rounds", () => {
       ...repeats,
       workerAnswer(),
     ]);
-    expect(ran.requests).toHaveLength(25);
+    expect(ran.requests).toHaveLength(30);
     expect(ran.last).toEqual({
       type: "incomplete",
       taskId: "task-1",

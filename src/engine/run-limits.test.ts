@@ -14,6 +14,7 @@ import {
   workerAnswer,
 } from "./run.harness";
 import type { FakeSearchStep } from "./run.harness";
+import { taskLimits } from "./core/limits";
 import { htmlPage, sendRoute } from "./plugs/research/fake-network";
 
 afterEach(closeRuns);
@@ -57,30 +58,30 @@ const still = () => 0;
 const limitRows: LimitRow[] = [
   {
     name: "model calls",
-    steps: () => Array.from({ length: 26 }, readOne),
+    steps: () => Array.from({ length: 31 }, readOne),
     searches: [],
     clock: still,
-    calls: 24,
+    calls: 29,
     found: listOne,
   },
   {
     name: "searches",
     steps: () => [
       readOne(),
-      ...Array.from({ length: 9 }, (_, index) =>
+      ...Array.from({ length: 21 }, (_, index) =>
         toolUseReply([{ search: `query ${index + 1}` }]),
       ),
     ],
-    searches: Array.from({ length: 8 }, () => hits(pageUrl("one"))),
+    searches: Array.from({ length: 20 }, () => hits(pageUrl("one"))),
     clock: still,
-    calls: 10,
+    calls: 22,
     found: listOne,
   },
   {
     name: "active time used by a model call",
     steps: () => [readOne(), readTwo()],
     searches: [],
-    clock: (seen) => (seen.calls >= 2 ? 130_000 : 0),
+    clock: (seen) => (seen.calls >= 2 ? 250_000 : 0),
     calls: 2,
     found: listOne,
   },
@@ -88,7 +89,7 @@ const limitRows: LimitRow[] = [
     name: "active time used by a tool batch",
     steps: () => [readOne(), readTwo(), readOne()],
     searches: [],
-    clock: (seen) => (seen.connects >= 2 ? 130_000 : 0),
+    clock: (seen) => (seen.connects >= 2 ? 250_000 : 0),
     calls: 2,
     found: listTwo,
   },
@@ -115,6 +116,17 @@ async function startClocked(row: Omit<LimitRow, "name" | "calls" | "found">) {
   seen.targets = run.network.targets;
   return run;
 }
+
+describe("the task limits", () => {
+  it("are 30 model calls, 20 searches, 4 minutes and 50 cents", () => {
+    expect(taskLimits).toEqual({
+      modelCalls: 30,
+      searches: 20,
+      activeMs: 240_000,
+      dollars: 0.5,
+    });
+  });
+});
 
 describe("runTask limits", () => {
   it.each(limitRows)(
@@ -201,7 +213,7 @@ describe("runTask a call past the active time", () => {
     const run = await startClocked({
       steps: () => steps,
       searches: [],
-      clock: (seen) => (seen.calls >= row.slowCall ? 130_000 : 0),
+      clock: (seen) => (seen.calls >= row.slowCall ? 250_000 : 0),
     });
     run.port.send(runTask());
     const events = await run.ended();
