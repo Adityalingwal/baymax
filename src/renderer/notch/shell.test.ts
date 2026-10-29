@@ -1,282 +1,196 @@
 import { describe, expect, it } from "vitest";
-import type { TaskCard, TaskState } from "../../shared/cards";
-import {
-  foldedOrClosed,
-  initialPointer,
-  initialVoice,
-  lastFoldedCard,
-  pointerReducer,
-  shellMode,
-  voiceReducer,
-} from "./shell";
-import type {
-  PointerChange,
-  PointerState,
-  ShellMode,
-  ShellReasons,
-  VoiceEvent,
-  VoiceState,
-} from "./shell";
+import { initialPanel, panelReducer } from "./shell";
+import type { PanelEvent, PanelState } from "./shell";
 
-type Card = Pick<TaskCard, "taskId" | "state" | "folded">;
+type Step = PanelEvent | ((state: PanelState) => PanelEvent);
 
-const card = (taskId: string, state: TaskState, folded = false): Card => ({
-  taskId,
-  state,
-  folded,
+const pointer = (
+  inNotch: boolean,
+  inOpenOutline: boolean,
+  inVisible: boolean,
+): PanelEvent => ({ kind: "pointer", inNotch, inOpenOutline, inVisible });
+
+const onNotch = pointer(true, true, true);
+const onPanel = pointer(false, true, true);
+// Inside the open outline but where nothing is drawn yet (or any more).
+const onUndrawn = pointer(false, true, false);
+const away = pointer(false, false, false);
+const gone: PanelEvent = { kind: "pointer-gone" };
+// The running timer fires.
+const dwell: Step = (state) => ({
+  kind: "dwell-elapsed",
+  token: state.dwell ?? -1,
 });
+const leave: Step = (state) => ({
+  kind: "leave-elapsed",
+  token: state.leave ?? -1,
+});
+const escape: PanelEvent = { kind: "escape" };
+const closed: PanelEvent = { kind: "closed" };
+const draft = (value: boolean): PanelEvent => ({ kind: "draft", draft: value });
+const mouse = (down: boolean): PanelEvent => ({ kind: "mouse", down });
+const access: PanelEvent = { kind: "access", needed: true };
+const opened: Step[] = [onNotch, dwell];
 
-const openAnswer = card("open", "done");
-const pill = card("pill", "running");
-const question = card("question", "clarifying");
-const folded = card("folded", "done", true);
-const foldedIncomplete = card("folded-2", "incomplete", true);
+function run(steps: Step[]): PanelState {
+  return steps.reduce<PanelState>((state, step) => {
+    const event = typeof step === "function" ? step(state) : step;
+    return panelReducer(state, event);
+  }, initialPanel);
+}
 
-const quiet: ShellReasons & PointerState = {
-  needsAccess: false,
-  typing: false,
-  voice: false,
-  notice: null,
-  tasks: [],
-  hovered: false,
-  waitForExit: false,
+type Expected = {
+  open: boolean;
+  closing?: boolean;
+  dwelling?: boolean;
+  leaving?: boolean;
 };
 
-type ModeRow = {
-  name: string;
-  input: Partial<typeof quiet>;
-  expected: ShellMode;
-};
-
-const modeRows: ModeRow[] = [
-  { name: "nothing to show is idle", input: {}, expected: "idle" },
-  { name: "hover opens", input: { hovered: true }, expected: "open" },
-  { name: "typing opens", input: { typing: true }, expected: "open" },
+const rows: { name: string; steps: Step[]; expected: Expected }[] = [
   {
-    name: "a missing Accessibility permission opens",
-    input: { needsAccess: true },
-    expected: "open",
-  },
-  { name: "voice opens", input: { voice: true }, expected: "open" },
-  {
-    name: "a notice opens",
-    input: { notice: "I didn't catch that, say it again." },
-    expected: "open",
+    name: "resting 150 ms on the notch opens",
+    steps: opened,
+    expected: { open: true, dwelling: false, leaving: false },
   },
   {
-    name: "an open answer opens",
-    input: { tasks: [openAnswer] },
-    expected: "open",
-  },
-  { name: "a pill opens", input: { tasks: [pill] }, expected: "open" },
-  {
-    name: "a question opens",
-    input: { tasks: [question] },
-    expected: "open",
+    name: "leaving the notch before 150 ms cancels the dwell",
+    steps: [onNotch, away, { kind: "dwell-elapsed", token: 1 }],
+    expected: { open: false, dwelling: false },
   },
   {
-    name: "one unfolded card among folded ones opens",
-    input: { tasks: [folded, pill] },
-    expected: "open",
+    name: "the open outline alone never opens a closed panel",
+    steps: [onUndrawn],
+    expected: { open: false, dwelling: false },
   },
   {
-    name: "only folded cards show the dot",
-    input: { tasks: [folded, foldedIncomplete] },
-    expected: "dot",
+    name: "the pointer out for 300 ms closes",
+    steps: [...opened, away, leave],
+    expected: { open: false, closing: true, leaving: false },
   },
   {
-    name: "wait-for-exit keeps hover alone from opening",
-    input: { hovered: true, waitForExit: true },
-    expected: "idle",
+    name: "leaving the window starts the close",
+    steps: [...opened, gone],
+    expected: { open: true, leaving: true },
   },
   {
-    name: "wait-for-exit with folded cards shows the dot",
-    input: { hovered: true, waitForExit: true, tasks: [folded] },
-    expected: "dot",
+    name: "the pointer leaving during the grow starts the close timer",
+    steps: [...opened, onUndrawn, away],
+    expected: { open: true, leaving: true },
   },
   {
-    name: "wait-for-exit does not close a shell held open by a card",
-    input: { hovered: true, waitForExit: true, tasks: [pill] },
-    expected: "open",
+    name: "the undrawn part of a growing panel counts as inside",
+    steps: [...opened, onUndrawn],
+    expected: { open: true, leaving: false },
   },
   {
-    name: "wait-for-exit does not close a shell held open by typing",
-    input: { waitForExit: true, typing: true },
-    expected: "open",
+    name: "coming back within 300 ms cancels the close",
+    steps: [...opened, away, onPanel, { kind: "leave-elapsed", token: 2 }],
+    expected: { open: true, leaving: false },
   },
-];
-
-describe("shellMode", () => {
-  it.each(modeRows)("$name", ({ input, expected }) => {
-    expect(shellMode({ ...quiet, ...input })).toBe(expected);
-  });
-});
-
-describe("lastFoldedCard", () => {
-  it.each<{ name: string; tasks: Card[]; expected: Card | null }>([
-    { name: "no cards", tasks: [], expected: null },
-    { name: "no folded card", tasks: [openAnswer, pill], expected: null },
-    { name: "one folded card", tasks: [folded], expected: folded },
-    {
-      name: "the last folded card in tasks order wins",
-      tasks: [folded, foldedIncomplete],
-      expected: foldedIncomplete,
-    },
-    {
-      name: "folded and unfolded mixed",
-      tasks: [folded, openAnswer, foldedIncomplete, pill],
-      expected: foldedIncomplete,
-    },
-  ])("$name", ({ tasks, expected }) => {
-    expect(lastFoldedCard(tasks)).toBe(expected);
-  });
-});
-
-describe("foldedOrClosed", () => {
-  it.each<[string, Card[], Card[], boolean]>([
-    [
-      "a shown card was folded",
-      [openAnswer],
-      [{ ...openAnswer, folded: true }],
-      true,
+  {
+    name: "a stale close timer from an earlier exit is ignored",
+    steps: [
+      ...opened,
+      away,
+      onPanel,
+      away,
+      { kind: "leave-elapsed", token: 2 },
     ],
-    ["a shown card was closed", [openAnswer, folded], [folded], true],
-    ["a folded card was closed", [folded], [], false],
-    ["a card was unfolded", [folded], [{ ...folded, folded: false }], false],
-    ["a card was added", [], [pill], false],
-    ["a card changed state", [pill], [{ ...pill, state: "done" }], false],
-  ])("%s", (_name, previous, current, expected) => {
-    expect(foldedOrClosed(previous, current)).toBe(expected);
-  });
-});
-
-const hovered: PointerState = { hovered: true, waitForExit: false };
-const waiting: PointerState = { hovered: false, waitForExit: true };
-
-type PointerRow = {
-  name: string;
-  state: PointerState;
-  event: PointerChange["kind"];
-  expected: PointerState;
-};
-
-const pointerRows: PointerRow[] = [
-  {
-    name: "inside hovers",
-    state: initialPointer,
-    event: "inside",
-    expected: hovered,
+    expected: { open: true, leaving: true },
   },
   {
-    name: "inside while waiting for exit does not hover",
-    state: waiting,
-    event: "inside",
-    expected: waiting,
+    name: "a draft blocks the hover-exit close",
+    steps: [...opened, draft(true), away],
+    expected: { open: true, leaving: false },
   },
   {
-    name: "outside after the delay stops hovering",
-    state: hovered,
-    event: "outside-after-delay",
-    expected: initialPointer,
+    name: "clearing the draft while out starts the close",
+    steps: [...opened, draft(true), away, draft(false), leave],
+    expected: { open: false, closing: true },
   },
   {
-    name: "blur stops hovering",
-    state: hovered,
-    event: "blur",
-    expected: initialPointer,
+    name: "a held mouse button blocks the hover-exit close",
+    steps: [...opened, mouse(true), away],
+    expected: { open: true, leaving: false },
   },
   {
-    name: "blur keeps waiting for exit",
-    state: waiting,
-    event: "blur",
-    expected: waiting,
+    name: "releasing the button outside starts the close",
+    steps: [...opened, mouse(true), away, mouse(false), leave],
+    expected: { open: false, closing: true },
   },
   {
-    name: "leaving the window stops hovering and waiting",
-    state: { hovered: true, waitForExit: true },
-    event: "left-window",
-    expected: initialPointer,
+    name: "Esc closes even with a draft",
+    steps: [...opened, draft(true), escape],
+    expected: { open: false, closing: true },
   },
   {
-    name: "a fold or close under the pointer waits for exit",
-    state: hovered,
-    event: "folded-or-closed",
-    expected: waiting,
+    name: "Esc during the grow closes",
+    steps: [...opened, onUndrawn, escape],
+    expected: { open: false, closing: true },
   },
   {
-    name: "a fold or close away from the pointer does not wait",
-    state: initialPointer,
-    event: "folded-or-closed",
-    expected: initialPointer,
+    name: "after Esc a pointer still on the notch does not reopen",
+    steps: [...opened, escape, closed, onNotch],
+    expected: { open: false, dwelling: false },
   },
   {
-    name: "leaving the collapsed outline ends the wait",
-    state: waiting,
-    event: "outside-collapsed",
-    expected: initialPointer,
+    name: "after Esc the shrinking shape under the pointer does not reopen",
+    steps: [...opened, onPanel, escape, onPanel],
+    expected: { open: false, closing: true },
+  },
+  {
+    name: "after Esc, leaving the notch and coming back reopens",
+    steps: [...opened, escape, closed, away, onNotch, dwell],
+    expected: { open: true },
+  },
+  {
+    name: "the pointer back on the shrinking shape reopens at once",
+    steps: [...opened, away, leave, onPanel],
+    expected: { open: true, closing: false, dwelling: false },
+  },
+  {
+    name: "the close motion ending clears closing",
+    steps: [...opened, away, leave, closed],
+    expected: { open: false, closing: false },
+  },
+  {
+    name: "a stale end of a close after a reopen is ignored",
+    steps: [...opened, away, leave, onPanel, closed],
+    expected: { open: true, closing: false },
+  },
+  {
+    name: "the Accessibility hint opens the panel by itself",
+    steps: [access],
+    expected: { open: true },
+  },
+  {
+    name: "the Accessibility hint holds through Esc and the pointer out",
+    steps: [access, onPanel, escape, away],
+    expected: { open: true, leaving: false },
   },
 ];
 
-describe("pointerReducer", () => {
-  it.each(pointerRows)("$name", ({ state, event, expected }) => {
-    expect(pointerReducer(state, { kind: event })).toEqual(expected);
+describe("panelReducer", () => {
+  it.each(rows)("$name", ({ steps, expected }) => {
+    const state = run(steps);
+    expect({
+      open: state.open,
+      ...(expected.closing === undefined ? {} : { closing: state.closing }),
+      ...(expected.dwelling === undefined
+        ? {}
+        : { dwelling: state.dwell !== null }),
+      ...(expected.leaving === undefined
+        ? {}
+        : { leaving: state.leave !== null }),
+    }).toEqual(expected);
+  });
+
+  it("keeps the draft through an Esc close", () => {
+    expect(run([...opened, draft(true), escape]).draft).toBe(true);
   });
 
   it("returns the same state when nothing changes", () => {
-    expect(pointerReducer(hovered, { kind: "inside" })).toBe(hovered);
-  });
-});
-
-function runVoice(events: VoiceEvent[]): VoiceState {
-  return events.reduce(voiceReducer, initialVoice);
-}
-
-const started: VoiceEvent = { kind: "listening-started" };
-const ended: VoiceEvent = { kind: "listening-ended" };
-const threshold = (hold: number): VoiceEvent => ({
-  kind: "threshold-elapsed",
-  hold,
-});
-const linger = (hold: number): VoiceEvent => ({ kind: "linger-elapsed", hold });
-
-describe("voiceReducer", () => {
-  it.each<{ name: string; events: VoiceEvent[]; voice: boolean }>([
-    {
-      name: "a tap never turns voice on",
-      events: [started, ended, threshold(1)],
-      voice: false,
-    },
-    {
-      name: "a long hold turns voice on at the threshold",
-      events: [started, threshold(1)],
-      voice: true,
-    },
-    {
-      name: "voice stays on after the hold until the linger elapses",
-      events: [started, threshold(1), ended],
-      voice: true,
-    },
-    {
-      name: "the linger turns voice off",
-      events: [started, threshold(1), ended, linger(1)],
-      voice: false,
-    },
-    {
-      name: "a new hold during the linger keeps voice on",
-      events: [started, threshold(1), ended, started, linger(1)],
-      voice: true,
-    },
-    {
-      name: "a stale linger after a later hold ended is ignored",
-      events: [started, threshold(1), ended, started, ended, linger(1)],
-      voice: true,
-    },
-    {
-      name: "a stale threshold from an earlier tap is ignored",
-      events: [started, ended, started, threshold(1)],
-      voice: false,
-    },
-  ])("$name", ({ events, voice }) => {
-    expect(runVoice(events).voice).toBe(voice);
+    const state = run(opened);
+    expect(panelReducer(state, onNotch)).toBe(state);
   });
 });

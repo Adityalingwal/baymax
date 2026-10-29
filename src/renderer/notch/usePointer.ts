@@ -1,36 +1,23 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import type { Dispatch } from "react";
-import { createHitTest, hoverZone, shellOutline } from "./outline";
-import type { HitTest, HitZone, OutlineGeometry } from "./outline";
-import {
-  foldedOrClosed,
-  initialPointer,
-  pointerReducer,
-  shellMode,
-} from "./shell";
-import type {
-  PointerChange,
-  PointerState,
-  ShellMode,
-  ShellReasons,
-} from "./shell";
+import { createHitTest } from "./outline";
+import type { HitTest, HitZone } from "./outline";
+import { initialPanel, panelDelays, panelReducer } from "./shell";
+import type { PanelEvent, PanelState } from "./shell";
 
-const exitDelayMs = 100;
-
-type PointerView = PointerState & {
-  capture: HitZone;
-  hover: HitZone;
-  // Open only: the hover zone of the mode the shell would collapse to.
-  collapsedHover: HitZone | null;
+export type PointerZones = {
+  notch: HitZone; // the hover sensor that opens the panel
+  opened: HitZone; // the open panel's full outline
+  visible: () => string; // the shape as drawn now
 };
 
 type Tracker = {
-  view: PointerView;
+  zones: PointerZones;
   captured: boolean;
+  mouseDown: boolean;
   point: { x: number; y: number } | null;
-  exitTimer: ReturnType<typeof setTimeout> | null;
   hitTest: HitTest;
-  dispatch: Dispatch<PointerChange>;
+  dispatch: Dispatch<PanelEvent>;
 };
 
 function setCapture(tracker: Tracker, captured: boolean): void {
@@ -39,145 +26,114 @@ function setCapture(tracker: Tracker, captured: boolean): void {
   window.baymax.setMouseCapture({ captured });
 }
 
-function cancelExit(tracker: Tracker): void {
-  if (tracker.exitTimer === null) return;
-  clearTimeout(tracker.exitTimer);
-  tracker.exitTimer = null;
-}
-
-function inHover(tracker: Tracker, x: number, y: number): boolean {
-  const { view, hitTest } = tracker;
-  if (hitTest(view.hover, x, y)) return true;
-  // The hover margin beside the neck lies outside the open outline; without this the shell flips every 100 ms.
-  return view.collapsedHover !== null && hitTest(view.collapsedHover, x, y);
-}
-
-// Tests the last pointer position against the current zones; always the target outline, never the animating one.
+// Clicks land only on what is drawn; a press that started inside keeps them until it is released, so its mouse-up comes back.
 function evaluate(tracker: Tracker): void {
-  const { point, view } = tracker;
-  if (point === null) return;
-  const inShape = tracker.hitTest(view.capture, point.x, point.y);
-  setCapture(tracker, inShape);
-  // The wait ends only once the pointer is out of the collapsed hover zone, or a still pointer would reopen it.
-  if (view.waitForExit) {
-    if (!inHover(tracker, point.x, point.y)) {
-      tracker.dispatch({ kind: "outside-collapsed" });
-    }
+  const { point, zones, hitTest } = tracker;
+  if (point === null) {
+    setCapture(tracker, tracker.mouseDown);
     return;
   }
-  if (inHover(tracker, point.x, point.y)) {
-    cancelExit(tracker);
-    tracker.dispatch({ kind: "inside" });
-    return;
-  }
-  if (!view.hovered || tracker.exitTimer !== null) return;
-  tracker.exitTimer = setTimeout(() => {
-    tracker.exitTimer = null;
-    tracker.dispatch({ kind: "outside-after-delay" });
-  }, exitDelayMs);
+  const { x, y } = point;
+  const inVisible = hitTest({ kind: "path", path: zones.visible() }, x, y);
+  setCapture(tracker, inVisible || tracker.mouseDown);
+  tracker.dispatch({
+    kind: "pointer",
+    inNotch: hitTest(zones.notch, x, y),
+    inOpenOutline: hitTest(zones.opened, x, y),
+    inVisible,
+  });
 }
 
-function release(tracker: Tracker, change: "left-window" | "blur"): void {
-  cancelExit(tracker);
-  tracker.point = null;
-  setCapture(tracker, false);
-  tracker.dispatch({ kind: change });
+function setMouseDown(tracker: Tracker, down: boolean): void {
+  if (tracker.mouseDown === down) return;
+  tracker.mouseDown = down;
+  tracker.dispatch({ kind: "mouse", down });
+  evaluate(tracker);
 }
 
 function listen(tracker: Tracker): () => void {
   const move = (event: MouseEvent) => {
     tracker.point = { x: event.clientX, y: event.clientY };
+    // A release that happened where this window could not see it.
+    if (tracker.mouseDown && event.buttons === 0) setMouseDown(tracker, false);
     evaluate(tracker);
   };
   const leave = (event: MouseEvent) => {
     const { clientX: x, clientY: y } = event;
     const inside =
       x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
-    if (!inside) release(tracker, "left-window");
+    if (inside) return;
+    tracker.point = null;
+    tracker.dispatch({ kind: "pointer-gone" });
+    evaluate(tracker);
   };
-  const blur = () => release(tracker, "blur");
+  // Only a captured window gets the press, so it always started inside the shape.
+  const down = () => setMouseDown(tracker, true);
+  const up = () => setMouseDown(tracker, false);
   document.addEventListener("mousemove", move);
   document.addEventListener("mouseleave", leave);
-  window.addEventListener("blur", blur);
+  document.addEventListener("mousedown", down);
+  window.addEventListener("mouseup", up);
+  window.addEventListener("blur", up);
   return () => {
     document.removeEventListener("mousemove", move);
     document.removeEventListener("mouseleave", leave);
-    window.removeEventListener("blur", blur);
-    cancelExit(tracker);
+    document.removeEventListener("mousedown", down);
+    window.removeEventListener("mouseup", up);
+    window.removeEventListener("blur", up);
     setCapture(tracker, false);
   };
 }
 
-function useTracker(view: PointerView, dispatch: Dispatch<PointerChange>) {
+// Keyed by the token, so a render never restarts a running timer.
+function useTimer(
+  token: number | null,
+  ms: number,
+  kind: "dwell-elapsed" | "leave-elapsed",
+  dispatch: Dispatch<PanelEvent>,
+): void {
+  useEffect(() => {
+    if (token === null) return;
+    const timer = setTimeout(() => dispatch({ kind, token }), ms);
+    return () => clearTimeout(timer);
+  }, [token, ms, kind, dispatch]);
+}
+
+export type PanelPointer = {
+  state: PanelState;
+  dispatch: Dispatch<PanelEvent>;
+  frameChanged: () => void; // the drawn shape moved under a still pointer
+};
+
+export function usePointer(
+  zones: PointerZones,
+  holds: { needsAccess: boolean; draft: boolean; shapeKey: unknown },
+): PanelPointer {
+  const [state, dispatch] = useReducer(panelReducer, initialPanel);
   const [tracker] = useState<Tracker>(() => ({
-    view,
+    zones,
     captured: false,
+    mouseDown: false,
     point: null,
-    exitTimer: null,
     hitTest: createHitTest(),
     dispatch,
   }));
+  tracker.zones = zones;
   useEffect(() => listen(tracker), [tracker]);
-  // After every mode or outline change, so a shape that shrinks away from a still pointer releases it.
+  useEffect(() => evaluate(tracker), [tracker, zones]);
+  const { needsAccess, draft, shapeKey } = holds;
+  useEffect(
+    () => dispatch({ kind: "access", needed: needsAccess }),
+    [needsAccess],
+  );
+  useEffect(() => dispatch({ kind: "draft", draft }), [draft]);
+  // A new window shape means the window moved: whatever the pointer was over is gone.
   useEffect(() => {
-    tracker.view = view;
+    tracker.point = null;
+    dispatch({ kind: "pointer-gone" });
     evaluate(tracker);
-  }, [tracker, view]);
-  return tracker;
-}
-
-// A fold or close that leaves only the pointer holding the shell open collapses it until the pointer leaves.
-function useFoldWatch(
-  reasons: ShellReasons,
-  dispatch: Dispatch<PointerChange>,
-): void {
-  const previous = useRef(reasons.tasks);
-  useEffect(() => {
-    const before = previous.current;
-    previous.current = reasons.tasks;
-    if (!foldedOrClosed(before, reasons.tasks)) return;
-    const unhovered = { ...reasons, ...initialPointer };
-    if (shellMode(unhovered) !== "open") dispatch({ kind: "folded-or-closed" });
-  }, [reasons, dispatch]);
-}
-
-function usePointerView(
-  geometry: OutlineGeometry,
-  mode: ShellMode,
-  collapsed: ShellMode,
-  pointer: PointerState,
-): PointerView {
-  const { width, height, shape, contentHeight } = geometry;
-  return useMemo(() => {
-    const current = { width, height, shape, contentHeight };
-    const capture: HitZone = {
-      kind: "path",
-      path: shellOutline(current, mode),
-    };
-    const collapsedHover =
-      mode === "open" && collapsed !== "open"
-        ? hoverZone(current, collapsed)
-        : null;
-    return {
-      ...pointer,
-      capture,
-      hover: hoverZone(current, mode),
-      collapsedHover,
-    };
-  }, [width, height, shape, contentHeight, mode, collapsed, pointer]);
-}
-
-export function usePointer(
-  geometry: OutlineGeometry,
-  reasons: ShellReasons,
-): ShellMode {
-  const [pointer, dispatch] = useReducer(pointerReducer, initialPointer);
-  const mode = shellMode({ ...reasons, ...pointer });
-  const collapsed = shellMode({ ...reasons, ...initialPointer });
-  const view = usePointerView(geometry, mode, collapsed, pointer);
-  const tracker = useTracker(view, dispatch);
-  useFoldWatch(reasons, dispatch);
-  // A new shape means the window moved: whatever the pointer was over is gone.
-  useEffect(() => release(tracker, "left-window"), [tracker, geometry.shape]);
-  return mode;
+  }, [tracker, shapeKey]);
+  useTimer(state.dwell, panelDelays.dwellMs, "dwell-elapsed", dispatch);
+  useTimer(state.leave, panelDelays.leaveMs, "leave-elapsed", dispatch);
+  return { state, dispatch, frameChanged: () => evaluate(tracker) };
 }

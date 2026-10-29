@@ -2,7 +2,8 @@ import type { WindowShape } from "../shared/ipc";
 
 type DisplayBounds = Pick<Electron.Display, "bounds">;
 
-const panelSize = { width: 480, height: 720 } as const;
+// The open panel's width; the window never resizes, only the black shape inside it moves.
+const panelSize = { width: 640, height: 720 } as const;
 
 // Measured on the demo Mac (139 x 25 points on a 1280-point-wide display), not detected.
 const measuredNotch = { width: 139, height: 25, displayWidth: 1280 } as const;

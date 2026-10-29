@@ -70,7 +70,7 @@ export function TopBar(props: TopBarProps) {
   const { openAccessibilitySettings } = props;
   const listening = hold === "listening";
   return (
-    <header className="flex flex-col gap-2 p-3">
+    <header className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <p
           className={`min-w-0 flex-1 truncate text-sm ${listening ? "font-medium text-emerald-400" : "text-zinc-400"}`}
