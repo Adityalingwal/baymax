@@ -234,7 +234,7 @@ It checks the answer's form and its citations, not whether the pages back the cl
 
 | Failure | Line |
 | --- | --- |
-| Words not caught | "I didn't catch that, say it again." |
+| Words not caught | "I didn't catch that, say it again." Not said when a newer hold has already started. |
 | Microphone blocked | "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question." |
 | No microphone | "I can't find a microphone. Connect one, or type your question." |
 | Voice unavailable | "Voice isn't working right now. You can type your question instead." |

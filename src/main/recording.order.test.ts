@@ -48,6 +48,32 @@ describe("late not caught", () => {
     },
   );
 
+  it.each(lateRows)(
+    "drops A's not-caught from $name while B is still held",
+    async ({ finishA }) => {
+      const h = createHarness();
+      const a = hold(h, "accept");
+      sendAudio(h, a);
+      h.flow.holdStarted();
+      await finishA(h, a);
+      expect(h.heard).toEqual([]);
+    },
+  );
+
+  it.each(lateRows)(
+    "drops A's not-caught from $name while B waits for its words",
+    async ({ finishA }) => {
+      const h = createHarness();
+      const a = hold(h, "accept");
+      sendAudio(h, a);
+      const b = hold(h, "accept");
+      sendAudio(h, b);
+      await finishA(h, a);
+      await resolveCall(h, 1, { kind: "words", words: "newer" });
+      expect(h.heard).toEqual([words(b, "newer")]);
+    },
+  );
+
   it("drops a mic failure that arrives after a newer question's words", async () => {
     const h = createHarness();
     const a = hold(h, "accept");

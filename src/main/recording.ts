@@ -72,8 +72,24 @@ function deliver(
     console.log("[Voice] late transcript dropped");
     return;
   }
+  if (staleNotCaught(state, heard, seq)) {
+    console.log("[Voice] not caught dropped: the user already asked again");
+    return;
+  }
   if (heard.kind === "words") state.lastWordsSeq = seq;
   deps.onHeard(heard);
+}
+
+// "Didn't catch that" for a hold the user has already followed with a newer one, still recording or waiting for its words.
+function staleNotCaught(
+  state: RecordingState,
+  heard: Heard,
+  seq: number,
+): boolean {
+  if (heard.kind !== "notCaught") return false;
+  if (heard.cause !== "empty" && heard.cause !== "error") return false;
+  if (state.recording !== null && state.recording.seq > seq) return true;
+  return [...state.accepted.values()].some((other) => other > seq);
 }
 
 function accept(state: RecordingState, utteranceId: UtteranceId, seq: number) {
