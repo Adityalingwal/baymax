@@ -119,8 +119,8 @@ function startRounds(run: ResearchRun, brief: WorkerBrief): Rounds {
   const foundAnswer = (): FoundAnswer => {
     const findings = found();
     const spokenLine =
-      built !== null && findings === built.findings ? built.spokenLine : "";
-    return { findings, spokenLine: spokenLine === "" ? null : spokenLine };
+      built !== null && findings === built.findings ? built.spokenLine : null;
+    return { findings, spokenLine };
   };
   run.found.current = found;
   const job = { ...run.task, role: "worker" as const };

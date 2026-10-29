@@ -245,7 +245,7 @@ It checks the answer's form and its citations, not whether the pages back the cl
 | Front call failed, key rejected / no credit | The key or credit line above, with retry; no task starts |
 | Front call failed or timed out with nothing spoken | "Sorry, I missed that. Ask again." with retry; no task starts |
 | Front call failed or timed out after it spoke, or its decision failed the check | "That didn't go through. Ask again." with retry; no task starts |
-| Limit hit | Never named. With an answer: the worker's own spoken line, and "Not found: …" from its open points on the card. With only read pages: "I couldn't finish an answer on {topic}; here are the pages I read." With nothing: "I couldn't find an answer on {topic}." |
+| Limit hit | Never named. With an answer: the worker's own spoken line (or "Here's what I found on {topic}." when it wrote none), and "Not found: …" from its open points on the card. With only read pages: "I couldn't finish an answer on {topic}; here are the pages I read." With nothing: "I couldn't find an answer on {topic}." |
 | Sources thin / error | "{task} found little on the web; here is what I found." / "{task} hit an error; here is what I found." |
 | Done check failed | "{task} is finished, but I couldn't check all of it; the unchecked part is marked." |
 | Uncaught failure | "Baymax hit a problem and is restarting." |

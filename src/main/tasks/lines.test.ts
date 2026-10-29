@@ -109,6 +109,13 @@ const incompleteRows: IncompleteRow[] = [
     spoken: "Hermes runs a loop.",
   },
   {
+    name: "limitHit with an answer whose spoken line is empty",
+    incomplete: { kind: "limitHit", findings: answered, spokenLine: "" },
+    line: null,
+    missing: "Not found: the price in India; the weight",
+    spoken: "Here's what I found on how Hermes works.",
+  },
+  {
     name: "limitHit with pages only",
     incomplete: { kind: "limitHit", findings: found },
     line: "I couldn't finish an answer on how Hermes works; here are the pages I read.",

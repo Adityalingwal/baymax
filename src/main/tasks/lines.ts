@@ -103,7 +103,8 @@ function limitLines(
   if (findings !== null && spokenLine !== undefined) {
     const open = findings.openPoints.join("; ");
     const missing = open === "" ? null : `Not found: ${open}`;
-    return { line: null, missing, spoken: spokenLine };
+    const spoken = spokenLine || `Here's what I found on ${subject}.`;
+    return { line: null, missing, spoken };
   }
   const line =
     findings === null

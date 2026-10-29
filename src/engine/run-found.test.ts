@@ -74,6 +74,19 @@ const foundRows: FoundRow[] = [
     spokenLine: goodAnswer.spokenLine,
   },
   {
+    name: "the failed answer's card and its empty spoken line",
+    steps: () => [
+      toolUseReply([{ read: pageUrl("one") }]),
+      costly(workerAnswer({ spokenLine: " ", claims: claimOne })),
+    ],
+    found: {
+      cardText: goodAnswer.cardText,
+      sources: [one],
+      openPoints: goodAnswer.openPoints,
+    },
+    spokenLine: "",
+  },
+  {
     name: "the read pages after an empty failed answer",
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
