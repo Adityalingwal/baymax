@@ -52,7 +52,7 @@ describe("runTask parallel tool calls", () => {
     run.port.send(runTask());
     const events = await run.ended();
     expect(events[events.length - 1]).toMatchObject({ type: "result" });
-    const second = run.requests[1];
+    const second = run.workerRequests()[1];
     expect(second.messages).toHaveLength(3);
     const results = second.messages[2];
     expect(results.role).toBe("user");
@@ -68,7 +68,9 @@ describe("runTask parallel tool calls", () => {
     expect(textOf(read)).toContain('<page source_id=\\"s1\\"');
     expect(failed).toMatchObject({ is_error: true });
     expect(search).not.toHaveProperty("is_error");
-    expect(run.requests[2].messages.slice(0, 3)).toEqual(second.messages);
+    expect(run.workerRequests()[2].messages.slice(0, 3)).toEqual(
+      second.messages,
+    );
   });
 });
 
@@ -81,13 +83,13 @@ describe("runTask injected page text", () => {
     ]);
     run.port.send(runTask());
     await run.ended();
-    const results = run.requests[1].messages[2].content;
+    const results = run.workerRequests()[1].messages[2].content;
     const block =
       Array.isArray(results) && results[0].type === "tool_result"
         ? results[0].content
         : null;
     if (typeof block !== "string") throw new Error("no tool result text");
-    const judgeText = textOf(run.requests[2].messages[0].content);
+    const judgeText = textOf(run.judgeRequests()[0].messages[0].content);
     for (const text of [block, judgeText]) {
       expect(text.match(/<page /g)).toHaveLength(1);
       expect(text.match(/<\/page>/g)).toHaveLength(1);
@@ -184,12 +186,15 @@ describe("runTask counter line", () => {
     ]);
     run.port.send(runTask());
     await run.ended();
-    const counters = run.requests.slice(1, 5).map((request) => {
-      const text = textOf(request.messages[request.messages.length - 1]);
-      const counter =
-        /Pages read: (\d+)\. Searches left: 8\. Steps left: \d+\./;
-      return counter.exec(text)?.[1];
-    });
+    const counters = run
+      .workerRequests()
+      .slice(1, 5)
+      .map((request) => {
+        const text = textOf(request.messages[request.messages.length - 1]);
+        const counter =
+          /Pages read: (\d+)\. Searches left: 8\. Steps left: \d+\./;
+        return counter.exec(text)?.[1];
+      });
     expect(counters).toEqual(["1", "1", "1", "2"]);
   });
 });

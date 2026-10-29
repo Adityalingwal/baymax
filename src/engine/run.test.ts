@@ -68,7 +68,8 @@ describe("runTask happy path", () => {
       },
     ]);
     expect(run.queries).toEqual(["hermes agent internals"]);
-    expect(run.requests).toHaveLength(5);
+    expect(run.loopRequests()).toHaveLength(5);
+    expect(run.briefRequests()).toHaveLength(1);
   });
 });
 
@@ -77,7 +78,7 @@ describe("runTask worker requests", () => {
     const run = await startRun(happySteps(), [hits(pageUrl("one"))]);
     run.port.send(runTask());
     await run.ended();
-    const worker = run.requests.slice(0, 4);
+    const worker = run.workerRequests().slice(0, 4);
     const [first] = worker;
     const strictTool = (name: string, field: string) => ({
       name,
@@ -115,15 +116,16 @@ describe("runTask prompt start", () => {
     run.port.send(runTask());
     run.port.send(runTask({ taskId: "task-2" }));
     await run.settle(2);
-    expect(run.requests).toHaveLength(2);
-    expect(promptStart(run.requests[1])).toBe(promptStart(run.requests[0]));
+    const [first, second] = run.workerRequests();
+    expect(run.workerRequests()).toHaveLength(2);
+    expect(promptStart(second)).toBe(promptStart(first));
   });
 
   it("only appends to the history, thinking blocks included", async () => {
     const run = await startRun(happySteps(), [hits(pageUrl("one"))]);
     run.port.send(runTask());
     await run.ended();
-    const worker = run.requests.slice(0, 4);
+    const worker = run.workerRequests().slice(0, 4);
     for (const [step, request] of worker.entries()) {
       expect(request.messages).toHaveLength(1 + 2 * step);
       if (step === 0) continue;
@@ -142,12 +144,12 @@ describe("runTask judge request", () => {
     const run = await startRun(happySteps(), [hits(pageUrl("one"))]);
     run.port.send(runTask());
     await run.ended();
-    const judge = run.requests[4];
+    const judge = run.judgeRequests()[0];
     const text = firstText(judge);
     expect(judge.tools).toBeUndefined();
     expect(judge.thinking).toEqual({ type: "between_tools" });
     expect(judge.output_config?.effort).toBe("low");
-    expect(judge.system).not.toBe(run.requests[0].system);
+    expect(judge.system).not.toBe(run.workerRequests()[0].system);
     for (const definition of [
       "goalMet: the card meets the brief's goal, result shape and constraints.",
       "claimsBacked: every important factual claim in the card is represented in claims and supported by the read pages named in that claim's sourceIds.",
@@ -211,7 +213,7 @@ describe("runTask first message", () => {
       ]);
       run.port.send(runTask({ parent: row.parent }));
       await run.ended();
-      const text = firstText(run.requests[0]);
+      const text = firstText(run.workerRequests()[0]);
       expect(text.includes("<parent_result>")).toBe(row.parent !== null);
       if (row.parent === null) return;
       if (row.sentence === null) {

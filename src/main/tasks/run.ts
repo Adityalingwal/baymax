@@ -63,7 +63,7 @@ function startTask(
     taskId: card.taskId,
     goalVersion: 1,
     depth: "normal",
-    brief: admission.brief,
+    ask: admission.ask,
     parent,
   });
 }
@@ -77,7 +77,7 @@ export function admit(
 ): boolean {
   const { model } = change;
   const { card } = record;
-  record.admission = { brief: decision.brief };
+  record.admission = { ask: decision.ask };
   record.topic = decision.topic;
   card.sayBack = null;
   card.reply = line;

@@ -62,7 +62,7 @@ describe("a clarifying task answered end to end", () => {
       expect(h.sent.map((command) => command.type)).toEqual(["runTask"]);
       expect(h.sent[0]).toMatchObject({
         taskId: "t1",
-        brief: { userWords: expect.stringContaining(words) },
+        ask: { userWords: expect.stringContaining(words) },
       });
       finish(h, "t1", "The answer.");
       expect(h.last().tasks).toEqual([

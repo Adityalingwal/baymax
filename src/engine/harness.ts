@@ -48,7 +48,46 @@ export function fakeMessage(
 }
 
 // "waitForAbort" answers only when the call's signal aborts, as the real call does.
-export type FakeStep = ModelOutcome | "waitForAbort" | Promise<ModelOutcome>;
+// A step may also be a function, called with the request, for a reply that reads it or a call that throws.
+export type FakeStep =
+  | ModelOutcome
+  | "waitForAbort"
+  | Promise<ModelOutcome>
+  | ((request: ModelRequest) => ModelOutcome);
+
+// The fixed parts of the default brief; its goal is the one in the request.
+export const fakeBriefParts = {
+  resultShape: "A short overview of its parts",
+  sources: "Its official docs and repository",
+  limits: "Leave out pricing",
+};
+
+// The three kinds of call the engine makes, told apart by the schema each asks for.
+type CallKind = "brief" | "worker" | "judge";
+
+function schemaKeys(request: ModelRequest): string[] {
+  const format = request.output_config?.format;
+  if (format === undefined || format === null) return [];
+  const { properties } = format.schema;
+  return typeof properties === "object" && properties !== null
+    ? Object.keys(properties)
+    : [];
+}
+
+function kindOf(request: ModelRequest): CallKind {
+  const keys = schemaKeys(request);
+  if (keys.includes("resultShape")) return "brief";
+  return keys.includes("goalMet") ? "judge" : "worker";
+}
+
+const goalBlock = /<goal>\n([\s\S]*?)\n<\/goal>/;
+
+function defaultBriefReply(request: ModelRequest): ModelOutcome {
+  const content = request.messages[0].content;
+  const goal = typeof content === "string" ? goalBlock.exec(content)?.[1] : "";
+  const parts = { goal: goal ?? "", ...fakeBriefParts };
+  return { ok: true, message: fakeMessage(JSON.stringify(parts)) };
+}
 
 function abortedWhen(signal: AbortSignal): Promise<ModelOutcome> {
   const aborted: ModelOutcome = { ok: false, failure: "aborted", detail: "" };
@@ -66,30 +105,55 @@ export const noContents: ContentsFn = async () => ({
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-// A test that runs out of model steps fails in settle, so a missing step is never taken for the expected task error.
-export function startTestEngine(steps: FakeStep[], fakes: EngineFakes = {}) {
+// The scripted model: the steps are the worker's and the judge's, in order; a brief writer request is answered from briefSteps, and by a valid brief when none is scripted.
+// A request past the steps counts as missing, so settle fails and a missing step is never taken for the expected task error.
+function scriptedModel(steps: FakeStep[], briefSteps: FakeStep[]) {
   const requests: ModelRequest[] = [];
-  const entries: DevLogEntry[] = [];
-  const events: EngineEvent[] = [];
-  let clock = 0;
-  let stepsMissing = 0;
+  const clock = { now: 0, missing: 0 };
   const model: ModelCall = async (request, options) => {
     requests.push(structuredClone(request));
-    clock += 250;
-    const step = steps.shift();
+    clock.now += 250;
+    const brief = kindOf(request) === "brief";
+    const step = brief
+      ? (briefSteps.shift() ?? defaultBriefReply)
+      : steps.shift();
     if (step === undefined) {
-      stepsMissing += 1;
+      clock.missing += 1;
       throw new Error("no fake model step left");
     }
-    return step === "waitForAbort" ? abortedWhen(options.signal) : step;
+    if (step === "waitForAbort") return abortedWhen(options.signal);
+    return typeof step === "function" ? step(request) : step;
   };
+  const ofKind = (kind: CallKind) => () =>
+    requests.filter((request) => kindOf(request) === kind);
+  return {
+    model,
+    clock,
+    requests, // every model call, in order
+    briefRequests: ofKind("brief"),
+    workerRequests: ofKind("worker"),
+    judgeRequests: ofKind("judge"),
+    // the worker's and the judge's calls in order: every call but the brief writer's
+    loopRequests: () =>
+      requests.filter((request) => kindOf(request) !== "brief"),
+  };
+}
+
+export function startTestEngine(
+  steps: FakeStep[],
+  fakes: EngineFakes = {},
+  briefSteps: FakeStep[] = [],
+) {
+  const { model, clock, ...requests } = scriptedModel(steps, briefSteps);
+  const entries: DevLogEntry[] = [];
+  const events: EngineEvent[] = [];
   const log = (entry: DevLogEntry) => {
     entries.push(entry);
   };
   const keys = { anthropicKey: "test-key", searchKey: "" };
   const port = startEngine(keys, {
     today: () => "2026-10-27",
-    now: () => clock,
+    now: () => clock.now,
     contents: noContents,
     ...fakes,
     model,
@@ -104,11 +168,11 @@ export function startTestEngine(steps: FakeStep[], fakes: EngineFakes = {}) {
       await nextTurn();
     }
     for (let turn = 0; turn < 5; turn += 1) await nextTurn();
-    if (stepsMissing > 0)
+    if (clock.missing > 0)
       throw new Error(
         "the engine asked for more model steps than the test gave",
       );
     return events;
   };
-  return { port, requests, entries, events, settle };
+  return { port, ...requests, entries, events, settle };
 }

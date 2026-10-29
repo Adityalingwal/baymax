@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { FailureKind } from "../../shared/engine";
 import type { Harness } from "./harness";
 import {
-  briefParts,
   chat,
   clarify,
   createHarness,
@@ -37,7 +36,7 @@ describe("the routes of a front decision", () => {
     expect(h.talked.map((request) => request.kind)).toEqual(["front"]);
   });
 
-  it("newTask: the card shows the line, starts the worker with the four brief parts and the words, and says nothing", () => {
+  it("newTask: the card shows the line, sends the goal and the words, and says nothing", () => {
     const h = createHarness();
     h.state.ask("  will it rain?  ", null, null);
     h.reply("t1", newTask("the forecast"), "I'll check the forecast.");
@@ -55,7 +54,7 @@ describe("the routes of a front decision", () => {
         taskId: "t1",
         goalVersion: 1,
         depth: "normal",
-        brief: { ...briefParts("the forecast"), userWords: "will it rain?" },
+        ask: { goal: "the forecast", userWords: "will it rain?" },
         parent: null,
       },
     ]);

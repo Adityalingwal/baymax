@@ -22,12 +22,7 @@ const context = (fields: Partial<DecisionContext> = {}): DecisionContext => ({
   ...fields,
 });
 
-const parts = {
-  goal: "g",
-  resultShape: "r",
-  sources: "s",
-  limits: "l",
-};
+const goal = "the best laptops under 1 lakh rupees";
 
 const raw = (fields: Record<string, unknown>) => ({
   route: "chat",
@@ -35,7 +30,7 @@ const raw = (fields: Record<string, unknown>) => ({
   parentTaskId: null,
   answerTo: null,
   choices: [],
-  brief: null,
+  goal: null,
   ...fields,
 });
 
@@ -64,17 +59,17 @@ const rows: Row[] = [
   },
   {
     name: "unused fields on chat are ignored",
-    input: raw({ topic: 3, brief: "x", choices: "y", parentTaskId: 4 }),
+    input: raw({ topic: 3, goal: 7, choices: "y", parentTaskId: 4 }),
     decision: { route: "chat", answerTo: null },
   },
   {
     name: "a new task without a topic",
-    input: raw({ route: "newTask", brief: parts }),
+    input: raw({ route: "newTask", goal }),
     reason: "missingTopic",
   },
   {
     name: "a new task with a blank topic",
-    input: raw({ route: "newTask", topic: " ", brief: parts }),
+    input: raw({ route: "newTask", topic: " ", goal }),
     reason: "missingTopic",
   },
   {
@@ -83,26 +78,32 @@ const rows: Row[] = [
     reason: "missingTopic",
   },
   {
-    name: "a new task without a brief",
+    name: "a new task without a goal",
     input: raw({ route: "newTask", topic: "x" }),
-    reason: "missingBrief",
+    reason: "missingGoal",
   },
   {
-    name: "a brief with an empty part",
+    name: "a follow-up with a blank goal",
     input: raw({
-      route: "newTask",
+      route: "followUp",
       topic: "x",
-      brief: { ...parts, limits: " " },
+      goal: " ",
+      parentTaskId: "t2",
     }),
-    reason: "missingBrief",
+    reason: "missingGoal",
+  },
+  {
+    name: "a goal that is not text",
+    input: raw({ route: "newTask", topic: "x", goal: { goal: "x" } }),
+    reason: "missingGoal",
   },
   {
     name: "a new task",
-    input: raw({ route: "newTask", topic: " x ", brief: parts }),
+    input: raw({ route: "newTask", topic: " x ", goal }),
     decision: {
       route: "newTask",
       topic: "x",
-      brief: { ...parts, userWords: "the second one" },
+      ask: { goal, userWords: "the second one" },
       answerTo: null,
     },
   },
@@ -111,7 +112,7 @@ const rows: Row[] = [
     input: raw({
       route: "followUp",
       topic: "x",
-      brief: parts,
+      goal,
       parentTaskId: "t2",
     }),
     decision: { route: "followUp", parentTaskId: "t2" },
@@ -121,14 +122,14 @@ const rows: Row[] = [
     input: raw({
       route: "followUp",
       topic: "x",
-      brief: parts,
+      goal,
       parentTaskId: "t9",
     }),
     decision: { route: "newTask", topic: "x" },
   },
   {
     name: "a follow-up with no parent, admitted as a new task",
-    input: raw({ route: "followUp", topic: "x", brief: parts }),
+    input: raw({ route: "followUp", topic: "x", goal }),
     decision: { route: "newTask", topic: "x" },
   },
   {
@@ -201,13 +202,13 @@ const rows: Row[] = [
   },
   {
     name: "an answer routed as a new task joins the original words and the answer",
-    input: raw({ route: "newTask", topic: "x", brief: parts, answerTo: "q1" }),
+    input: raw({ route: "newTask", topic: "x", goal, answerTo: "q1" }),
     context: { waiting },
     decision: {
       route: "newTask",
       answerTo: "q1",
-      brief: {
-        ...parts,
+      ask: {
+        goal,
         userWords:
           'find me a laptop\nAnswer to "For what use?": the second one',
       },
@@ -218,7 +219,7 @@ const rows: Row[] = [
     input: raw({
       route: "followUp",
       topic: "x",
-      brief: parts,
+      goal,
       parentTaskId: "t2",
       answerTo: "q1",
     }),
@@ -230,7 +231,7 @@ const rows: Row[] = [
     input: raw({
       route: "followUp",
       topic: "x",
-      brief: parts,
+      goal,
       parentTaskId: "t0",
       answerTo: "q1",
     }),
@@ -239,12 +240,12 @@ const rows: Row[] = [
   },
   {
     name: "words that do not answer the waiting question",
-    input: raw({ route: "newTask", topic: "x", brief: parts }),
+    input: raw({ route: "newTask", topic: "x", goal }),
     context: { waiting },
     decision: {
       route: "newTask",
       answerTo: null,
-      brief: { ...parts, userWords: "the second one" },
+      ask: { goal, userWords: "the second one" },
     },
   },
 ];
@@ -263,7 +264,7 @@ describe("the decision check", () => {
     const input = raw({
       route: "followUp",
       topic: "x",
-      brief: parts,
+      goal,
       parentTaskId: "t9",
     });
     expect(checkDecision(input, context())).toMatchObject({

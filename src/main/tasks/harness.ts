@@ -8,7 +8,7 @@ import type {
   EngineCommand,
   EngineEvent,
   FailureKind,
-  WorkerBrief,
+  TaskAsk,
 } from "../../shared/engine";
 import type { AnswerQuestion } from "../../shared/ipc";
 import type { TalkRequest, WaitingQuestion } from "./talk";
@@ -212,8 +212,8 @@ export function createHarness(): Harness {
   };
 }
 
-export function brief(goal: string, userWords = goal): WorkerBrief {
-  return { ...briefParts(goal), userWords };
+export function ask(goal: string, userWords = goal): TaskAsk {
+  return { goal, userWords };
 }
 
 export function findings(text: string, urls: string[] = []): Findings {
@@ -228,13 +228,6 @@ export function findings(text: string, urls: string[] = []): Findings {
   };
 }
 
-export const briefParts = (goal: string) => ({
-  goal,
-  resultShape: "a short answer",
-  sources: "the web",
-  limits: "normal",
-});
-
 // The decide tool's input: every field present, unused ones empty.
 export function decision(fields: Record<string, unknown>) {
   return {
@@ -243,7 +236,7 @@ export function decision(fields: Record<string, unknown>) {
     parentTaskId: null,
     answerTo: null,
     choices: [],
-    brief: null,
+    goal: null,
     ...fields,
   };
 }
@@ -253,14 +246,14 @@ export const chat = () => decision({ route: "chat" });
 export const outsideResearch = () => decision({ route: "outsideResearch" });
 
 export const newTask = (topic: string, answerTo: string | null = null) =>
-  decision({ route: "newTask", topic, brief: briefParts(topic), answerTo });
+  decision({ route: "newTask", topic, goal: topic, answerTo });
 
 export const followUp = (parentTaskId: TaskId, topic: string) =>
   decision({
     route: "followUp",
     topic,
     parentTaskId,
-    brief: briefParts(topic),
+    goal: topic,
   });
 
 export const clarify = (choices = ["First", "Second", "Third"]) =>

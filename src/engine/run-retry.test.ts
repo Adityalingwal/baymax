@@ -130,8 +130,8 @@ describe("runTask retry round", () => {
           findings: goodFindings,
         },
       ]);
-      const asked = run.requests[3];
-      const retry = run.requests[4 + row.verdict.length];
+      const asked = run.loopRequests()[3];
+      const retry = run.loopRequests()[4 + row.verdict.length];
       expect(retry.messages).toEqual([
         ...asked.messages,
         { role: "assistant", content: contentOf(row.failed) },
@@ -140,7 +140,7 @@ describe("runTask retry round", () => {
           content: `<check_result>\n${row.result}\n</check_result>\n\n${row.line}`,
         },
       ]);
-      expect(promptStart(retry)).toBe(promptStart(run.requests[0]));
+      expect(promptStart(retry)).toBe(promptStart(run.loopRequests()[0]));
       expect(run.entries).toContainEqual({
         event: "retryRound",
         taskId: "task-1",
@@ -180,7 +180,7 @@ describe("runTask after the last retry round", () => {
       type: "incomplete",
       incomplete: { kind: "unchecked", uncheckedPart: "a source" },
     });
-    expect(run.requests).toHaveLength(11);
+    expect(run.loopRequests()).toHaveLength(11);
     const judged = run.entries.filter(
       (entry) => entry.event === "doneCheck" && entry.stage === "judge",
     );
@@ -208,7 +208,7 @@ describe("runTask retry text", () => {
     );
     run.port.send(runTask());
     await run.ended();
-    const { messages } = run.requests[5];
+    const { messages } = run.loopRequests()[5];
     const sent = messages[messages.length - 1].content;
     if (typeof sent !== "string") throw new Error("no retry text");
     expect(sent.match(/<check_result>/g)).toHaveLength(1);

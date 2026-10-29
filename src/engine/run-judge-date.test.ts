@@ -29,13 +29,15 @@ describe("runTask judge date", () => {
     ]);
     run.port.send(runTask());
     await run.ended();
-    const judge = run.requests[2];
+    const judge = run.judgeRequests()[0];
     expect(judge.system).toBe(judgeInstructions);
     const message = judge.messages[0].content;
     expect(typeof message === "string" ? message : "").toMatch(
       /^Today's date: 2026-10-27\.\n\n<brief>/,
     );
-    expect(JSON.stringify(run.requests[0].messages)).toContain("2026-10-27");
+    expect(JSON.stringify(run.workerRequests()[0].messages)).toContain(
+      "2026-10-27",
+    );
   });
 
   it("keeps the fixed instructions free of any date and holds the current-fact rule", () => {
@@ -56,7 +58,7 @@ describe("runTask judge card text", () => {
     ]);
     run.port.send(runTask());
     await run.ended();
-    const message = run.requests[2].messages[0].content;
+    const message = run.judgeRequests()[0].messages[0].content;
     const text = typeof message === "string" ? message : "";
     const card = /<card_text>\n([\s\S]*?)\n<\/card_text>/.exec(text)?.[1];
     expect(card).toBe("Hermes runs a loop with \\[brackets\\].");

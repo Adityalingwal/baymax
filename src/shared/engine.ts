@@ -3,14 +3,8 @@ import type { Findings, TaskId } from "./cards";
 // Only "normal" in V1; V2 adds "quick" and "deep".
 export type Depth = "normal";
 
-// The front call's four parts plus the user's exact words, since a restated goal can lose a nuance.
-export type WorkerBrief = {
-  goal: string;
-  resultShape: string;
-  sources: string;
-  limits: string;
-  userWords: string;
-};
+// The front call's one-line goal plus the user's exact words; the engine writes the brief from them.
+export type TaskAsk = { goal: string; userWords: string };
 
 export type ParentResult = {
   taskId: TaskId;
@@ -25,7 +19,7 @@ export type EngineCommand =
       taskId: TaskId;
       goalVersion: number; // always 1 in V1
       depth: Depth;
-      brief: WorkerBrief;
+      ask: TaskAsk;
       parent: ParentResult | null;
     }
   // only for a task the engine holds (a run); it always answers with one cancelled event and nothing after it

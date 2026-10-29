@@ -29,6 +29,36 @@ describe("the front call's request", () => {
     expect(request.tool_choice).toBeUndefined();
     expect(request.system).toContain("Then call the decide tool once");
   });
+
+  it("asks decide for a one-line goal, not a brief", () => {
+    const h = createHarness();
+    h.talker.talk(frontRequest());
+    const { request } = h.calls[0];
+    const [tool] = request.tools ?? [];
+    expect(tool).toMatchObject({
+      input_schema: {
+        required: [
+          "route",
+          "topic",
+          "parentTaskId",
+          "answerTo",
+          "choices",
+          "goal",
+        ],
+        properties: { goal: { type: ["string", "null"] } },
+      },
+    });
+    expect(tool).not.toHaveProperty("input_schema.properties.brief");
+    const system = String(request.system);
+    expect(system).toContain(
+      "goal, for newTask and followUp: one sentence naming what the user wants to know",
+    );
+    expect(system).toContain(
+      "A separate step turns it into the research brief",
+    );
+    expect(system).not.toContain("resultShape");
+    expect(system).not.toContain("brief, for newTask");
+  });
 });
 
 describe("the front call's instructions", () => {

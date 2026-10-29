@@ -108,7 +108,7 @@ describe("runTask cancel at each stage", () => {
     async (row) => {
       const run = await startRun(row.steps(), row.searches ?? []);
       const sent = (): Sent => ({
-        calls: run.requests.length,
+        calls: run.loopRequests().length, // the worker's and the judge's calls; the stage is counted after the brief writer
         queries: run.queries.length,
         connects: run.network.targets.length,
       });
@@ -140,7 +140,7 @@ describe("runTask repeated cancel", () => {
   it("sends one cancelled when cancels keep coming until it arrives", async () => {
     const run = await startRun(["waitForAbort"]);
     run.port.send(runTask());
-    await until(() => run.requests.length === 1);
+    await until(() => run.loopRequests().length === 1);
     run.port.send(cancel);
     for (let turn = 0; turn < 100; turn += 1) {
       await Promise.resolve();
@@ -160,7 +160,7 @@ describe("runTask repeated cancel", () => {
       run.port.send(cancel);
     });
     run.port.send(runTask());
-    await until(() => run.requests.length === 1);
+    await until(() => run.loopRequests().length === 1);
     run.port.send(cancel);
     expect(await run.ended()).toEqual([cancelledNull]);
     expect(await run.settle(2)).toEqual([cancelledNull]);

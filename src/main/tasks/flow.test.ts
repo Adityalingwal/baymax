@@ -12,7 +12,6 @@ import {
   unreachable,
 } from "./flow.harness";
 import {
-  briefParts,
   chat,
   clarify,
   decision,
@@ -99,7 +98,7 @@ function firstText(request: ModelRequest): string {
 
 // Main's state wired to the real engine and the real talker; only the models are fake.
 function startFlow(script: Front[], steps: Outcome[] = []) {
-  const { port, requests } = startFakeEngine(steps);
+  const { port, requests, workerRequests } = startFakeEngine(steps);
   const main = mainStateOn(port, script);
   const card = (taskId: string): TaskCard | undefined =>
     main.state.displayState().tasks.find((task) => task.taskId === taskId);
@@ -110,7 +109,16 @@ function startFlow(script: Front[], steps: Outcome[] = []) {
     main.published
       .map((display) => display.tasks.find((task) => task.taskId === taskId))
       .find((task) => task?.state === taskState);
-  return { ...main, requests, card, shown, until, firstText, workerAsked };
+  return {
+    ...main,
+    requests,
+    workerRequests,
+    card,
+    shown,
+    until,
+    firstText,
+    workerAsked,
+  };
 }
 
 const sentOf = (
@@ -137,7 +145,7 @@ describe("main and the engine joined: the routes", () => {
     expect(flow.said).toEqual([]);
   });
 
-  it("starts the worker with the decision's brief and the user's words", async () => {
+  it("sends the decision's goal and the user's words, and the worker gets the written brief", async () => {
     const flow = startFlow(
       [front("I'll check the forecast.", newTask("the forecast"))],
       [unreachable],
@@ -145,12 +153,12 @@ describe("main and the engine joined: the routes", () => {
     flow.state.ask("will it rain in Delhi?", null, null);
     await flow.until("the worker", () => flow.workerAsked("the forecast"));
     expect(sentOf(flow, "runTask", "t1")).toMatchObject({
-      brief: {
-        ...briefParts("the forecast"),
-        userWords: "will it rain in Delhi?",
-      },
+      ask: { goal: "the forecast", userWords: "will it rain in Delhi?" },
     });
-    expect(firstText(flow.requests[0])).toContain("will it rain in Delhi?");
+    expect(sentOf(flow, "runTask", "t1")).not.toHaveProperty("brief");
+    expect(firstText(flow.workerRequests()[0])).toContain(
+      "will it rain in Delhi?",
+    );
     expect(flow.shown("t1", "running")).toMatchObject({
       reply: "I'll check the forecast.",
       line: null,
@@ -181,7 +189,7 @@ describe("main and the engine joined: routes that start no worker", () => {
     flow.state.ask("find me a laptop", null, null);
     await flow.until("the failure", () => flow.card("t1")?.canRetry === true);
     expect(flow.sent).toEqual([]);
-    expect(flow.logs).toContain("decision rejected for t1: missingBrief");
+    expect(flow.logs).toContain("decision rejected for t1: missingGoal");
   });
 });
 
@@ -226,7 +234,9 @@ describe("main and the engine joined: a follow-up", () => {
     await flow.until("card 2's worker request", () =>
       flow.workerAsked("how Hermes differs from Claude Code"),
     );
-    expect(flow.firstText(flow.requests[1])).toContain("<parent_result>");
+    expect(flow.firstText(flow.workerRequests()[1])).toContain(
+      "<parent_result>",
+    );
   });
 });
 
@@ -256,7 +266,7 @@ describe("main and the engine joined: a clarifying answer", () => {
     expect(flow.asked).toHaveLength(2);
     expect(flow.asked[1]).toContain("<words>\nOffice\n</words>");
     expect(sentOf(flow, "runTask", "t1")).toMatchObject({
-      brief: {
+      ask: {
         userWords:
           'find me a good laptop\nAnswer to "Which kind of laptop?": Office',
       },

@@ -1,15 +1,15 @@
 import type { QuestionId, TaskId } from "../../shared/cards";
-import type { WorkerBrief } from "../../shared/engine";
+import type { TaskAsk } from "../../shared/engine";
 import type { WaitingQuestion } from "./talk";
 
 type Route =
   | { route: "chat" | "outsideResearch" }
   | { route: "clarify"; topic: string; choices: string[] }
-  | { route: "newTask"; topic: string; brief: WorkerBrief }
+  | { route: "newTask"; topic: string; ask: TaskAsk }
   | {
       route: "followUp";
       topic: string;
-      brief: WorkerBrief;
+      ask: TaskAsk;
       parentTaskId: TaskId;
     };
 
@@ -55,16 +55,6 @@ function readRoute(value: unknown): (typeof routes)[number] | null {
   return routes.find((route) => route.toLowerCase() === lower) ?? null;
 }
 
-function readParts(value: unknown): Omit<WorkerBrief, "userWords"> | null {
-  if (!isFields(value)) return null;
-  const goal = filled(value.goal);
-  const resultShape = filled(value.resultShape);
-  const sources = filled(value.sources);
-  const limits = filled(value.limits);
-  if (!goal || !resultShape || !sources || !limits) return null;
-  return { goal, resultShape, sources, limits };
-}
-
 // Zero choices is an open question; otherwise two to four.
 function readChoices(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
@@ -78,7 +68,7 @@ function readChoices(value: unknown): string[] | null {
   return choices;
 }
 
-// The brief carries the words as the user said them; an answer adds the question and the reply.
+// The ask carries the words as the user said them; an answer adds the question and the reply.
 function userWordsFor(context: DecisionContext, answered: boolean): string {
   const { waiting, words } = context;
   if (!answered || waiting === null) return words;
@@ -129,16 +119,13 @@ export function checkDecision(
       note: null,
     };
   }
-  const parts = readParts(raw.brief);
-  if (parts === null) return fail("missingBrief");
-  const brief = {
-    ...parts,
-    userWords: userWordsFor(context, answerTo !== null),
-  };
+  const goal = filled(raw.goal);
+  if (goal === null) return fail("missingGoal");
+  const ask = { goal, userWords: userWordsFor(context, answerTo !== null) };
   if (route === "newTask") {
     return {
       ok: true,
-      decision: { route, topic, brief, answerTo },
+      decision: { route, topic, ask, answerTo },
       note: null,
     };
   }
@@ -148,10 +135,10 @@ export function checkDecision(
       : context.taskId;
   const parentTaskId = filled(raw.parentTaskId);
   if (parentTaskId !== null && context.earlier(target).has(parentTaskId)) {
-    const decision: Decision = { route, topic, brief, parentTaskId, answerTo };
+    const decision: Decision = { route, topic, ask, parentTaskId, answerTo };
     return { ok: true, decision, note: null };
   }
   const note = `${target} names parent ${String(raw.parentTaskId)}; admitted as a new task`;
-  const decision: Decision = { route: "newTask", topic, brief, answerTo };
+  const decision: Decision = { route: "newTask", topic, ask, answerTo };
   return { ok: true, decision, note };
 }

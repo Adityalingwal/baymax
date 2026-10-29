@@ -5,11 +5,7 @@ import type {
   TaskId,
   TaskState,
 } from "../../shared/cards";
-import type {
-  EngineCommand,
-  ParentResult,
-  WorkerBrief,
-} from "../../shared/engine";
+import type { EngineCommand, ParentResult, TaskAsk } from "../../shared/engine";
 import type { Exchange } from "./history";
 import type { TalkRequest } from "./talk";
 
@@ -17,7 +13,7 @@ import type { TalkRequest } from "./talk";
 export type SaidKind = "talk" | "question" | "answer" | "failure" | "notice";
 export type SaidLine = { taskId: TaskId | null; text: string; kind: SaidKind };
 
-export type Admission = { brief: WorkerBrief };
+export type Admission = { ask: TaskAsk };
 
 // Everything a front call is asked except its id; a retry makes a fresh call from the same parts.
 export type FrontParts = Omit<TalkRequest, "kind" | "attemptId">;

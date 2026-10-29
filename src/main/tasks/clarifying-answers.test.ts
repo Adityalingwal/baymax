@@ -30,7 +30,7 @@ describe("how a clicked answer is routed", () => {
       expect(h.sent.at(-1)).toMatchObject({
         type: "runTask",
         taskId: "t1",
-        brief: {
+        ask: {
           goal: "office laptops",
           userWords: 'find me a laptop\nAnswer to "Which one for t1?": Office',
         },
@@ -113,7 +113,7 @@ describe("a spoken answer", () => {
         expect(h.sent.at(-1)).toMatchObject({
           type: "runTask",
           taskId: "t1",
-          brief: {
+          ask: {
             userWords:
               'find me a laptop\nAnswer to "Which one for t1?": the second one',
           },

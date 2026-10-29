@@ -41,7 +41,7 @@ describe("runTask cancel", () => {
     run.port.send(cancel);
     expect(await run.ended()).toEqual([cancelled]);
     expect(await run.settle(2)).toEqual([cancelled]);
-    expect(run.requests).toHaveLength(1);
+    expect(run.loopRequests()).toHaveLength(1);
   });
 
   it("stops a waiting search with one cancelled and no further call", async () => {
@@ -54,7 +54,7 @@ describe("runTask cancel", () => {
     run.port.send(cancel);
     expect(await run.ended()).toEqual([searchStep, cancelled]);
     expect(await run.settle(3)).toEqual([searchStep, cancelled]);
-    expect(run.requests).toHaveLength(1);
+    expect(run.loopRequests()).toHaveLength(1);
     expect(run.queries).toHaveLength(1);
   });
 
@@ -121,7 +121,7 @@ describe("runTask holds", () => {
     run.port.send(runTask());
     run.port.send(runTask());
     await run.settle();
-    expect(run.requests).toHaveLength(1);
+    expect(run.loopRequests()).toHaveLength(1);
     expect(run.entries).toContainEqual({
       event: "duplicateTask",
       taskId: "task-1",
@@ -142,7 +142,7 @@ describe("runTask holds", () => {
     expect(await run.ended()).toEqual([errorEnd]);
     run.port.send(runTask());
     expect(await run.settle(2)).toEqual([errorEnd, errorEnd]);
-    expect(run.requests).toHaveLength(2);
+    expect(run.loopRequests()).toHaveLength(2);
     expect(run.entries).toContainEqual(
       expect.objectContaining({ event: "taskEnd", how: "thrown" }),
     );

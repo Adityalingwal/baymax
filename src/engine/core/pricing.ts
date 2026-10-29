@@ -16,6 +16,12 @@ const prices: Record<RoleModel, Price> = {
     cacheWrite: 2.5,
     cacheRead: 0.2,
   },
+  "claude-opus-5-5": {
+    input: 4.0,
+    output: 20.0,
+    cacheWrite: 5.0,
+    cacheRead: 0.2,
+  },
 };
 
 type TokenCounts = Pick<Anthropic.Usage, "input_tokens" | "output_tokens"> &

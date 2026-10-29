@@ -41,6 +41,7 @@ const limitHit = (findings: Findings | null): EngineEvent => ({
 });
 
 // The fake clock reads what the run has done so far, so a chosen call or batch takes the whole active time.
+// calls counts the worker's and the judge's calls; the brief writer's call is the first model call of the task and counts toward its limit.
 type Seen = { calls: number; connects: number };
 type LimitRow = {
   name: string;
@@ -59,7 +60,7 @@ const limitRows: LimitRow[] = [
     steps: () => Array.from({ length: 26 }, readOne),
     searches: [],
     clock: still,
-    calls: 25,
+    calls: 24,
     found: listOne,
   },
   {
@@ -106,11 +107,11 @@ const limitRows: LimitRow[] = [
 ];
 
 async function startClocked(row: Omit<LimitRow, "name" | "calls" | "found">) {
-  const seen = { requests: [] as unknown[], targets: [] as unknown[] };
+  const seen = { calls: () => 0, targets: [] as unknown[] };
   const now = () =>
-    row.clock({ calls: seen.requests.length, connects: seen.targets.length });
+    row.clock({ calls: seen.calls(), connects: seen.targets.length });
   const run = await startRun(row.steps(), row.searches, now);
-  seen.requests = run.requests;
+  seen.calls = () => run.loopRequests().length;
   seen.targets = run.network.targets;
   return run;
 }
@@ -125,7 +126,7 @@ describe("runTask limits", () => {
       expect(events.filter((event) => event.type !== "progress")).toEqual([
         limitHit(row.found),
       ]);
-      expect(run.requests).toHaveLength(row.calls);
+      expect(run.loopRequests()).toHaveLength(row.calls);
     },
   );
 });
@@ -149,7 +150,7 @@ describe("runTask full prompt", () => {
         openPoints: [],
       }),
     );
-    expect(run.requests).toHaveLength(1);
+    expect(run.loopRequests()).toHaveLength(1);
     expect(run.entries).toContainEqual({
       event: "limitHit",
       taskId: "task-1",
@@ -207,6 +208,6 @@ describe("runTask a call past the active time", () => {
     expect(events.filter((event) => event.type !== "progress")).toEqual([
       row.end,
     ]);
-    expect(run.requests).toHaveLength(row.slowCall);
+    expect(run.loopRequests()).toHaveLength(row.slowCall);
   });
 });

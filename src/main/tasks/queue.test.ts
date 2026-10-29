@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Harness } from "./harness";
-import { askNew, brief, counts, createHarness, finish } from "./harness";
+import { ask, askNew, counts, createHarness, finish } from "./harness";
 
 const queuedLine = "Okay, I'll look at that after the current one.";
 const queueFullLine =
@@ -25,7 +25,7 @@ describe("the run slot and the queue", () => {
       taskId: "t1",
       goalVersion: 1,
       depth: "normal",
-      brief: brief("hermes", "tell me hermes"),
+      ask: ask("hermes", "tell me hermes"),
       parent: null,
     });
     expect(h.card("t1")).toMatchObject({
