@@ -93,13 +93,13 @@ text box    --IPC-->  --+
 PCM frames  --IPC-->  Flux WebSocket -> final transcript -> front call (Fable)
                                                               |  1. one spoken line, streamed
 playback    <--IPC--  Aura-2 WebSocket <- speak() <-----------+
-                                                              |  2. decide(route, brief)
-cards       <--IPC--  display state <- main checks, then routes --> runTask --> worker -> done check
+                                                              |  2. decide(route, goal)
+cards       <--IPC--  display state <- main checks, then routes --> runTask --> brief writer -> worker -> done check
                                                               <-- task events (progress, result, incomplete)
 ```
 
 - Typed text and a final transcript enter the same route: the [front call](#talker).
-- Nothing acts before the full final sentence after key release. One Fable call then speaks a line and decides; main checks the decision in code and acts on it. No other model call sits between the decision and the worker.
+- Nothing acts before the full final sentence after key release. One Fable call then speaks a line and decides; main checks the decision in code and acts on it. The only model step between the decision and the worker is the engine's [brief writer](#worker-and-research), which says nothing to the user.
 
 ### Stack
 
@@ -108,6 +108,7 @@ cards       <--IPC--  display state <- main checks, then routes --> runTask --> 
 | STT | Deepgram Flux (`flux-general-en`) over one warm WebSocket; backup Nova-3 pre-recorded for one utterance when the socket cannot reconnect |
 | TTS | Deepgram Aura-2 over one warm WebSocket (24 kHz PCM), fed the front call's line clause by clause; backup the Aura-2 REST call |
 | Front call | Claude Fable 5.1 at low effort, in main: a spoken line, then the route (`decide` tool) |
+| Brief writer | Claude Sonnet 5.5, with one retry on Claude Opus 5.5; it writes the worker's brief in the engine |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Done check judge | Claude Sonnet 5.5 |
 | Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and page reads through Exa Contents, with Baymax's own plain reader as the fallback |
@@ -115,7 +116,7 @@ cards       <--IPC--  display state <- main checks, then routes --> runTask --> 
 | Storage | Memory only |
 | Keys | Our own keys from `.env` ([Processes and the port](#processes-and-the-port)) |
 
-- Claude only, with no automatic switch to another provider or model when one fails. Each role's model is one field; the models are measured in build week.
+- Claude only, with no automatic switch to another provider or model when one fails. The one exception is the brief writer, which retries once on Opus 5.5 and then falls back to a default brief ([Worker and research](#worker-and-research)). Each role's model is one field; the models are measured in build week.
 - No framework: our own pipeline and agent loop inside the app.
 
 ### Processes and the port
@@ -123,12 +124,12 @@ cards       <--IPC--  display state <- main checks, then routes --> runTask --> 
 | Process | Runs | Owns |
 | --- | --- | --- |
 | Main | Hold-key, windows, IPC with the renderer, the Deepgram calls, `speak()`, the front call and its decision check, the engine behind its port | The shown state: the task list, its cards, the queue and the answers kept for follow-ups |
-| Engine (inside main in V1) | The task runner: worker, done check, limits, the worker model pick | The running task's state |
+| Engine (inside main in V1) | The task runner: brief writer, worker, done check, limits, the worker model pick | The running task's state |
 | Renderer | Text box, cards, mic recording, playback | Nothing; it shows what main sends |
 
 - **The port.** The engine code lives in `src/engine/` and imports nothing from `src/main/`, the renderer or `electron`. It builds its own providers from `src/providers/`; its start takes only serializable values (keys, paths, settings), and test fakes enter through a separate optional parameter. Main and the engine talk only through one port object (`send`, `onMessage`, `close`) carrying plain JSON messages with ids, typed in `src/shared/engine.ts`. Cancel is a port message (`{ type: "cancel", taskId }`) that the engine maps to its own `AbortController`. V1 implements the port in-process; V2 swaps in a `utilityProcess` behind the same port.
-- **Who runs what.** Main runs the front call at once for every question, typed or spoken, even while a task runs. Its decision says what the words are (chat, a clarifying question, a new task, a follow-up, the answer to the waiting question, or outside research) and carries the brief; main checks it, then queues the task or sends the engine a run message when none runs. Only then does the engine's runner run the worker and the done check, attaching a queued follow-up's parent result at that moment, and report back through the port. Answers kept for follow-ups stay apart from the running task's state, so a database can later be added beside them.
-- **The engine keeps nothing across tasks.** Main sends what each step needs: a run message carries the task id, goal version, depth and brief, and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines.
+- **Who runs what.** Main runs the front call at once for every question, typed or spoken, even while a task runs. Its decision says what the words are (chat, a clarifying question, a new task, a follow-up, the answer to the waiting question, or outside research) and carries a one-line goal; main checks it, then queues the task or sends the engine a run message when none runs. Only then does the engine's runner write the brief, run the worker and the done check, attaching a queued follow-up's parent result at that moment, and report back through the port. Answers kept for follow-ups stay apart from the running task's state, so a database can later be added beside them.
+- **The engine keeps nothing across tasks.** Main sends what each step needs: a run message carries the task id, goal version, depth and the ask (the front call's goal and the user's exact words), and for a follow-up its parent task id with the parent's final answer, sources and open points. Engine events carry kinds, never user-facing text: main owns the fixed lines.
 - **Why in main.** The reasons for a separate process (synchronous SQLite, crash resume, restart) are V2, the agent loop mostly waits on the network, the spike ran the loop inside main, and a separate process was never tested on this repo's Electron 40.
 - **The risk and its limits.** Engine code that blocks would also freeze voice and cancel. V1 lowers this without guaranteeing against it: no `*Sync` calls anywhere in `src/`; every model and web call has an `AbortSignal` and a deadline; downloads are capped before parsing ([Web tool](#web-tool)); history and kept page text are bounded. Expected network, model and parsing failures are caught at their awaited task boundaries and end the task with a [failure line](#failures-the-user-hears). A truly uncaught exception or unhandled rejection is not attributed to a task and normal work is not resumed, because Node's state may be undefined: main logs it, shows "Baymax hit a problem and is restarting." and relaunches the app (`app.relaunch()`, then exit). A relaunched app that fails again within about 10 s of start exits instead of relaunching, so a start-up bug cannot loop. Only a separate process (V2) can stop a truly stuck engine.
 - **Keys.** Main reads `.env` once at start, keeps the Deepgram, Anthropic and search keys, and deletes them from `process.env` before any window opens. The renderer gets no key and makes no network calls; the display state carries display fields only.
@@ -148,10 +149,10 @@ cards       <--IPC--  display state <- main checks, then routes --> runTask --> 
 ### Talker
 
 - **What it is.** One Claude Fable 5.1 call in main per final transcript or typed question, and per clarifying answer clicked or typed on the question card. It is Baymax's front call: it writes one short spoken line as plain text, streamed into TTS as it arrives, then calls the `decide` tool once. Text after the tool starts is dropped, never spoken. Low effort; the request has no `thinking` field and no `tool_choice`, because Fable 5.1 rejects disabled thinking and a forced tool.
-- **What it reads.** The conversation as real alternating turns (the last 10 exchanges: the user's words, and what Baymax said, with a finished task's result line added), then the current words with tagged data blocks: the recent tasks (id, state, question, spoken answer, a bounded excerpt of the card), the running and waiting tasks (ids), and the waiting clarifying question with its ids and the request it belongs to. The history lives in main's memory only, and its last turn carries a cache mark.
-- **What it decides.** `decide` gives the route, a short topic, the parent task id, the waiting question id it answers, the choices of a clarifying question (none, or two to four), and for a new task or follow-up the four-part brief. Main checks it before anything starts ([Intake and tasks](#intake-and-tasks)).
+- **What it reads.** The conversation as real alternating turns (the last 20 exchanges: the user's words, and what Baymax said, with a finished task's result line added), then the current words with tagged data blocks: the recent tasks (id, state, question, spoken answer, a bounded excerpt of the card), the running and waiting tasks (ids), and the waiting clarifying question with its ids and the request it belongs to. The history lives in main's memory only, and its last turn carries a cache mark.
+- **What it decides.** `decide` gives the route, a short topic, the parent task id, the waiting question id it answers, the choices of a clarifying question (none, or two to four), and for a new task or follow-up a one-line goal that keeps every constraint of the user's words, not the brief: the engine's [brief writer](#worker-and-research) turns it into the brief. Main checks it before anything starts ([Intake and tasks](#intake-and-tasks)).
 - **What it says.** Chat: the whole answer ("hi", "thanks", a fact it knows, or an answer already written earlier in the conversation); a greeting or thanks gets a short reply and nothing else. Research: one line that shows it understood the question ("I'll check tomorrow's Delhi forecast; the rain chance decides the umbrella."), with no time promise and no claim of progress. A clarifying question: the line is the question. Outside research: it says plainly that this version only researches. Only a clarifying line asks a question.
-- **Failure and time.** The whole attempt, retries included, has a 10 s wall-clock deadline; on expiry it is aborted and its speech cut. A failed, timed-out or text-less call, or a decision that fails a check, ends in the cause's [failure line](#failures-the-user-hears) with retry, and no worker starts. A cancelled, replaced or closed attempt changes nothing when it ends late.
+- **Failure and time.** Two wall-clock deadlines, both from the start of the call: 6 s to the first non-empty text, and 30 s for the whole call, retries included. On either expiry the call is aborted; a line still open is cut, and a line that has already ended is left alone. Both timers are cleared on every end of the attempt. A failed, timed-out or text-less call, or a decision that fails a check, ends in a [failure line](#failures-the-user-hears) with retry, and no worker starts. A cancelled, replaced or closed attempt changes nothing when it ends late.
 - **Nothing is rewritten.** The worker's spoken line and its next question reach the user as given, not through this call.
 - **Warm connection.** A key press sends a key-less request to the Anthropic API, so the call reuses an open connection instead of setting one up (about 0.15 s, measured with a 401 call on 28 Oct).
 - **No filler.** Nothing is said before the first words; a filler line ("One moment.") was tried and removed on 28 Oct because it delayed a talker that was nearly ready.
@@ -161,21 +162,22 @@ cards       <--IPC--  display state <- main checks, then routes --> runTask --> 
 
 There is no separate intake model call: the front call's `decide` tool is the intake, and main checks and applies it.
 
-- **The decision check** is plain code in main, no model, and runs before anything starts, binds or ends. The route must be one of chat, clarify, newTask, followUp or outsideResearch. A clarify, newTask or followUp needs a non-empty topic; a newTask or followUp needs the four brief parts, all non-empty; a clarify has no choices or two to four. A follow-up's parent must be a task created before this one, otherwise it is admitted as a new task and logged. A question id it answers must be the waiting question's, and that answer is never routed as clarify (no second question after an answer). A failed check starts no worker: the card fails with a retryable failure line.
+- **The decision check** is plain code in main, no model, and runs before anything starts, binds or ends. The route must be one of chat, clarify, newTask, followUp or outsideResearch. A clarify, newTask or followUp needs a non-empty topic; a newTask or followUp needs a non-empty goal; a clarify has no choices or two to four. A follow-up's parent must be a task created before this one, otherwise it is admitted as a new task and logged. A question id it answers must be the waiting question's, and that answer is never routed as clarify (no second question after an answer). A failed check starts no worker: the card fails with a retryable failure line.
 - **Chat:** the spoken line was the whole answer: no worker, and the thinking card becomes a done card showing that line.
 - **Clarify:** the spoken line is the question. The card is "clarifying" and shows the line as the question, with the choices if any; nothing more is said. A question that has to wait because another is shown is spoken as given when it shows.
-- **New task and follow-up:** the card shows the spoken line, and the work starts at once or queues. There is no say-back and no start line on the card; the fixed queued, partial-parent and failure lines stay.
+- **New task and follow-up:** the card shows the spoken line, and the work starts at once or queues. Main sends the engine `runTask` with the goal and the user's exact words (for a clarifying answer: the original words, the question and the answer); the card is running while the brief is written. There is no say-back and no start line on the card; the fixed queued, partial-parent and failure lines stay.
 - **Outside research:** the card ends cancelled with the spoken line on it, and no task starts. The line was already said, so nothing else is.
 - **Tasks and the queue.** Main keeps one list of tasks, each with an id and a state: thinking, clarifying, queued, running, done, incomplete or cancelled. At most three tasks wait while one runs. The front call still runs for every question, because the words may answer the waiting question; main refuses only a new task or follow-up when three already wait, with "I already have three waiting. Cancel one or ask again later.", and that card leaves like a cancelled one. A "thinking" card appears at key release (or on submit) before the front call returns, and its id becomes the task's id. Each task carries a goal version (always 1 in V1) and a depth value (always "normal" in V1).
 - **Clarifying questions.** At most one waits at a time. The question may be open (no choices, answered in the card's text field) or have two to four choices, the first marked recommended, plus "something else". It is answered by voice, typing or click, bound to the question's id. One answer per id; a second click or a late answer is ignored; a spoken answer binds to the question shown when the key went down.
 - **A clarifying answer is one front call.** Words that answer the waiting question are bound and routed in the same call. A click or typed answer on the question card runs the same call with the answer as the words and that question as the waiting question. An answer never creates another task and never asks a second question. Before it is applied, the waiting question is claimed at once: a second answer to the same question, a stale one, or one for a task that has ended is dropped and starts nothing. While a question waits, words that clearly do not answer it are a new request and are queued; the question stays pending.
 - **Attempts and cancel.** Each front call is an attempt with its own id. Cancel on a card whose front call is in flight aborts it locally, silences its speech and cancels the card, with no engine message. Retry after a failure re-runs the same call with the same words and context, as a fresh attempt.
-- **Follow-ups.** Each answer is stored under its task id. A follow-up gets a `parentTaskId`, and its brief carries the parent's answer, its source references and its open points; an unrelated question starts without a parent. A follow-up queued before its parent finishes keeps the parent reference and gets the parent's final result when it starts; if the parent ended incomplete or cancelled, the card's line says so and the follow-up uses what the parent found, labelled partial, or asks one question when nothing usable exists. It never runs as if a finished parent answer existed.
+- **Follow-ups.** Each answer is stored under its task id. A follow-up gets a `parentTaskId`, and its run message carries the parent's answer, its source references and its open points; an unrelated question starts without a parent. A follow-up queued before its parent finishes keeps the parent reference and gets the parent's final result when it starts; if the parent ended incomplete or cancelled, the card's line says so and the follow-up uses what the parent found, labelled partial, or asks one question when nothing usable exists. It never runs as if a finished parent answer existed.
 - **No steering.** Anything said while a task runs goes through the front call and is queued as a follow-up or a new question.
 
 ### Worker and research
 
-- **The brief.** The front call writes it in four parts (the goal, the result shape, the tools or sources, the limits) plus the user's exact words, because a restated goal can lose a nuance ("an office laptop, not gaming"). The worker gets only the web tool and never the whole conversation. Text in a page is never an instruction to it.
+- **The brief.** Four parts (the goal, the result shape, the sources, the limits) plus the user's exact words, because a restated goal can lose a nuance ("an office laptop, not gaming"). The worker gets only the web tool and never the whole conversation. Text in a page is never an instruction to it.
+- **The brief writer.** The first step of a task's run, inside the same hold, writes the four parts. It is one plain structured-output call on Sonnet 5.5, with no tools and no loop, and it says nothing to the user. It reads today's date, the user's words, the front call's one-line goal and, for a follow-up, the parent result; no conversation history. Its text is escaped like every other tagged block, and its fixed instructions come first so they cache. If the call fails for any reason except a cancel (model failure, a limit, malformed or incomplete output, an empty part), it retries once on Opus 5.5; if that fails too, a default brief is built from the goal and the user's words, a dev-log event records it (ids and roles only), and the worker starts anyway. Its calls count in the task's [limits](#limits-and-cost). A cancel during it ends the run with no worker, as everywhere.
 - **One profile.** The worker decides while it works how much to search, within one set of [limits](#limits-and-cost): a question that is a single simple fact (a date, a number, a definition, "today's weather in Delhi") may stop after one or two good sources; any other question ("how does Hermes work inside") reads at least 5 different sources, from different sites, before the answer, and more when they disagree or leave part of the brief open. A failed read does not count. This floor is a prompt rule; code enforces no minimum. Each tool result tells the worker how many pages it has read. This is checked on the first integrated path with a simple current fact and a moderately detailed product question (time to a useful answer, needless searches, source support, the incomplete outcome at a limit); if the worker over-searches or is too slow, a quick or normal choice made by the front call comes back through the depth value.
 - **The answer.** The worker writes the answer itself and maps each important claim to the source ids that support it; there is no separate writer. One output holds both parts: a one- or two-line spoken summary and the full card text in Markdown (headings, points, no links). There is no separate model call for the spoken line. A near match is never called a full match: with no exact match it names the closest alternatives and the unmet constraints. An ambiguity that needs the user ends the task incomplete with one focused next question on the card.
 - **Prompt cache.** The prompt start (instructions and tool list) stays fixed during a run.
@@ -223,9 +225,9 @@ It checks support and completion, not truth.
 
 ### Limits and cost
 
-- Each task has limits on model calls, searches, active time and dollars ([Starting values](#starting-values)). Active time counts the time the task's calls, tools or retry waits run, not the time it waits for the user. At a limit the task ends incomplete, limit hit, and shows what it found. The model-call limit is a ceiling, not a promise that every retry round fits: worker steps and judge calls share it, and the time or dollar limit can end a task first. The dollar limit counts model calls only; Exa search and contents calls are not added to it in V1.
-- Every engine model call (worker, judge, the retry rounds) goes through one dispatch function that checks the limits before sending, sets an output-token ceiling per role, and writes usage and dollar cost to the dev log for the team. Exa search and contents calls go through the web tool, with their own timeouts and the search limit, and are not dispatched. The user never sees cost. Without a reservation ledger the dollar limit is a conservative estimate, not an exact guarantee.
-- In V1 a task's limits count its run (worker, judge, retry rounds). The front call runs in main, outside them: one streamed call per utterance with its own 10 s deadline, its tokens and cache reads logged in the dev log.
+- Each task has limits on model calls, searches, active time and dollars ([Starting values](#starting-values)). Active time counts the time the task's calls, tools or retry waits run, not the time it waits for the user. At a limit the task ends incomplete, limit hit, and shows what it found. The model-call limit is a ceiling, not a promise that every retry round fits: brief writer, worker and judge calls share it, and the time or dollar limit can end a task first. The dollar limit counts model calls only; Exa search and contents calls are not added to it in V1.
+- Every engine model call (brief writer, worker, judge, the retry rounds) goes through one dispatch function that checks the limits before sending, sets an output-token ceiling per role, and writes usage and dollar cost to the dev log for the team. Exa search and contents calls go through the web tool, with their own timeouts and the search limit, and are not dispatched. The user never sees cost. Without a reservation ledger the dollar limit is a conservative estimate, not an exact guarantee.
+- In V1 a task's limits count its run (brief writer, worker, judge, retry rounds). The front call runs in main, outside them: one streamed call per utterance with its own two deadlines (6 s to the first words, 30 s whole), its tokens and cache reads logged in the dev log.
 - Retries use the Anthropic SDK's own retry with a small `maxRetries` and an explicit timeout on every call. That it may resend a request after a timeout is an accepted V1 cost.
 
 ### Failures the user hears
@@ -243,7 +245,9 @@ It checks support and completion, not truth.
 | Search not working | "Search isn't working right now. Try again in a few minutes." |
 | Model key rejected / no credit | "Baymax's model service rejected its key. Please tell the person who set up Baymax." / "Baymax's model service has no credit left. Please tell the person who set up Baymax." |
 | Request outside research | The front call's own spoken line, which says plainly that this version only researches |
-| Front call failed, timed out, had no text, or its decision failed the check | The line for its cause (models unreachable, key rejected, no credit, or "I hit an error on that question. Try again."), with retry; no task starts |
+| Front call failed, key rejected / no credit | The key or credit line above, with retry; no task starts |
+| Front call failed or timed out with nothing spoken | "Sorry, I missed that. Ask again." with retry; no task starts |
+| Front call failed or timed out after it spoke, or its decision failed the check | "That didn't go through. Ask again." with retry; no task starts |
 | Limit hit / sources thin / error | "{task} reached its limit; here is what I found." / "{task} found little on the web; here is what I found." / "{task} hit an error; here is what I found." |
 | Done check failed | "{task} is finished, but I couldn't check all of it; the unchecked part is marked." |
 | Uncaught failure | "Baymax hit a problem and is restarting." |
@@ -265,17 +269,17 @@ It checks support and completion, not truth.
 | Flux silence keep-alive | about 100 ms of zero PCM every 5 s |
 | Zero PCM before `ForceEndTurn` | about 200 ms, sent at once |
 | Final transcript deadline after key release | about 2 s, then the latest `Update` |
-| Searches per task | about 8 |
-| Active time per task | about 2 minutes |
-| Model calls per task | about 25 |
+| Searches per task | about 20 |
+| Active time per task | about 4 minutes |
+| Model calls per task | about 30 |
 | Dollars per task | about 50 cents |
 | Done check retry rounds | 2 |
 | Shortest hold that counts as a question | about 0.3 s |
 | Tasks waiting while one runs | 3 |
 | Cancelled card stays | about 3 s |
-| Output-token ceilings | front call 2,048, worker 2,048 per step, judge 1,024 |
-| Model call retries and timeouts | the SDK's own retry, 1 per call; timeout per attempt: worker 60 s, judge 30 s; whole call: twice the attempt timeout plus 5 s, capped by the task's remaining active time. The front call is one attempt of at most 10 s wall clock, retries included |
-| Conversation history | the last 10 exchanges, in main's memory only |
+| Output-token ceilings | front call 2,048, brief writer 1,024 (its Opus retry 2,048), worker 2,048 per step, judge 1,024 |
+| Model call retries and timeouts | the SDK's own retry, 1 per call; timeout per attempt: worker 60 s, judge 30 s, brief writer 20 s; whole call: twice the attempt timeout plus 5 s, capped by the task's remaining active time. The front call is one attempt with two wall-clock limits: 6 s to the first words, 30 s whole, retries included |
+| Conversation history | the last 20 exchanges (30 kept), in main's memory only |
 
 ### Checks
 
@@ -319,7 +323,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
 | `src/main/talker-timing.ts` | Logs each generation's front-call steps in ms after its release |
-| `src/main/talker.ts` | The front call: one Fable 5.1 streaming call per question or clarifying answer; its line streams into speech, then its `decide` input is handed to main; the 10 s deadline, attempts and cancel |
+| `src/main/talker.ts` | The front call: one Fable 5.1 streaming call per question or clarifying answer; its line streams into speech, then its `decide` input is handed to main; the two deadlines (6 s first words, 30 s whole call), attempts and cancel |
 | `src/main/talker-prompt.ts` | The front call's instructions, the `decide` tool and the messages it reads |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
 | `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |
@@ -332,6 +336,9 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the worker loop, the done check, the dispatch function and limits |
 | `src/engine/plugs/research/` | The research plug: the web tool (safe page reads, pages kept by source id), its prompts and its done condition |
+| `src/engine/plugs/research/brief-writer.ts` | The brief writer: one structured-output call that turns the ask into the worker's brief, with the Opus retry and the default brief |
+| `src/engine/plugs/research/brief-prompt.ts` | The brief writer's fixed instructions, its output schema and its user message |
+| `src/engine/plugs/research/brief.ts` | The worker's brief type |
 | `src/engine/plugs/index.ts` | The one list of plugs, as explicit re-exports |
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |
