@@ -1,17 +1,40 @@
 import type { Source, TaskCard, TaskState } from "../../shared/cards";
 
-export type CardForm = "pill" | "question" | "open" | "folded";
+export type CardForm = "pill" | "question" | "open";
 
+// Results stay open in the panel; folding into the notch is gone with the reopen dot.
 export function cardForm(card: Pick<TaskCard, "state" | "folded">): CardForm {
   switch (card.state) {
     case "clarifying":
       return "question";
     case "done":
     case "incomplete":
-      return card.folded ? "folded" : "open";
+      return "open";
     default:
       return "pill";
   }
+}
+
+// A plain chat reply: main ends a chat as a done card whose answer is the front call's own line, with no sources.
+export function isChatReply(
+  card: Pick<TaskCard, "state" | "reply" | "answer">,
+): boolean {
+  const { answer, reply } = card;
+  return (
+    card.state === "done" &&
+    answer !== null &&
+    reply !== null &&
+    answer.sources.length === 0 &&
+    answer.cardText === reply
+  );
+}
+
+// Work still in flight, so its live line may shimmer; a failed attempt waiting for Retry is not.
+export function isPending(card: Pick<TaskCard, "state" | "canRetry">): boolean {
+  const { state } = card;
+  const working =
+    state === "thinking" || state === "queued" || state === "running";
+  return working && !card.canRetry;
 }
 
 const cancellable: readonly TaskState[] = [
@@ -73,8 +96,4 @@ export function sourceGroups(sources: Source[]): SourceGroup[] {
     groups.push(created);
   }
   return groups;
-}
-
-export function sourcesCount(count: number): string {
-  return count === 1 ? "1 source" : `${count} sources`;
 }

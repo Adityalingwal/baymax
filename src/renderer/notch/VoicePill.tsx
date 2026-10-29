@@ -70,7 +70,7 @@ function Rim({
   );
 }
 
-function SpeakerIcon({ crossed }: { crossed: boolean }) {
+export function SpeakerIcon({ crossed }: { crossed: boolean }) {
   return (
     <svg viewBox="0 0 12 12" width={12} height={12} aria-hidden="true">
       <path d="M1.5 4.5h2l3-2.5v8l-3-2.5h-2z" fill="#fff" />
@@ -100,7 +100,7 @@ function Word({ pill }: { pill: PillState }) {
   return (
     <span className="absolute top-0 left-5 grid h-8 items-center text-[12.5px] font-semibold text-[#F5F5F7]">
       <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "pill-label-out" : ""} ${thinking ? "pill-shimmer" : ""}`}
+        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "pill-label-out" : ""} ${thinking ? "shimmer" : ""}`}
       >
         {pill.word}
       </span>

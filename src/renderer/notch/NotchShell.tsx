@@ -143,7 +143,7 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
       />
       <main
         ref={panel.contentElement}
-        className="absolute top-0 flex max-h-screen flex-col"
+        className="panel-type absolute top-0 flex max-h-screen flex-col"
         style={{
           left: (frame.width - bodyWidth) / 2,
           width: bodyWidth,
