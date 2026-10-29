@@ -185,11 +185,11 @@ There is no separate intake model call: the front call's `decide` tool is the in
 
 ### Done check
 
-It checks support and completion, not truth. V1 has no judge: in the 29 Oct live test it failed every answer and tripled the task cost; the code check is the done check.
+It checks the answer's form and its citations, not whether the pages back the claims or the goal is met. V1 has no judge: in the 29 Oct live test it failed every answer and tripled the task cost; the code check is the done check.
 
 - The web tool keeps every page it read in code: source id, URL and capped text. The worker's claims name those ids; the card text itself carries no ids or links.
 - **Code check:** an answer exists, every claim names a source, and every named id is a page that was really read; an id from a search snippet only cannot pass. An answer that passes ends the task at once as a result, with no further model call.
-- Only a done result shows and speaks the pair. An incomplete result shows its findings, labelled, with its failure line, and its spoken summary is not played.
+- Only a done result shows and speaks the pair, with one exception: a task that hits a limit after the worker wrote an answer speaks that answer's spoken line and shows its open points as "Not found: …", without naming the limit. Any other incomplete result shows its findings, labelled, with its failure line, and its spoken summary is not played.
 - **Retry rounds.** If the check fails, the worker gets up to two retry rounds in the same conversation: at most three answers in all. A code-check fault sends the worker the failed part and asks it to research it (a search and at least one new page read) before it writes again; a cut-off or malformed answer only gets a rewrite. In a round opened by a code-check fault, an answer that comes without new research (a search that returned results, or a newly kept page) is not checked: the worker gets one fixed message to research the failed part first, once per round, and its next answer is checked as it is. A sources-thin or needs-user answer in any round ends as it is.
 - **After the last round.** If the code check still fails or the answer never parsed, the task ends incomplete with the unchecked part named, never done.
 - Baymax closes a task itself once the check passes and the result is shown.
@@ -230,7 +230,7 @@ It checks support and completion, not truth. V1 has no judge: in the 29 Oct live
 ### Failures the user hears
 
 - Failures are told to the end user, not to a developer: a plain, fixed line written in code that says what is not working and what to do, shown on the card and spoken unless muted or voice is down. Error codes and provider messages go only to the dev log. A failing provider never closes the app.
-- `{task}` is filled from the task's topic in a short form.
+- `{task}` is filled from the task's topic in a short form; `{topic}` is that short form as the front call wrote it, mid-sentence.
 
 | Failure | Line |
 | --- | --- |
@@ -245,7 +245,8 @@ It checks support and completion, not truth. V1 has no judge: in the 29 Oct live
 | Front call failed, key rejected / no credit | The key or credit line above, with retry; no task starts |
 | Front call failed or timed out with nothing spoken | "Sorry, I missed that. Ask again." with retry; no task starts |
 | Front call failed or timed out after it spoke, or its decision failed the check | "That didn't go through. Ask again." with retry; no task starts |
-| Limit hit / sources thin / error | "{task} reached its limit; here is what I found." / "{task} found little on the web; here is what I found." / "{task} hit an error; here is what I found." |
+| Limit hit | Never named. With an answer: the worker's own spoken line, and "Not found: …" from its open points on the card. With only read pages: "I couldn't finish an answer on {topic}; here are the pages I read." With nothing: "I couldn't find an answer on {topic}." |
+| Sources thin / error | "{task} found little on the web; here is what I found." / "{task} hit an error; here is what I found." |
 | Done check failed | "{task} is finished, but I couldn't check all of it; the unchecked part is marked." |
 | Uncaught failure | "Baymax hit a problem and is restarting." |
 

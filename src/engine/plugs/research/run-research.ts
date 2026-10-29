@@ -60,27 +60,36 @@ const workerPrompt = {
   ...thinkingFields(workerThinking),
 };
 
-// A short ending carries what was found when the run stopped.
+// A short ending carries what was found when the run stopped; at a limit, a found answer keeps its spoken line.
 function endingEvent(
   taskId: TaskId,
   ending: LoopEnding,
-  findings: Findings | null,
+  found: FoundAnswer,
 ): EngineEvent {
-  return ending.kind === "limitHit"
-    ? incomplete(taskId, { kind: "limitHit", findings })
-    : incomplete(taskId, { kind: "error", cause: ending.cause, findings });
+  const { findings, spokenLine } = found;
+  if (ending.kind !== "limitHit") {
+    return incomplete(taskId, { kind: "error", cause: ending.cause, findings });
+  }
+  return incomplete(
+    taskId,
+    spokenLine === null
+      ? { kind: "limitHit", findings }
+      : { kind: "limitHit", findings, spokenLine },
+  );
 }
+
+type FoundAnswer = { findings: Findings | null; spokenLine: string | null };
 
 type Worker = {
   run: ResearchRun;
-  checks: CheckRun;
+  foundAnswer: () => FoundAnswer;
   history: Anthropic.MessageParam[];
   runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
 };
 
 // The worker loop in the shared conversation, until its next answer turn or an ending.
 async function work(worker: Worker): Promise<WorkTurn> {
-  const { run, checks } = worker;
+  const { run } = worker;
   const outcome = await runWorkerLoop(
     {
       deps: run.deps,
@@ -94,7 +103,8 @@ async function work(worker: Worker): Promise<WorkTurn> {
     return { kind: "aborted" };
   }
   if (outcome.kind === "end") {
-    const event = endingEvent(run.task.taskId, outcome.ending, checks.found());
+    const found = worker.foundAnswer();
+    const event = endingEvent(run.task.taskId, outcome.ending, found);
     return { kind: "event", event };
   }
   return { kind: "turn", turn: outcome };
@@ -103,8 +113,15 @@ async function work(worker: Worker): Promise<WorkTurn> {
 function startRounds(run: ResearchRun, brief: WorkerBrief): Rounds {
   const { taskId } = run.task;
   const web = createWebTool(run.access);
-  let built: Findings | null = null;
-  const found = () => foundFindings(built, web.pages());
+  let built: { findings: Findings; spokenLine: string } | null = null;
+  const found = () => foundFindings(built?.findings ?? null, web.pages());
+  // The spoken line belongs to the found card only when that card is the built answer itself.
+  const foundAnswer = (): FoundAnswer => {
+    const findings = found();
+    const spokenLine =
+      built !== null && findings === built.findings ? built.spokenLine : "";
+    return { findings, spokenLine: spokenLine === "" ? null : spokenLine };
+  };
   run.found.current = found;
   const job = { ...run.task, role: "worker" as const };
   const progress = (step: ProgressStep, sourcesRead: number) =>
@@ -119,11 +136,11 @@ function startRounds(run: ResearchRun, brief: WorkerBrief): Rounds {
     task: run.task,
     pages: web.pages,
     found,
-    built: (findings) => (built = findings),
+    built: (findings, spokenLine) => (built = { findings, spokenLine }),
   };
   const history: Anthropic.MessageParam[] = [{ role: "user", content: first }];
   const tools = createToolRunner({ web, deps: run.deps, job, progress });
-  const worker = { run, checks, history, runTools: tools.runTools };
+  const worker = { run, foundAnswer, history, runTools: tools.runTools };
   return {
     checks,
     history,

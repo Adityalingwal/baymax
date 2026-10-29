@@ -83,28 +83,61 @@ const errorCauseRows: IncompleteRow[] = failureRows
     spoken: row.line,
   }));
 
+const answered = { ...found, openPoints: ["the price in India", "the weight"] };
+
 const incompleteRows: IncompleteRow[] = [
-  ...(
-    [
-      ["limitHit", "reached its limit"],
-      ["sourcesThin", "found little on the web"],
-    ] as const
-  ).flatMap(([kind, words]) => [
-    {
-      name: `${kind} with findings`,
-      incomplete: { kind, findings: found },
-      line: `How Hermes works ${words}; here is what I found.`,
-      missing: null,
-      spoken: `How Hermes works ${words}; here is what I found.`,
+  {
+    name: "limitHit with an answer and open points",
+    incomplete: {
+      kind: "limitHit",
+      findings: answered,
+      spokenLine: "Hermes runs a loop.",
     },
-    {
-      name: `${kind} without findings`,
-      incomplete: { kind, findings: null },
-      line: `How Hermes works ${words} before it found anything.`,
-      missing: null,
-      spoken: `How Hermes works ${words} before it found anything.`,
+    line: null,
+    missing: "Not found: the price in India; the weight",
+    spoken: "Hermes runs a loop.",
+  },
+  {
+    name: "limitHit with an answer and nothing open",
+    incomplete: {
+      kind: "limitHit",
+      findings: { ...found, openPoints: [] },
+      spokenLine: "Hermes runs a loop.",
     },
-  ]),
+    line: null,
+    missing: null,
+    spoken: "Hermes runs a loop.",
+  },
+  {
+    name: "limitHit with pages only",
+    incomplete: { kind: "limitHit", findings: found },
+    line: "I couldn't finish an answer on how Hermes works; here are the pages I read.",
+    missing: null,
+    spoken:
+      "I couldn't finish an answer on how Hermes works; here are the pages I read.",
+  },
+  {
+    name: "limitHit without findings",
+    incomplete: { kind: "limitHit", findings: null },
+    line: "I couldn't find an answer on how Hermes works.",
+    missing: null,
+    spoken: "I couldn't find an answer on how Hermes works.",
+  },
+  {
+    name: "sourcesThin with findings",
+    incomplete: { kind: "sourcesThin", findings: found },
+    line: "How Hermes works found little on the web; here is what I found.",
+    missing: null,
+    spoken: "How Hermes works found little on the web; here is what I found.",
+  },
+  {
+    name: "sourcesThin without findings",
+    incomplete: { kind: "sourcesThin", findings: null },
+    line: "How Hermes works found little on the web before it found anything.",
+    missing: null,
+    spoken:
+      "How Hermes works found little on the web before it found anything.",
+  },
   {
     name: "error with findings",
     incomplete: { kind: "error", cause: "error", findings: found },

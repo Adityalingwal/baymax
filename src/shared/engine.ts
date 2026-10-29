@@ -33,7 +33,8 @@ export type FailureKind =
   "modelsUnreachable" | "keyRejected" | "noCredit" | "searchDown" | "error";
 
 export type Incomplete =
-  | { kind: "limitHit" | "sourcesThin"; findings: Findings | null }
+  | { kind: "limitHit"; findings: Findings | null; spokenLine?: string } // spokenLine is set when findings are the worker's latest answer
+  | { kind: "sourcesThin"; findings: Findings | null }
   | { kind: "error"; cause: FailureKind; findings: Findings | null }
   | { kind: "needsUser"; nextQuestion: string; findings: Findings | null }
   | { kind: "unchecked"; uncheckedPart: string; findings: Findings }; // a failed done check after the last retry round

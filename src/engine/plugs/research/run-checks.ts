@@ -7,13 +7,13 @@ import { answerFindings, checkAnswer } from "./answer-check";
 import type { ReadPage } from "./page-text";
 import { answerFaults } from "./worker-prompt";
 
-// What one answer's check needs from its run; built is told each card the code check builds.
+// What one answer's check needs from its run; built is told each card the code check builds, with its answer's spoken line.
 export type CheckRun = {
   deps: DispatchDeps;
   task: { taskId: TaskId };
   pages: () => ReadPage[];
   found: () => Findings | null;
-  built: (findings: Findings) => void;
+  built: (findings: Findings, spokenLine: string) => void;
 };
 
 // A failed check that earns a retry round. Stage and rule are code-defined, for the log; part is for the worker.
@@ -54,7 +54,7 @@ function logCheck(run: CheckRun, stage: "code", failed: string | null): void {
 function statusEvent(run: CheckRun, answer: Answer): EngineEvent {
   const { taskId } = run.task;
   const card = answerFindings(answer, run.pages());
-  run.built(card);
+  run.built(card, answer.spokenLine.trim());
   const findings = card.cardText.trim() === "" ? null : card;
   const { status, nextQuestion } = answer;
   if (status === "needsUser" && nextQuestion !== null) {
@@ -91,17 +91,13 @@ export async function checkRound(
   const { answer } = turn;
   if (answer.status !== "complete") return ended(statusEvent(run, answer));
   const check = checkAnswer(answer, run.pages());
-  run.built(check.findings);
+  const spokenLine = answer.spokenLine.trim();
+  run.built(check.findings, spokenLine);
   logCheck(run, "code", check.passed ? null : check.rule);
   if (check.passed) {
-    const spokenLine = answer.spokenLine.trim();
+    const { taskId } = run.task;
     const { findings } = check;
-    return ended({
-      type: "result",
-      taskId: run.task.taskId,
-      spokenLine,
-      findings,
-    });
+    return ended({ type: "result", taskId, spokenLine, findings });
   }
   const { rule, uncheckedPart: part, findings } = check;
   return { kind: "fault", fault: { stage: "code", rule, part, findings } };

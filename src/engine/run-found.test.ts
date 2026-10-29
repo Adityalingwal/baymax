@@ -6,6 +6,7 @@ import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
+  goodAnswer,
   hits,
   pageUrl,
   runTask,
@@ -33,6 +34,7 @@ type FoundRow = {
   name: string;
   steps: () => FakeStep[];
   found: Findings | null;
+  spokenLine?: string; // only when the found card is the worker's answer
 };
 
 const foundRows: FoundRow[] = [
@@ -69,6 +71,7 @@ const foundRows: FoundRow[] = [
       sources: [one],
       openPoints: ["How it stores memory"],
     },
+    spokenLine: goodAnswer.spokenLine,
   },
   {
     name: "the read pages after an empty failed answer",
@@ -93,7 +96,14 @@ describe("runTask what was found", () => {
       {
         type: "incomplete",
         taskId: "task-1",
-        incomplete: { kind: "limitHit", findings: row.found },
+        incomplete:
+          row.spokenLine === undefined
+            ? { kind: "limitHit", findings: row.found }
+            : {
+                kind: "limitHit",
+                findings: row.found,
+                spokenLine: row.spokenLine,
+              },
       },
     ]);
   });

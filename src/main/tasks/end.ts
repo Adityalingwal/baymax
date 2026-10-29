@@ -63,8 +63,8 @@ export function endIncomplete(
   record.card.answer = incomplete.findings;
   record.card.line = lines.line;
   record.card.missing = lines.missing;
-  // The worker's next question is model text, said as given; fixed lines are said as written.
-  const kind = incomplete.kind === "needsUser" ? "answer" : "failure";
+  // Without a fixed line, the spoken text is the worker's own (its next question or its answer), said as given.
+  const kind = lines.line === null ? "answer" : "failure";
   say(change, record.card.taskId, lines.spoken, kind);
 }
 

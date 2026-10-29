@@ -154,12 +154,17 @@ describe("runTask other retry rounds", () => {
   it("ends limitHit with the retry card when the model-call limit comes during the retry round", async () => {
     const ran = await run(untilTheLimit());
     expect(ran.requests).toHaveLength(30);
-    expect(ran.last).toMatchObject({
+    expect(ran.last).toEqual({
       type: "incomplete",
       taskId: "task-1",
       incomplete: {
         kind: "limitHit",
-        findings: { cardText: goodAnswer.cardText },
+        findings: {
+          cardText: goodAnswer.cardText,
+          sources: [],
+          openPoints: goodAnswer.openPoints,
+        },
+        spokenLine: goodAnswer.spokenLine,
       },
     });
     expect(ran.entries).toContainEqual({
