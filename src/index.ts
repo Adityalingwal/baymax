@@ -18,7 +18,12 @@ import { synthesizeSpeech, transcribeClip } from "./providers/deepgram";
 import { startFlux } from "./providers/flux";
 import { openWebSocket } from "./providers/warm-socket";
 import { ipcChannels } from "./shared/ipc";
-import type { HoldState, MainToRenderer, StartupInfo } from "./shared/ipc";
+import type {
+  HoldState,
+  MainToRenderer,
+  StartupInfo,
+  VoicePhase,
+} from "./shared/ipc";
 
 const startedAt = Date.now();
 let mainWindow: BrowserWindow | null = null;
@@ -26,6 +31,7 @@ let wiring: Wiring | null = null;
 let workStopped = false;
 // Current state is kept here so a renderer that mounts (or reloads) mid-hold can ask for it.
 let holdState: HoldState = "idle";
+let voicePhase: VoicePhase = { phase: "idle" };
 // Set once the talker has a key: a key press opens its connection before the question needs it.
 let warmTalker = (): void => undefined;
 
@@ -92,6 +98,11 @@ function sendHoldState(state: HoldState): void {
   sendToWindow(ipcChannels.holdState, state);
 }
 
+function sendVoicePhase(phase: VoicePhase): void {
+  voicePhase = phase;
+  sendToWindow(ipcChannels.voicePhase, phase);
+}
+
 function setTimer(ms: number, fire: () => void): () => void {
   const timer = setTimeout(fire, ms);
   return () => clearTimeout(timer);
@@ -110,6 +121,7 @@ function voiceDeps(deepgramKey: string): WiringDeps["voice"] {
     sendChunk: (chunk) => sendToWindow(ipcChannels.speechChunk, chunk),
     sendEnd: (end) => sendToWindow(ipcChannels.speechEnd, end),
     sendStop: (payload) => sendToWindow(ipcChannels.stopPlayback, payload),
+    sendVoicePhase,
     transcribe: (audio, mimeType) => transcribeClip(deepgram, audio, mimeType),
     startFlux: (listener) =>
       deepgramKey === ""
@@ -165,6 +177,10 @@ function registerHoldHandlers(accessibilityAtStartup: boolean | null): void {
 
   ipcMain.on(ipcChannels.getHoldState, (event) => {
     event.sender.send(ipcChannels.holdState, holdState);
+  });
+
+  ipcMain.on(ipcChannels.getVoicePhase, (event) => {
+    event.sender.send(ipcChannels.voicePhase, voicePhase);
   });
 
   // Only fired by the explicit button in the window.

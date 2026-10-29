@@ -2,7 +2,14 @@ import { auraSampleRate } from "../providers/aura";
 import type { Aura, AuraEvent } from "../providers/aura";
 import { takeClauses } from "./clauses";
 import type { Line, SpeechContext, StreamJob } from "./speech-model";
-import { endPlaying, guarded, log, occupy, voiceBack } from "./speech-model";
+import {
+  audioStarted,
+  endPlaying,
+  guarded,
+  log,
+  occupy,
+  voiceBack,
+} from "./speech-model";
 import { startRest } from "./speech-rest";
 
 // Every send is checked; false means the socket failed and the line takes the socket-failure path.
@@ -77,15 +84,13 @@ export function auraHeard(ctx: SpeechContext, event: AuraEvent): void {
     stream.flushesDone += 1;
     return audioDone(ctx);
   }
-  const { lineId, line } = playing;
+  const { lineId } = playing;
   const chunk = { lineId, seq: stream.seq, pcm: event.pcm };
   stream.seq += 1;
   guarded("sendChunk", () =>
     ctx.deps.sendChunk({ ...chunk, sampleRate: auraSampleRate }),
   );
-  if (chunk.seq === 0) {
-    guarded("onAudioStarted", () => ctx.deps.onAudioStarted(line));
-  }
+  if (chunk.seq === 0) audioStarted(ctx, playing);
   voiceBack(ctx);
 }
 
@@ -110,6 +115,6 @@ export function auraClosed(ctx: SpeechContext): void {
     return;
   }
   log("speech socket closed before any audio: the line goes to REST");
-  endPlaying(ctx, lineId);
+  endPlaying(ctx, lineId, true);
   startRest(ctx, line);
 }

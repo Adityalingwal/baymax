@@ -64,8 +64,7 @@ export function endIncomplete(
   record.card.line = lines.line;
   record.card.missing = lines.missing;
   // Without a fixed line, the spoken text is the worker's own (its next question or its answer), said as given.
-  const kind = lines.line === null ? "answer" : "failure";
-  say(change, record.card.taskId, lines.spoken, kind);
+  say(change, record.card.taskId, lines.spoken, "incomplete");
 }
 
 function clearForLeaving(change: Change, record: TaskRecord): void {

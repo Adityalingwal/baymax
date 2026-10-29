@@ -25,7 +25,7 @@ const rows: Row[] = [
     line: null,
     missing: "Not found: the price",
     said: "Hermes runs a loop.",
-    kind: "answer",
+    kind: "incomplete",
   },
   {
     name: "limitHit with pages only",
@@ -33,7 +33,7 @@ const rows: Row[] = [
     line: "I couldn't finish an answer on hermes; here are the pages I read.",
     missing: null,
     said: "I couldn't finish an answer on hermes; here are the pages I read.",
-    kind: "failure",
+    kind: "incomplete",
   },
   {
     name: "sourcesThin",
@@ -41,7 +41,7 @@ const rows: Row[] = [
     line: "Hermes found little on the web before it found anything.",
     missing: null,
     said: "Hermes found little on the web before it found anything.",
-    kind: "failure",
+    kind: "incomplete",
   },
   {
     name: "error caused by error",
@@ -49,7 +49,7 @@ const rows: Row[] = [
     line: "Hermes hit an error; here is what I found.",
     missing: null,
     said: "Hermes hit an error; here is what I found.",
-    kind: "failure",
+    kind: "incomplete",
   },
   {
     name: "error caused by noCredit",
@@ -57,7 +57,7 @@ const rows: Row[] = [
     line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
     missing: null,
     said: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
-    kind: "failure",
+    kind: "incomplete",
   },
   {
     name: "unchecked",
@@ -69,7 +69,7 @@ const rows: Row[] = [
     line: "Hermes is finished, but I couldn't check all of it; the unchecked part is marked.",
     missing: "The dates.",
     said: "Hermes is finished, but I couldn't check all of it; the unchecked part is marked.",
-    kind: "failure",
+    kind: "incomplete",
   },
   {
     name: "needsUser",
@@ -81,7 +81,7 @@ const rows: Row[] = [
     line: null,
     missing: "Which version?",
     said: "Which version?",
-    kind: "answer",
+    kind: "incomplete",
   },
 ];
 

@@ -23,7 +23,8 @@ function subscribeWithReplay<C extends keyof MainToRenderer>(
   replayChannel:
     | typeof ipcChannels.getHoldState
     | typeof ipcChannels.getDisplayState
-    | typeof ipcChannels.getWindowShape,
+    | typeof ipcChannels.getWindowShape
+    | typeof ipcChannels.getVoicePhase,
   callback: (payload: MainToRenderer[C]) => void,
 ): () => void {
   const cleanup = subscribe(channel, callback);
@@ -79,6 +80,12 @@ const api: BaymaxApi = {
       callback,
     ),
   setMouseCapture: (payload) => send(ipcChannels.setMouseCapture, payload),
+  onVoicePhase: (callback) =>
+    subscribeWithReplay(
+      ipcChannels.voicePhase,
+      ipcChannels.getVoicePhase,
+      callback,
+    ),
 };
 
 contextBridge.exposeInMainWorld("baymax", api);

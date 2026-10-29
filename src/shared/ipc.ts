@@ -31,6 +31,8 @@ export const ipcChannels = {
   windowShape: "window-shape",
   getWindowShape: "get-window-shape",
   setMouseCapture: "set-mouse-capture",
+  voicePhase: "voice-phase",
+  getVoicePhase: "get-voice-phase",
 } as const;
 
 export type HoldState = "idle" | "listening";
@@ -48,6 +50,24 @@ export type StartupInfo = {
 };
 
 export type LineId = string;
+
+// What a spoken line is: the front call's line, a clarifying question, a done task's answer, an incomplete task's line, a failure or a notice.
+export type SpokenKind =
+  "talk" | "question" | "answer" | "incomplete" | "failure" | "notice";
+
+// The line whose audio is playing; taskId is null for a notice.
+export type SpeakingLine = {
+  lineId: LineId;
+  taskId: TaskId | null;
+  kind: SpokenKind;
+};
+
+// Main's one voice phase for the notch: thinking is a turn waiting for its transcript or first audio.
+export type VoicePhase =
+  | { phase: "idle" }
+  | { phase: "listening" }
+  | { phase: "thinking" }
+  | { phase: "speaking"; line: SpeakingLine };
 
 // Main starts and stops the recording, since only main sees the hold key.
 export type RecordingCommand =
@@ -123,6 +143,7 @@ export type MainToRenderer = {
   [ipcChannels.speechEnd]: SpeechEnd;
   [ipcChannels.stopPlayback]: StopPlayback;
   [ipcChannels.windowShape]: WindowShape;
+  [ipcChannels.voicePhase]: VoicePhase;
 };
 
 export type BaymaxApi = {
@@ -147,4 +168,5 @@ export type BaymaxApi = {
   reportPlaybackFinished: (payload: PlaybackFinished) => void;
   onWindowShape: (callback: (shape: WindowShape) => void) => () => void;
   setMouseCapture: (payload: SetMouseCapture) => void;
+  onVoicePhase: (callback: (phase: VoicePhase) => void) => () => void;
 };

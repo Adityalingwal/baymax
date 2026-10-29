@@ -103,6 +103,8 @@ function streamed() {
     chunks: [] as SpeechChunk[],
     ends: [] as SpeechEnd[],
     started: [] as string[],
+    // Every line that left speech: its kind and its line id when its audio had started.
+    gone: [] as { kind: string; lineId: LineId | null }[],
   };
 }
 
@@ -110,7 +112,7 @@ function streamed() {
 export function createHarness(fakeAura: FakeAura | null = null) {
   const calls: Call[] = [];
   const speeches: SpeechLine[] = [];
-  const { chunks, ends, started } = streamed();
+  const seen = streamed();
   const stops: StopPlayback[] = [];
   const voice: { available: boolean; cause: VoiceDownCause | null }[] = [];
   const fakeTimers = createFakeTimers();
@@ -132,11 +134,12 @@ export function createHarness(fakeAura: FakeAura | null = null) {
     synthesize,
     startAura: (listener) => fakeAura?.startAura(listener) ?? null,
     sendSpeech,
-    sendChunk: (chunk) => chunks.push(chunk),
-    sendEnd: (end) => ends.push(end),
+    sendChunk: (chunk) => seen.chunks.push(chunk),
+    sendEnd: (end) => seen.ends.push(end),
     sendStop,
     onVoiceAvailable,
-    onAudioStarted: (line) => started.push(line.kind),
+    onAudioStarted: (line) => seen.started.push(line.kind),
+    onLineGone: (line, lineId) => seen.gone.push({ kind: line.kind, lineId }),
     timers: { setTimer },
   });
   return {
@@ -144,9 +147,7 @@ export function createHarness(fakeAura: FakeAura | null = null) {
     texts: () => calls.map((call) => call.text),
     calls,
     speeches,
-    chunks,
-    ends,
-    started,
+    ...seen,
     stops,
     voice,
     timers,
