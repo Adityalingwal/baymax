@@ -31,17 +31,17 @@ describe("panelBounds", () => {
     {
       name: "centred at the top of a display at the origin",
       bounds: { x: 0, y: 0, width: 1280, height: 828 },
-      expected: { x: 400, y: 0, width: 480, height: 720 },
+      expected: { x: 320, y: 0, width: 640, height: 720 },
     },
     {
       name: "centred at the top of a display with a non-zero origin",
       bounds: { x: -1920, y: -300, width: 1920, height: 1080 },
-      expected: { x: -1200, y: -300, width: 480, height: 720 },
+      expected: { x: -1280, y: -300, width: 640, height: 720 },
     },
     {
       name: "as tall as a display shorter than 720",
       bounds: { x: 0, y: 0, width: 1024, height: 600 },
-      expected: { x: 272, y: 0, width: 480, height: 600 },
+      expected: { x: 192, y: 0, width: 640, height: 600 },
     },
   ])("$name", ({ bounds, expected }) => {
     expect(panelBounds({ bounds })).toEqual(expected);
