@@ -1,18 +1,13 @@
 import { describe, expect, it } from "vitest";
-import {
-  cubicBezier,
-  motionEnd,
-  panelTiming,
-  planPanel,
-  progressAt,
-  restingFrame,
-  sample,
-} from "./motion";
-import type { Frame, PanelKeys } from "./motion";
+import { cubicBezier, motionEnd, progressAt, sample } from "./motion";
+import type { Frame } from "./motion";
+import { panelTiming, planPanel, restingFrame } from "./plans";
+import type { PanelKeys } from "./plans";
 
 const keys: PanelKeys = {
   collapsed: { width: 139, height: 25, ear: 0, rx: 0, ry: 0 },
   opened: { width: 628, height: 300, ear: 6, rx: 26, ry: 28 },
+  pill: false,
 };
 const closedFrame = restingFrame(keys.collapsed, false);
 const openFrame = restingFrame(keys.opened, true);

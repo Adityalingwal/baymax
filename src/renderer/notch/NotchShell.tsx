@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
+import type { VoicePhase } from "../../shared/ipc";
+import type { CardActions } from "../actions";
 import {
   notchSilhouette,
   notchZone,
@@ -9,14 +11,19 @@ import {
   silhouettePath,
 } from "./outline";
 import type { OutlineGeometry } from "./outline";
+import type { PillState } from "./pill";
 import { useShellMotion } from "./useMotion";
+import { usePill } from "./usePill";
 import { usePointer } from "./usePointer";
 import { useWindowShape } from "./useWindowShape";
 import type { WindowGeometry } from "./useWindowShape";
+import { pillShape, VoicePill } from "./VoicePill";
 
 type NotchShellProps = {
   needsAccess: boolean;
   draft: boolean; // the field holds text, which keeps the panel open when the pointer leaves
+  phase: VoicePhase;
+  setMuted: CardActions["setMuted"];
   children: ReactNode;
 };
 
@@ -41,39 +48,51 @@ function useContentHeight(element: HTMLElement | null) {
   return height;
 }
 
-function useShapes(frame: WindowGeometry, contentHeight: number) {
+function useShapes(
+  frame: WindowGeometry,
+  contentHeight: number,
+  pill: boolean,
+) {
   const { width, height, shape } = frame;
   return useMemo(() => {
     const geometry: OutlineGeometry = { width, height, shape, contentHeight };
     const opened = openSilhouette(geometry);
-    const keys = { collapsed: notchSilhouette(shape), opened };
+    const notch = notchSilhouette(shape);
+    const collapsed = pill ? pillShape : notch;
+    const keys = { collapsed, opened, pill };
     const zones = {
       notch: notchZone(geometry),
       opened: { kind: "path" as const, path: silhouettePath(width, opened) },
     };
-    return { geometry, keys, zones };
-  }, [width, height, shape, contentHeight]);
+    return { geometry, keys, notch, zones };
+  }, [width, height, shape, contentHeight, pill]);
 }
 
-type PanelInput = Omit<NotchShellProps, "children"> & {
+type PanelInput = Omit<NotchShellProps, "children" | "phase" | "setMuted"> & {
   frame: WindowGeometry;
+  pill: PillState;
 };
 
 // Joins the pointer rules to the motion: the pointer decides open or closed, the motion draws it and reports back.
-function usePanel({ needsAccess, draft, frame }: PanelInput) {
+function usePanel({ needsAccess, draft, frame, pill }: PanelInput) {
   const [content, setContent] = useState<HTMLElement | null>(null);
-  const shapes = useShapes(frame, useContentHeight(content));
+  const shapes = useShapes(frame, useContentHeight(content), pill.shown);
   const visible = useRef<() => string>(() => "");
   const zones = useMemo(
     () => ({ ...shapes.zones, visible: () => visible.current() }),
     [shapes.zones],
   );
-  const holds = { needsAccess, draft, shapeKey: frame.shape };
-  const pointer = usePointer(zones, holds);
+  const pointer = usePointer(zones, {
+    needsAccess,
+    draft,
+    shapeKey: frame.shape,
+  });
   const { open } = pointer.state;
   const motion = useShellMotion({
     open,
     keys: shapes.keys,
+    notch: shapes.notch,
+    pill: pillShape,
     windowWidth: frame.width,
     onFrame: pointer.frameChanged,
     onSettled: (settledOpen) => {
@@ -81,7 +100,7 @@ function usePanel({ needsAccess, draft, frame }: PanelInput) {
     },
   });
   visible.current = motion.visiblePath;
-  const { contentRef } = motion;
+  const contentRef = motion.layers.content;
   const contentElement = useCallback(
     (element: HTMLElement | null) => {
       contentRef.current = element;
@@ -96,27 +115,34 @@ function usePanel({ needsAccess, draft, frame }: PanelInput) {
     event.target.blur();
   };
   const bodyWidth = openBodyWidth(shapes.geometry);
-  return {
-    open,
-    shapeRef: motion.shapeRef,
-    contentElement,
-    onKeyDown,
-    bodyWidth,
-  };
+  return { open, layers: motion.layers, contentElement, onKeyDown, bodyWidth };
 }
 
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
-  const { open, shapeRef, contentElement, onKeyDown, bodyWidth } =
-    usePanel(props);
-  const { frame, children } = props;
+  const { frame, children, phase, setMuted } = props;
+  const { pill, dispatch } = usePill(phase);
+  const panel = usePanel({ ...props, pill });
+  const { open, layers, bodyWidth } = panel;
+  const mute = () => {
+    dispatch({ kind: "mute-clicked" });
+    setMuted({ muted: true });
+  };
   return (
     <div
-      ref={shapeRef}
+      ref={layers.shape}
       className="fixed inset-0 bg-black text-zinc-100"
-      onKeyDown={onKeyDown}
+      onKeyDown={panel.onKeyDown}
     >
+      <VoicePill
+        pill={pill}
+        windowWidth={frame.width}
+        interactive={!open && pill.shown}
+        wordRef={layers.word}
+        rimRef={layers.rim}
+        onMute={mute}
+      />
       <main
-        ref={contentElement}
+        ref={panel.contentElement}
         className="absolute top-0 flex max-h-screen flex-col"
         style={{
           left: (frame.width - bodyWidth) / 2,
@@ -133,7 +159,7 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   );
 }
 
-// The one black shape: the bare notch when closed, the panel when the pointer rests on the notch.
+// The one black shape: the bare notch, the voice pill, or the panel when the pointer rests on the notch.
 export function NotchShell(props: NotchShellProps) {
   const frame = useWindowShape();
   if (frame === null) return null;

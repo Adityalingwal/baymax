@@ -2,9 +2,15 @@ import type { Silhouette } from "./outline";
 
 export type Ease = (progress: number) => number;
 
-const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+export const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
-const linear: Ease = (progress) => clamp01(progress);
+export const linear: Ease = (progress) => clamp01(progress);
+
+// The locked soft curve: clamped quintic smootherstep, zero speed and acceleration at both ends.
+export const smootherstep: Ease = (progress) => {
+  const t = clamp01(progress);
+  return t * t * t * (t * (t * 6 - 15) + 10);
+};
 
 // CSS cubic-bezier(x1, y1, x2, y2): finds the curve's t for the time, then returns its value.
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
@@ -39,9 +45,15 @@ export function progressAt(ease: Ease, value: number): number {
   return (low + high) / 2;
 }
 
-// What the shell draws: the silhouette, the content's opacity, and the whole shape's opacity (reduced motion fades it).
-export type Frame = Silhouette & { content: number; shade: number };
-type Channel = keyof Frame;
+// What the shell draws: the silhouette, then opacities: the panel content, the whole shape (reduced motion fades it),
+// the pill's word and mute button, and the pill's corner lines.
+export type Frame = Silhouette & {
+  content: number;
+  shade: number;
+  pill: number;
+  rim: number;
+};
+export type Channel = keyof Frame;
 
 // skip: time already spent on this curve, so a motion that starts part way keeps its speed and never jumps.
 export type Track = {
@@ -67,6 +79,8 @@ const channels: Channel[] = [
   "ry",
   "content",
   "shade",
+  "pill",
+  "rim",
 ];
 
 function trackEnd(track: Track): number {
@@ -98,145 +112,55 @@ export function sample(motion: Motion, now: number): Frame {
   return frame;
 }
 
-export function restingFrame(shape: Silhouette, open: boolean): Frame {
-  return { ...shape, content: open ? 1 : 0, shade: 1 };
-}
+export type Timing = Omit<Track, "from" | "to">;
 
-type Timing = Omit<Track, "from" | "to">;
+export const instant: Timing = { delay: 0, duration: 0, skip: 0, ease: linear };
 
-function tracksFor(
+// One timing per group; a channel may have its own instead.
+export type Timings = {
+  shape: Timing;
+  content: Timing;
+  shade: Timing;
+  pill: Timing;
+  rim: Timing;
+} & Partial<Record<Channel, Timing>>;
+
+type Group = "shape" | "content" | "shade" | "pill" | "rim";
+
+const groupOf: Record<Channel, Group> = {
+  width: "shape",
+  height: "shape",
+  ear: "shape",
+  rx: "shape",
+  ry: "shape",
+  content: "content",
+  shade: "shade",
+  pill: "pill",
+  rim: "rim",
+};
+
+// end: what stays once the motion is over, when it differs from where the tracks go.
+export function makeMotion(
   from: Frame,
   to: Frame,
-  timing: { shape: Timing; content: Timing; shade: Timing },
-): Record<Channel, Track> {
-  const track = (channel: Channel, part: Timing): Track => ({
+  timings: Timings,
+  how: { now: number; end?: Frame },
+): Motion {
+  const track = (channel: Channel): Track => ({
     from: from[channel],
     to: to[channel],
-    ...part,
+    ...(timings[channel] ?? timings[groupOf[channel]]),
   });
-  return {
-    width: track("width", timing.shape),
-    height: track("height", timing.shape),
-    ear: track("ear", timing.shape),
-    rx: track("rx", timing.shape),
-    ry: track("ry", timing.shape),
-    content: track("content", timing.content),
-    shade: track("shade", timing.shade),
+  const tracks = {
+    width: track("width"),
+    height: track("height"),
+    ear: track("ear"),
+    rx: track("rx"),
+    ry: track("ry"),
+    content: track("content"),
+    shade: track("shade"),
+    pill: track("pill"),
+    rim: track("rim"),
   };
-}
-
-// Timings from the locked design: notch-design-locked.md, "Panel close and motion".
-export const panelTiming = {
-  openMs: 360,
-  openEase: cubicBezier(0.22, 1, 0.36, 1),
-  contentDelayMs: 90,
-  contentMs: 180,
-  closeContentMs: 80,
-  closeMs: 220,
-  closeEase: cubicBezier(0.4, 0, 1, 1),
-  reducedInMs: 120,
-  reducedOutMs: 100,
-  slide: 4,
-} as const;
-
-export type PanelKeys = { collapsed: Silhouette; opened: Silhouette };
-
-// How far the shape is from collapsed (0) to open (1), by height.
-function openness(current: Frame, keys: PanelKeys): number {
-  const span = keys.opened.height - keys.collapsed.height;
-  if (span <= 0) return 1;
-  return (current.height - keys.collapsed.height) / span;
-}
-
-const instant: Timing = { delay: 0, duration: 0, skip: 0, ease: linear };
-
-function planOpen(current: Frame, keys: PanelKeys): Motion["tracks"] {
-  const t = panelTiming;
-  // Taller than the target (the content shrank): the curve starts afresh.
-  const done = openness(current, keys);
-  const skip = done > 1 ? 0 : progressAt(t.openEase, clamp01(done)) * t.openMs;
-  const target = restingFrame(keys.opened, true);
-  return tracksFor(current, target, {
-    shape: { delay: 0, duration: t.openMs, skip, ease: t.openEase },
-    content: {
-      // A shape already at full size lets the content come back at once.
-      delay: done >= 1 ? 0 : Math.max(0, t.contentDelayMs - skip),
-      duration: t.contentMs,
-      skip: current.content * t.contentMs,
-      ease: linear,
-    },
-    shade: instant,
-  });
-}
-
-function planClose(current: Frame, keys: PanelKeys): Motion["tracks"] {
-  const t = panelTiming;
-  const closedness = 1 - clamp01(openness(current, keys));
-  const fadeLeft = current.content * t.closeContentMs;
-  const skip = progressAt(t.closeEase, closedness) * t.closeMs;
-  const target = restingFrame(keys.collapsed, false);
-  return tracksFor(current, target, {
-    shape: { delay: fadeLeft, duration: t.closeMs, skip, ease: t.closeEase },
-    content: {
-      delay: 0,
-      duration: t.closeContentMs,
-      skip: (1 - current.content) * t.closeContentMs,
-      ease: linear,
-    },
-    shade: instant,
-  });
-}
-
-// Reduced motion: no grow. The open panel fades in over the notch, and fades out before the notch comes back.
-function planReduced(
-  current: Frame,
-  keys: PanelKeys,
-  open: boolean,
-): Motion["tracks"] {
-  const t = panelTiming;
-  // In reduced motion the content shows exactly while the open shape does.
-  const shown = current.content > 0 ? current.shade : 0;
-  if (open) {
-    const from = { ...current, shade: shown };
-    return tracksFor(from, restingFrame(keys.opened, true), {
-      shape: instant,
-      content: instant,
-      shade: {
-        ...instant,
-        duration: t.reducedInMs,
-        skip: shown * t.reducedInMs,
-      },
-    });
-  }
-  const fadeLeft = shown * t.reducedOutMs;
-  const from = { ...current, shade: shown };
-  const at = { ...instant, delay: fadeLeft };
-  return tracksFor(
-    from,
-    { ...restingFrame(keys.collapsed, false), shade: 0 },
-    {
-      shape: at,
-      content: at,
-      shade: {
-        ...instant,
-        duration: t.reducedOutMs,
-        skip: t.reducedOutMs - fadeLeft,
-      },
-    },
-  );
-}
-
-export function planPanel(
-  current: Frame,
-  keys: PanelKeys,
-  how: { open: boolean; reduced: boolean; now: number },
-): Motion {
-  const { open, reduced, now } = how;
-  const tracks = reduced
-    ? planReduced(current, keys, open)
-    : open
-      ? planOpen(current, keys)
-      : planClose(current, keys);
-  const end = restingFrame(open ? keys.opened : keys.collapsed, open);
-  return { startedAt: now, tracks, end };
+  return { startedAt: how.now, tracks, end: how.end ?? to };
 }

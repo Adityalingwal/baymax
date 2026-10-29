@@ -97,3 +97,75 @@ body {
 .answer-markdown pre code {
   padding: 0;
 }
+
+/* The closed-panel voice pill; timings from the locked notch design ("Voice pill", "Closed-panel mute: Clear label"). */
+.pill-label {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 140ms ease,
+    transform 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.pill-label-out {
+  opacity: 0;
+  transform: translateY(2px);
+}
+
+/* Thinking: grey, with a white highlight sweeping across every 1.6 s. */
+.pill-shimmer {
+  color: transparent;
+  background: linear-gradient(
+      90deg,
+      #8e8e93 0%,
+      #8e8e93 40%,
+      #ffffff 50%,
+      #8e8e93 60%,
+      #8e8e93 100%
+    )
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: pill-shimmer 1.6s linear infinite;
+}
+
+@keyframes pill-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* The corner lines draw in once per opening, from the ear down, then stay still. */
+.pill-rim-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: pill-rim-draw 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 0.2s both;
+}
+
+@keyframes pill-rim-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill-label {
+    transition: none;
+  }
+
+  .pill-shimmer {
+    color: #8e8e93;
+    background: none;
+    animation: none;
+  }
+
+  .pill-rim-draw {
+    animation: none;
+  }
+}
