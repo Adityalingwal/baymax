@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { VoicePhase } from "../../shared/ipc";
-import { initialPill, pillReducer } from "./pill";
+import { initialPill, islandShown, pillReducer } from "./pill";
 import type { PillEvent, PillState, PillWord } from "./pill";
 
 type Step = PillEvent | ((state: PillState) => PillEvent);
 
-const phase = (voice: VoicePhase): PillEvent => ({
+const phase = (voice: VoicePhase, answer = false): PillEvent => ({
   kind: "phase",
   phase: voice,
+  answer,
 });
 const listening = phase({ phase: "listening" });
 const thinking = phase({ phase: "thinking" });
@@ -154,5 +155,111 @@ describe("pillReducer", () => {
       kind: "answer",
     });
     expect(run([speaking, idle]).line).toBeNull();
+  });
+});
+
+const answer = (lineId: string): PillEvent =>
+  phase(
+    { phase: "speaking", line: { lineId, taskId: "t1", kind: "answer" } },
+    true,
+  );
+const openResult: PillEvent = { kind: "open-result" };
+
+type IslandRow = {
+  name: string;
+  steps: Step[];
+  island: boolean;
+  shown: boolean;
+  holding?: boolean;
+};
+
+// The answer island must never get stuck: every way out leaves no island and no stray hold.
+const islandRows: IslandRow[] = [
+  {
+    name: "a done task's answer shows the island",
+    steps: [answer("a1")],
+    island: true,
+    shown: true,
+  },
+  {
+    name: "its line ending closes the island at once, with no 800 ms hold",
+    steps: [answer("a1"), idle],
+    island: false,
+    shown: false,
+    holding: false,
+  },
+  {
+    name: "a stale pill hold timer firing after the island replaced the pill does nothing",
+    steps: [speaking, idle, answer("a1"), staleHold(1)],
+    island: true,
+    shown: true,
+  },
+  {
+    name: "a new answer line while the island grows keeps the island for it",
+    steps: [answer("a1"), answer("a2")],
+    island: true,
+    shown: true,
+  },
+  {
+    name: "a new answer line while the island closes opens it again",
+    steps: [answer("a1"), idle, answer("a2")],
+    island: true,
+    shown: true,
+  },
+  {
+    name: "a plain line after the island shows the pill",
+    steps: [answer("a1"), idle, speaking],
+    island: false,
+    shown: true,
+  },
+  {
+    name: "mute on the island starts no hold, and the line's end closes it",
+    steps: [answer("a1"), mute, idle],
+    island: false,
+    shown: false,
+    holding: false,
+  },
+  {
+    name: "the hold key closes the island at once",
+    steps: [answer("a1"), listening],
+    island: false,
+    shown: false,
+  },
+  {
+    name: "a tap over the island leaves nothing behind",
+    steps: [answer("a1"), listening, idle],
+    island: false,
+    shown: false,
+    holding: false,
+  },
+  {
+    name: "a real hold over the island shows Listening",
+    steps: [answer("a1"), listening, threshold],
+    island: false,
+    shown: true,
+  },
+  {
+    name: "a click on the card ends the island; the line goes on as a pill line",
+    steps: [answer("a1"), openResult],
+    island: false,
+    shown: true,
+  },
+  {
+    name: "after a click the line's end uses the pill's 800 ms hold",
+    steps: [answer("a1"), openResult, idle],
+    island: false,
+    shown: true,
+    holding: true,
+  },
+];
+
+describe("the answer island in pillReducer", () => {
+  it.each(islandRows)("$name", ({ steps, island, shown, holding }) => {
+    const state = run(steps);
+    expect(islandShown(state)).toBe(island);
+    expect(state.shown).toBe(shown);
+    if (holding !== undefined) {
+      expect(state.wait?.kind === "hold").toBe(holding);
+    }
   });
 });

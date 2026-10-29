@@ -46,12 +46,14 @@ export function progressAt(ease: Ease, value: number): number {
 }
 
 // What the shell draws: the silhouette, then opacities: the panel content, the whole shape (reduced motion fades it),
-// the pill's word and mute button, and the pill's corner lines.
+// the pill's word and mute button, the pill's corner lines, the answer island's card and the running ring.
 export type Frame = Silhouette & {
   content: number;
   shade: number;
   pill: number;
   rim: number;
+  card: number;
+  ring: number;
 };
 export type Channel = keyof Frame;
 
@@ -81,6 +83,8 @@ const channels: Channel[] = [
   "shade",
   "pill",
   "rim",
+  "card",
+  "ring",
 ];
 
 function trackEnd(track: Track): number {
@@ -123,9 +127,11 @@ export type Timings = {
   shade: Timing;
   pill: Timing;
   rim: Timing;
+  card: Timing;
+  ring: Timing;
 } & Partial<Record<Channel, Timing>>;
 
-type Group = "shape" | "content" | "shade" | "pill" | "rim";
+type Group = "shape" | "content" | "shade" | "pill" | "rim" | "card" | "ring";
 
 const groupOf: Record<Channel, Group> = {
   width: "shape",
@@ -137,6 +143,8 @@ const groupOf: Record<Channel, Group> = {
   shade: "shade",
   pill: "pill",
   rim: "rim",
+  card: "card",
+  ring: "ring",
 };
 
 // end: what stays once the motion is over, when it differs from where the tracks go.
@@ -161,6 +169,8 @@ export function makeMotion(
     shade: track("shade"),
     pill: track("pill"),
     rim: track("rim"),
+    card: track("card"),
+    ring: track("ring"),
   };
   return { startedAt: how.now, tracks, end: how.end ?? to };
 }

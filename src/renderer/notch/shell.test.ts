@@ -168,6 +168,16 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     steps: [access, onPanel, escape, away],
     expected: { open: true, leaving: false },
   },
+  {
+    name: "a click on the answer island opens the panel at once",
+    steps: [onPanel, { kind: "open-result" }],
+    expected: { open: true, dwelling: false, leaving: false },
+  },
+  {
+    name: "a click on the island opens even after an Esc",
+    steps: [...opened, escape, { kind: "open-result" }],
+    expected: { open: true, closing: false },
+  },
 ];
 
 describe("panelReducer", () => {

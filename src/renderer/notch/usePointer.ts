@@ -6,7 +6,7 @@ import { initialPanel, panelDelays, panelReducer } from "./shell";
 import type { PanelEvent, PanelState } from "./shell";
 
 export type PointerZones = {
-  notch: HitZone; // the hover sensor that opens the panel
+  notch: HitZone | null; // the hover sensor that opens the panel; off while the answer island shows
   opened: HitZone; // the open panel's full outline
   visible: () => string; // the shape as drawn now
 };
@@ -38,7 +38,7 @@ function evaluate(tracker: Tracker): void {
   setCapture(tracker, inVisible || tracker.mouseDown);
   tracker.dispatch({
     kind: "pointer",
-    inNotch: hitTest(zones.notch, x, y),
+    inNotch: zones.notch !== null && hitTest(zones.notch, x, y),
     inOpenOutline: hitTest(zones.opened, x, y),
     inVisible,
   });

@@ -4,68 +4,62 @@ import type { PillState } from "./pill";
 // Sizes from the locked design: notch-design-locked.md, "Voice pill".
 export const pillShape = { width: 360, height: 32, ear: 6, rx: 24, ry: 26 };
 
+export type VoiceLayers = {
+  voice: RefObject<HTMLDivElement | null>; // sized to the drawn shape each frame, so the word and mute follow its edges
+  word: RefObject<HTMLDivElement | null>;
+  rim: RefObject<HTMLDivElement | null>;
+};
+
 type VoicePillProps = {
   pill: PillState;
   windowWidth: number;
   interactive: boolean;
-  wordRef: RefObject<HTMLDivElement | null>;
-  rimRef: RefObject<SVGSVGElement | null>;
+  layers: VoiceLayers;
   onMute: () => void;
 };
 
-const { width, height } = pillShape;
-// The corner lines, as in the locked preview: from under the ear, round the corner, then along the bottom.
-// The paths are keyed by the pill's opening, so they draw in once per opening; the svg stays, keeping its opacity.
-const rimLines = [
-  { id: "left", path: `M1,6 V8 Q1,${height - 1} 25,${height - 1} H79`, x2: 79 },
-  {
-    id: "right",
-    path: `M${width - 1},6 V8 Q${width - 1},${height - 1} ${width - 25},${height - 1} H${width - 79}`,
-    x2: width - 79,
-  },
-];
-
-function Rim({
+// One corner line, as in the locked preview: from under the ear, round the corner, then along the bottom.
+// The path is keyed by the pill's opening, so it draws in once per opening.
+function Corner({
+  side,
   session,
-  rimRef,
 }: {
+  side: "left" | "right";
   session: number;
-  rimRef: VoicePillProps["rimRef"];
 }) {
+  const left = side === "left";
+  const x = left ? 1 : 79;
+  const along = (by: number) => (left ? x + by : x - by);
+  const path = `M${x},6 V8 Q${x},31 ${along(24)},31 H${along(78)}`;
   return (
     <svg
-      ref={rimRef}
       aria-hidden="true"
-      className="absolute inset-0 overflow-visible"
-      width={width}
-      height={height}
+      className={`absolute bottom-0 overflow-visible ${left ? "left-0" : "right-0"}`}
+      width={80}
+      height={32}
     >
-      {rimLines.map(({ id, path, x2 }) => (
-        <g key={id}>
-          <linearGradient
-            id={`pill-rim-${id}`}
-            gradientUnits="userSpaceOnUse"
-            x1={id === "left" ? 1 : width - 1}
-            x2={x2}
-            y1={0}
-            y2={0}
-          >
-            <stop offset="0" stopColor="#fff" stopOpacity={0.95} />
-            <stop offset="0.35" stopColor="#fff" stopOpacity={0.95} />
-            <stop offset="1" stopColor="#fff" stopOpacity={0} />
-          </linearGradient>
-          <path
-            key={session}
-            className="pill-rim-draw"
-            d={path}
-            pathLength={1}
-            fill="none"
-            stroke={`url(#pill-rim-${id})`}
-            strokeWidth={2}
-            strokeLinecap="round"
-          />
-        </g>
-      ))}
+      <linearGradient
+        id={`pill-rim-${side}`}
+        gradientUnits="userSpaceOnUse"
+        x1={x}
+        x2={along(78)}
+        y1={0}
+        y2={0}
+      >
+        <stop offset="0" stopColor="#fff" stopOpacity={0.95} />
+        <stop offset="0.35" stopColor="#fff" stopOpacity={0.95} />
+        <stop offset="1" stopColor="#fff" stopOpacity={0} />
+      </linearGradient>
+      <path
+        key={session}
+        className="pill-rim-draw"
+        d={path}
+        pathLength={1}
+        fill="none"
+        stroke={`url(#pill-rim-${side})`}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -113,42 +107,52 @@ function Word({ pill }: { pill: PillState }) {
   );
 }
 
-// The closed-panel voice pill: the state word on the left, mute on the right while Baymax speaks, the corner lines.
+function MuteButton({ pill, onMute }: Pick<VoicePillProps, "pill" | "onMute">) {
+  return (
+    <button
+      type="button"
+      aria-label={pill.muted ? "Muted" : "Mute Baymax"}
+      aria-disabled={pill.muted}
+      className="absolute top-[5px] right-5 grid h-[22px] w-[22px] cursor-pointer place-items-center rounded-full bg-[#1C1C1E]"
+      onClick={() => {
+        if (!pill.muted) onMute();
+      }}
+    >
+      <span
+        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "pill-label-out" : ""}`}
+      >
+        <SpeakerIcon crossed={false} />
+      </span>
+      <span
+        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "" : "pill-label-out"}`}
+      >
+        <SpeakerIcon crossed />
+      </span>
+    </button>
+  );
+}
+
+// The voice pill's strip: the state word on the left, mute on the right while Baymax speaks, the corner lines.
+// It is also the answer island's top strip.
 export function VoicePill(props: VoicePillProps) {
-  const { pill, windowWidth, interactive, wordRef, rimRef, onMute } = props;
+  const { pill, windowWidth, interactive, layers, onMute } = props;
   const speaking = pill.word === "Speaking" || pill.muted;
+  const { width, height } = pillShape;
   return (
     <div
+      ref={layers.voice}
       className="absolute top-0"
       style={{ left: (windowWidth - width) / 2, width, height }}
       aria-hidden={!interactive}
       inert={!interactive}
     >
-      <Rim session={pill.session} rimRef={rimRef} />
-      <div ref={wordRef} className="absolute inset-0" aria-live="polite">
+      <div ref={layers.rim} className="absolute inset-0">
+        <Corner side="left" session={pill.session} />
+        <Corner side="right" session={pill.session} />
+      </div>
+      <div ref={layers.word} className="absolute inset-0" aria-live="polite">
         <Word pill={pill} />
-        {speaking && (
-          <button
-            type="button"
-            aria-label={pill.muted ? "Muted" : "Mute Baymax"}
-            aria-disabled={pill.muted}
-            className="absolute top-[5px] right-5 grid h-[22px] w-[22px] cursor-pointer place-items-center rounded-full bg-[#1C1C1E]"
-            onClick={() => {
-              if (!pill.muted) onMute();
-            }}
-          >
-            <span
-              className={`pill-label col-start-1 row-start-1 ${pill.muted ? "pill-label-out" : ""}`}
-            >
-              <SpeakerIcon crossed={false} />
-            </span>
-            <span
-              className={`pill-label col-start-1 row-start-1 ${pill.muted ? "" : "pill-label-out"}`}
-            >
-              <SpeakerIcon crossed />
-            </span>
-          </button>
-        )}
+        {speaking && <MuteButton pill={pill} onMute={onMute} />}
       </div>
     </div>
   );

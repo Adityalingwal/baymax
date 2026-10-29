@@ -4,13 +4,17 @@ import type { VoicePhase } from "../../shared/ipc";
 import { initialPill, pillDelays, pillReducer } from "./pill";
 import type { PillEvent, PillState } from "./pill";
 
-// The pill's state from main's voice phase; its two timers are keyed by token, so a render never restarts them.
-export function usePill(phase: VoicePhase): {
+// The pill's state from main's voice phase; answer: the speaking line is a done task's result, for the island.
+// Its two timers are keyed by token, so a render never restarts them.
+export function usePill(
+  phase: VoicePhase,
+  answer: boolean,
+): {
   pill: PillState;
   dispatch: Dispatch<PillEvent>;
 } {
   const [pill, dispatch] = useReducer(pillReducer, initialPill);
-  useEffect(() => dispatch({ kind: "phase", phase }), [phase]);
+  useEffect(() => dispatch({ kind: "phase", phase, answer }), [phase, answer]);
   const wait = pill.wait;
   const token = wait?.token ?? null;
   const kind = wait?.kind ?? null;

@@ -7,10 +7,10 @@ import type { PanelKeys } from "./plans";
 const keys: PanelKeys = {
   collapsed: { width: 139, height: 25, ear: 0, rx: 0, ry: 0 },
   opened: { width: 628, height: 300, ear: 6, rx: 26, ry: 28 },
-  pill: false,
+  view: "notch",
 };
-const closedFrame = restingFrame(keys.collapsed, false);
-const openFrame = restingFrame(keys.opened, true);
+const closedFrame = restingFrame(keys.collapsed, "notch");
+const openFrame = restingFrame(keys.opened, "open");
 
 const plan = (from: Frame, open: boolean, reduced = false) =>
   planPanel(from, keys, { open, reduced, now: 1000 });

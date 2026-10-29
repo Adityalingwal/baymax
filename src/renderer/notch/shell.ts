@@ -31,7 +31,8 @@ export type PanelEvent =
   | { kind: "draft"; draft: boolean }
   | { kind: "mouse"; down: boolean }
   | { kind: "access"; needed: boolean }
-  | { kind: "closed" };
+  | { kind: "closed" }
+  | { kind: "open-result" };
 
 export const initialPanel: PanelState = {
   open: false,
@@ -85,6 +86,9 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
         : { ...state, needsAccess: false };
     case "closed":
       return state.open ? state : { ...state, closing: false };
+    // A click on the answer island's card: the one open that is not a hover.
+    case "open-result":
+      return { ...state, open: true, closing: false, waitForExit: false };
   }
 }
 

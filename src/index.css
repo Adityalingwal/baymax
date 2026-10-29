@@ -248,3 +248,21 @@ body {
     animation: none;
   }
 }
+
+/* The running ring's quarter arc turns once every 1.6 s ("Running task: spinning ring"). */
+.ring-spin {
+  transform-origin: 5.5px 5.5px;
+  animation: ring-spin 1.6s linear infinite;
+}
+
+@keyframes ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-spin {
+    animation: none;
+  }
+}
