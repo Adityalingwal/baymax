@@ -48,6 +48,18 @@ describe("late not caught", () => {
     },
   );
 
+  it("drops a mic failure that arrives after a newer question's words", async () => {
+    const h = createHarness();
+    const a = hold(h, "accept");
+    const b = hold(h, "accept");
+    sendAudio(h, b);
+    await resolveCall(h, 0, { kind: "words", words: "newer" });
+    micFailed(h, a, "noMicrophone");
+    expect(h.heard).toEqual([words(b, "newer")]);
+  });
+});
+
+describe("not caught while a newer hold is open", () => {
   it.each(lateRows)(
     "drops A's not-caught from $name while B is still held",
     async ({ finishA }) => {
@@ -74,15 +86,6 @@ describe("late not caught", () => {
     },
   );
 
-  it("drops a mic failure that arrives after a newer question's words", async () => {
-    const h = createHarness();
-    const a = hold(h, "accept");
-    const b = hold(h, "accept");
-    sendAudio(h, b);
-    await resolveCall(h, 0, { kind: "words", words: "newer" });
-    micFailed(h, a, "noMicrophone");
-    expect(h.heard).toEqual([words(b, "newer")]);
-  });
 });
 
 describe("late transcript", () => {
