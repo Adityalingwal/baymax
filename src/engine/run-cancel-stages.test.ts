@@ -8,7 +8,6 @@ import {
   startRun,
   toolUseReply,
   until,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 import type { FakeSearchStep } from "./run.harness";
@@ -60,12 +59,6 @@ const stageRows: StageRow[] = [
     found: { cardText: "- Page one", sources: [one], openPoints: [] },
   },
   {
-    name: "the judge",
-    steps: () => [readOne(), answered("A loop."), "waitForAbort"],
-    at: (sent) => sent.calls === 3,
-    found: card("A loop."),
-  },
-  {
     name: "the retry round's worker call",
     steps: () => [
       readOne(),
@@ -76,29 +69,26 @@ const stageRows: StageRow[] = [
     found: card("A loop, memory."),
   },
   {
-    name: "the retry round's judge",
+    name: "a later worker call of the retry round",
     steps: () => [
       readOne(),
-      answered("A loop."),
-      verdictReply({ goalMet: false }),
+      answered("A loop, memory.", ["s1", "s7"]),
       toolUseReply([{ read: pageUrl("two") }]),
-      answered("A loop again."),
       "waitForAbort",
     ],
-    at: (sent) => sent.calls === 6,
-    found: card("A loop again."),
+    at: (sent) => sent.calls === 4,
+    found: card("A loop, memory."),
   },
   {
     name: "the worker call after a nudge",
     steps: () => [
       readOne(),
-      answered("A loop."),
-      verdictReply({ goalMet: false }),
+      answered("A loop, memory.", ["s1", "s7"]),
       answered("A loop again."),
       "waitForAbort",
     ],
-    at: (sent) => sent.calls === 5,
-    found: card("A loop."),
+    at: (sent) => sent.calls === 4,
+    found: card("A loop, memory."),
   },
 ];
 
@@ -108,7 +98,7 @@ describe("runTask cancel at each stage", () => {
     async (row) => {
       const run = await startRun(row.steps(), row.searches ?? []);
       const sent = (): Sent => ({
-        calls: run.loopRequests().length, // the worker's and the judge's calls; the stage is counted after the brief writer
+        calls: run.loopRequests().length, // the worker's calls; the stage is counted after the brief writer
         queries: run.queries.length,
         connects: run.network.targets.length,
       });

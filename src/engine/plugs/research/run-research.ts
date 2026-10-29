@@ -117,8 +117,6 @@ function startRounds(run: ResearchRun, brief: WorkerBrief): Rounds {
   const checks: CheckRun = {
     deps: run.deps,
     task: run.task,
-    brief,
-    today: run.today,
     pages: web.pages,
     found,
     built: (findings) => (built = findings),

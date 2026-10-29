@@ -11,7 +11,6 @@ import {
   startRun,
   thinkingBlock,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 
@@ -25,7 +24,6 @@ const happySteps = () => [
   toolUseReply([{ read: pageUrl("one") }]),
   toolUseReply([{ read: pageUrl("two") }]),
   workerAnswer(),
-  verdictReply(),
 ];
 
 const progress = (
@@ -68,7 +66,7 @@ describe("runTask happy path", () => {
       },
     ]);
     expect(run.queries).toEqual(["hermes agent internals"]);
-    expect(run.loopRequests()).toHaveLength(5);
+    expect(run.loopRequests()).toHaveLength(4);
     expect(run.briefRequests()).toHaveLength(1);
   });
 });
@@ -136,32 +134,6 @@ describe("runTask prompt start", () => {
       role: "assistant",
       content: [thinkingBlock, { type: "tool_use", name: "search" }],
     });
-  });
-});
-
-describe("runTask judge request", () => {
-  it("sends the judge the brief, the answer and the cited pages, with no tools", async () => {
-    const run = await startRun(happySteps(), [hits(pageUrl("one"))]);
-    run.port.send(runTask());
-    await run.ended();
-    const judge = run.judgeRequests()[0];
-    const text = firstText(judge);
-    expect(judge.tools).toBeUndefined();
-    expect(judge.thinking).toEqual({ type: "between_tools" });
-    expect(judge.output_config?.effort).toBe("low");
-    expect(judge.system).not.toBe(run.workerRequests()[0].system);
-    for (const definition of [
-      "goalMet: the card meets the brief's goal, result shape and constraints.",
-      "claimsBacked: every important factual claim in the card is represented in claims and supported by the read pages named in that claim's sourceIds.",
-      "spokenLineBacked: every assertion in spokenLine is supported by cardText itself. Support in a page alone does not count.",
-    ]) {
-      expect(judge.system).toContain(definition);
-    }
-    expect(text).toContain(brief.goal);
-    expect(text).toContain(goodAnswer.spokenLine);
-    expect(text).toContain("Hermes runs a loop with tools.");
-    expect(text).toContain(`<page source_id="s1" url="${pageUrl("one")}">`);
-    expect(text).toContain(`<page source_id="s2" url="${pageUrl("two")}">`);
   });
 });
 

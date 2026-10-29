@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ModelOutcome } from "../providers/anthropic";
 import type { Findings } from "../shared/cards";
 import type { EngineEvent } from "../shared/engine";
-import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
@@ -12,7 +11,6 @@ import {
   runTask,
   startRun,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 import type { AnswerFields } from "./run.harness";
@@ -125,129 +123,27 @@ const codeRows: CodeRow[] = [
 ];
 
 // Each retry round researches nothing, so its first answer gets the nudge and its second fails the same way; the third check ends the run.
-const everyRound = (answer: ModelOutcome, verdict: FakeStep[] = []) =>
-  readTwo(
-    answer,
-    ...verdict,
-    ...[answer, answer, ...verdict],
-    ...[answer, answer, ...verdict],
-  );
+const everyRound = (answer: ModelOutcome) =>
+  readTwo(answer, answer, answer, answer, answer);
 
 describe("runTask code check", () => {
-  it.each(codeRows)(
-    "fails rule $name in every round, without calling the judge",
-    async (row) => {
-      const event = await finalEvent(everyRound(workerAnswer(row.answer)));
-      expect(event).toEqual(unchecked(row.part, row.findings));
-    },
-  );
-});
+  it.each(codeRows)("fails rule $name in every round", async (row) => {
+    const event = await finalEvent(everyRound(workerAnswer(row.answer)));
+    expect(event).toEqual(unchecked(row.part, row.findings));
+  });
 
-type JudgeRow = { name: string; verdict: FakeStep; part: string };
-type FailedRow = { name: string; verdict: () => FakeStep; ending: EngineEvent };
-
-// Handled here so it only rejects where the engine awaits it.
-function thrown(): Promise<ModelOutcome> {
-  const call = Promise.reject(new Error("boom"));
-  call.catch(() => undefined);
-  return call;
-}
-
-const withText = (
-  text: string,
-  stopReason: "end_turn" | "max_tokens" = "end_turn",
-): ModelOutcome => ({
-  ok: true,
-  message: fakeMessage(text, { stopReason }),
-});
-
-// Only a goal left unmet ends as a result, its gap named on the card; an unbacked part stays unchecked.
-const failedVerdicts: FailedRow[] = [
-  {
-    name: "goalMet false with its gap",
-    verdict: () => verdictReply({ goalMet: false, gaps: ["the price"] }),
-    ending: {
-      type: "result",
-      taskId: "task-1",
-      spokenLine: goodAnswer.spokenLine,
-      findings: {
-        ...goodFindings,
-        cardText: `${goodFindings.cardText}\n\n**Not found:** the price`,
-        openPoints: [...goodAnswer.openPoints, "the price"],
+  it("ends as a result at once when the code check passes, with no further model call", async () => {
+    const run = await startRun(readTwo(workerAnswer(), workerAnswer()), search);
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events.filter((event) => event.type !== "progress")).toEqual([
+      {
+        type: "result",
+        taskId: "task-1",
+        spokenLine: goodAnswer.spokenLine,
+        findings: goodFindings,
       },
-    },
-  },
-  {
-    name: "claimsBacked false with no gap",
-    verdict: () => verdictReply({ claimsBacked: false }),
-    ending: unchecked(
-      "whether the claims are backed by the read pages",
-      goodFindings,
-    ),
-  },
-  {
-    name: "spokenLineBacked false with an empty gap",
-    verdict: () => verdictReply({ spokenLineBacked: false, gaps: [" "] }),
-    ending: unchecked(
-      "whether the spoken line is backed by the card",
-      goodFindings,
-    ),
-  },
-];
-
-// A judge that fails its own call gets no retry round.
-const brokenJudges: JudgeRow[] = [
-  {
-    name: "a verdict with an extra field",
-    verdict: verdictReply({ reason: "x" }),
-    part: "the whole answer",
-  },
-  {
-    name: "a verdict with a string flag",
-    verdict: verdictReply({ goalMet: "yes" }),
-    part: "the whole answer",
-  },
-  {
-    name: "a verdict that is not JSON",
-    verdict: withText("all good"),
-    part: "the whole answer",
-  },
-  {
-    name: "a verdict cut at max_tokens",
-    verdict: withText("{", "max_tokens"),
-    part: "the whole answer",
-  },
-  {
-    name: "a failed judge call",
-    verdict: { ok: false, failure: "unreachable", detail: "x" },
-    part: "the whole answer",
-  },
-  { name: "a thrown judge call", verdict: thrown(), part: "the whole answer" },
-];
-
-describe("runTask judge", () => {
-  it.each(failedVerdicts)("ends on $name in every round", async (row) => {
-    const event = await finalEvent(everyRound(workerAnswer(), [row.verdict()]));
-    expect(event).toEqual(row.ending);
-  });
-
-  it.each(brokenJudges)("ends unchecked at once on $name", async (row) => {
-    const event = await finalEvent(readTwo(workerAnswer(), row.verdict));
-    expect(event).toEqual(unchecked(row.part, goodFindings));
-  });
-
-  it("ends limitHit with the checked card when the judge call would cross a limit", async () => {
-    const costly: ModelOutcome = {
-      ok: true,
-      message: fakeMessage(JSON.stringify(goodAnswer), {
-        usage: { input_tokens: 248_000 },
-      }),
-    };
-    const event = await finalEvent(readTwo(costly));
-    expect(event).toEqual({
-      type: "incomplete",
-      taskId: "task-1",
-      incomplete: { kind: "limitHit", findings: goodFindings },
-    });
+    ]);
+    expect(run.loopRequests()).toHaveLength(4);
   });
 });

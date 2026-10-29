@@ -10,7 +10,6 @@ import {
   runTask,
   startRun,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 import type { FakeSearchStep } from "./run.harness";
@@ -42,7 +41,7 @@ const limitHit = (findings: Findings | null): EngineEvent => ({
 });
 
 // The fake clock reads what the run has done so far, so a chosen call or batch takes the whole active time.
-// calls counts the worker's and the judge's calls; the brief writer's call is the first model call of the task and counts toward its limit.
+// calls counts the worker's calls; the brief writer's call is the first model call of the task and counts toward its limit.
 type Seen = { calls: number; connects: number };
 type LimitRow = {
   name: string;
@@ -186,8 +185,8 @@ type LateRow = { name: string; slowCall: number; end: EngineEvent };
 
 const lateRows: LateRow[] = [
   {
-    name: "a verdict is kept",
-    slowCall: 3,
+    name: "an answer is kept",
+    slowCall: 2,
     end: {
       type: "result",
       taskId: "task-1",
@@ -195,21 +194,12 @@ const lateRows: LateRow[] = [
       findings: checkedCard,
     },
   },
-  {
-    name: "an answer stops the judge",
-    slowCall: 2,
-    end: limitHit(checkedCard),
-  },
 ];
 
 // A reply already received is used; the limit stops only the next step.
 describe("runTask a call past the active time", () => {
   it.each(lateRows)("ends as received: $name", async (row) => {
-    const steps: ModelOutcome[] = [
-      readOne(),
-      workerAnswer(cited),
-      verdictReply(),
-    ];
+    const steps: ModelOutcome[] = [readOne(), workerAnswer(cited)];
     const run = await startClocked({
       steps: () => steps,
       searches: [],

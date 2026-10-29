@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { Findings } from "../../../shared/cards";
-import { createTaskBudget } from "../../core/limits";
 import { checkRound, readTurn } from "./run-checks";
 import type { CheckRun } from "./run-checks";
 
@@ -14,19 +13,7 @@ function checkRun(built: Findings[]): CheckRun {
       now: () => 0,
       log: () => undefined,
     },
-    task: {
-      taskId: "task-1",
-      budget: createTaskBudget(),
-      signal: new AbortController().signal,
-    },
-    brief: {
-      goal: "g",
-      resultShape: "r",
-      sources: "s",
-      limits: "l",
-      userWords: "w",
-    },
-    today: "2026-10-27",
+    task: { taskId: "task-1" },
     pages: () => [page],
     found: () => null,
     built: (findings) => built.push(findings),

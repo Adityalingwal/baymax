@@ -6,7 +6,6 @@ import {
   startRun,
   strayLinks,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 
@@ -91,7 +90,6 @@ describe("runTask card links", () => {
     const run = await startRun([
       toolUseReply([{ read: pageUrl(row.page) }]),
       workerAnswer({ cardText: row.cardText, claims: claimOne }),
-      verdictReply(),
     ]);
     run.port.send(runTask());
     const events = await run.ended();

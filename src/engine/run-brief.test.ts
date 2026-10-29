@@ -17,7 +17,6 @@ import {
   runTask,
   startRun,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 
@@ -65,7 +64,7 @@ const defaultParts = [
 ];
 
 describe("the brief writer: its brief", () => {
-  it("hands its brief to the worker and the judge, in one briefWriter call", async () => {
+  it("hands its brief to the worker, in one briefWriter call", async () => {
     const run = await startRun(
       [
         toolUseReply([{ read: pageUrl("one") }]),
@@ -73,7 +72,6 @@ describe("the brief writer: its brief", () => {
           cardText: "A loop.",
           claims: [{ claim: "A loop", sourceIds: ["s1"] }],
         }),
-        verdictReply(),
       ],
       [],
       undefined,
@@ -90,11 +88,9 @@ describe("the brief writer: its brief", () => {
       `<limits>\n${written.limits}\n</limits>`,
       `<user_words>\n${ask.userWords}\n</user_words>`,
     ];
-    for (const request of [run.workerRequests()[0], run.judgeRequests()[0]]) {
-      expect(briefBlock(textOf(request))).toBe(
-        `<brief>\n${parts.join("\n")}\n</brief>`,
-      );
-    }
+    expect(briefBlock(textOf(run.workerRequests()[0]))).toBe(
+      `<brief>\n${parts.join("\n")}\n</brief>`,
+    );
     expect(modelCalls(run.entries, "briefWriter")).toHaveLength(1);
     expect(run.briefRequests()).toHaveLength(1);
   });

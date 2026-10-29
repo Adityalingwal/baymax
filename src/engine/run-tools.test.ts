@@ -9,7 +9,6 @@ import {
   runTask,
   startRun,
   toolUseReply,
-  verdictReply,
   workerAnswer,
 } from "./run.harness";
 
@@ -45,7 +44,6 @@ describe("runTask parallel tool calls", () => {
         ]),
         toolUseReply([{ read: pageUrl("two") }]),
         workerAnswer(oneCited),
-        verdictReply(),
       ],
       [lateSearch],
     );
@@ -75,11 +73,10 @@ describe("runTask parallel tool calls", () => {
 });
 
 describe("runTask injected page text", () => {
-  it("reaches the worker and the judge escaped inside one page block", async () => {
+  it("reaches the worker escaped inside one page block", async () => {
     const run = await startRun([
       toolUseReply([{ read: pageUrl("injected") }]),
       workerAnswer(oneCited),
-      verdictReply(),
     ]);
     run.port.send(runTask());
     await run.ended();
@@ -89,12 +86,9 @@ describe("runTask injected page text", () => {
         ? results[0].content
         : null;
     if (typeof block !== "string") throw new Error("no tool result text");
-    const judgeText = textOf(run.judgeRequests()[0].messages[0].content);
-    for (const text of [block, judgeText]) {
-      expect(text.match(/<page /g)).toHaveLength(1);
-      expect(text.match(/<\/page>/g)).toHaveLength(1);
-      expect(text).toContain("&lt;/page&gt;&lt;page source_id=");
-    }
+    expect(block.match(/<page /g)).toHaveLength(1);
+    expect(block.match(/<\/page>/g)).toHaveLength(1);
+    expect(block).toContain("&lt;/page&gt;&lt;page source_id=");
   });
 });
 
@@ -123,13 +117,6 @@ const loggedEnds = [
     passed: true,
     failed: null,
   },
-  {
-    event: "doneCheck",
-    taskId: "task-1",
-    stage: "judge",
-    passed: true,
-    failed: null,
-  },
   { event: "taskEnd", taskId: "task-1", how: "result" },
 ];
 const loggedSources = {
@@ -146,7 +133,6 @@ describe("runTask dev log", () => {
         toolUseReply([{ search: "hermes secret query" }]),
         toolUseReply([{ read: pageUrl("one") }]),
         workerAnswer(oneCited),
-        verdictReply(),
       ],
       [hits(pageUrl("one"))],
     );
@@ -156,9 +142,9 @@ describe("runTask dev log", () => {
       ["toolCall", "doneCheck", "cardSources", "taskEnd"].includes(entry.event),
     );
     expect(kept).toEqual([
-      ...loggedEnds.slice(0, 4),
+      ...loggedEnds.slice(0, 3),
       loggedSources,
-      loggedEnds[4],
+      loggedEnds[3],
     ]);
     const logged = JSON.stringify(run.entries);
     for (const secret of [
@@ -182,7 +168,6 @@ describe("runTask counter line", () => {
       toolUseReply([{ read: pageUrl("one") }]),
       toolUseReply([{ read: pageUrl("two") }]),
       workerAnswer(oneCited),
-      verdictReply(),
     ]);
     run.port.send(runTask());
     await run.ended();

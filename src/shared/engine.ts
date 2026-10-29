@@ -36,7 +36,7 @@ export type Incomplete =
   | { kind: "limitHit" | "sourcesThin"; findings: Findings | null }
   | { kind: "error"; cause: FailureKind; findings: Findings | null }
   | { kind: "needsUser"; nextQuestion: string; findings: Findings | null }
-  | { kind: "unchecked"; uncheckedPart: string; findings: Findings }; // a failed done check after the retry round, or a judge failure
+  | { kind: "unchecked"; uncheckedPart: string; findings: Findings }; // a failed done check after the last retry round
 
 // Events carry kinds and model-written text, never fixed user-facing lines: main owns those.
 export type EngineEvent =

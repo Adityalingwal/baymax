@@ -1,24 +1,16 @@
 import type { Findings, TaskId } from "../../../shared/cards";
 import type { EngineEvent, Incomplete } from "../../../shared/engine";
 import type { DispatchDeps } from "../../core/dispatch";
-import { runJudge } from "../../core/judge";
-import type { JudgeFlag, JudgeOutcome } from "../../core/judge";
-import type { TaskBudget } from "../../core/limits";
 import { parseAnswer } from "./answer";
 import type { Answer } from "./answer";
 import { answerFindings, checkAnswer } from "./answer-check";
-import type { CodeCheck } from "./answer-check";
-import type { WorkerBrief } from "./brief";
-import { judgeInstructions, judgeMessage } from "./judge-prompt";
 import type { ReadPage } from "./page-text";
 import { answerFaults } from "./worker-prompt";
 
 // What one answer's check needs from its run; built is told each card the code check builds.
 export type CheckRun = {
   deps: DispatchDeps;
-  task: { taskId: TaskId; budget: TaskBudget; signal: AbortSignal };
-  brief: WorkerBrief;
-  today: string; // the worker's date, so the judge reads current facts against the same day
+  task: { taskId: TaskId };
   pages: () => ReadPage[];
   found: () => Findings | null;
   built: (findings: Findings) => void;
@@ -29,14 +21,7 @@ export type CheckRun = {
 type FaultBase = { rule: string; part: string };
 export type Fault =
   | (FaultBase & { stage: "answer"; findings: null })
-  | (FaultBase & { stage: "code"; findings: Findings })
-  | (FaultBase & {
-      stage: "judge";
-      findings: Findings;
-      flags: JudgeFlag[];
-      gaps: string[];
-      spokenLine: string; // trimmed
-    });
+  | (FaultBase & { stage: "code"; findings: Findings });
 
 // An answer turn as the round sees it, read once: cut off, not valid, or a parsed answer.
 export type AnswerTurn =
@@ -55,11 +40,7 @@ export function incomplete(taskId: TaskId, value: Incomplete): EngineEvent {
 
 const ended = (event: EngineEvent): RoundEnd => ({ kind: "event", event });
 
-function logCheck(
-  run: CheckRun,
-  stage: "code" | "judge",
-  failed: string | null,
-): void {
+function logCheck(run: CheckRun, stage: "code", failed: string | null): void {
   run.deps.log({
     event: "doneCheck",
     taskId: run.task.taskId,
@@ -69,89 +50,7 @@ function logCheck(
   });
 }
 
-type Verdict = Exclude<JudgeOutcome, { kind: "aborted" }>;
-type Passed = Extract<CodeCheck, { passed: true }>;
-
-function judgeFailure(verdict: Verdict): string | null {
-  switch (verdict.kind) {
-    case "pass":
-      return null;
-    case "fail":
-      return verdict.failed;
-    case "broken":
-      return `broken:${verdict.reason}`;
-    case "limitHit":
-      return "limitHit";
-  }
-}
-
-// A judge that fails its own call leaves the answer unchecked at once; only a false flag earns the retry.
-function verdictEnd(
-  run: CheckRun,
-  verdict: Verdict,
-  check: Passed,
-  answer: Answer,
-): RoundEnd {
-  const { taskId } = run.task;
-  switch (verdict.kind) {
-    case "limitHit":
-      return ended(
-        incomplete(taskId, { kind: "limitHit", findings: run.found() }),
-      );
-    case "broken":
-      return ended(
-        incomplete(taskId, {
-          kind: "unchecked",
-          uncheckedPart: "the whole answer",
-          findings: check.findings,
-        }),
-      );
-    case "fail": {
-      const { failed: rule, uncheckedPart: part, flags, gaps } = verdict;
-      const fault: Fault = {
-        stage: "judge",
-        rule,
-        part,
-        findings: check.findings,
-        flags,
-        gaps,
-        spokenLine: answer.spokenLine.trim(),
-      };
-      return { kind: "fault", fault };
-    }
-    case "pass": {
-      const spokenLine = answer.spokenLine.trim();
-      const { findings } = check;
-      return ended({ type: "result", taskId, spokenLine, findings });
-    }
-  }
-}
-
-async function judged(
-  run: CheckRun,
-  answer: Answer,
-  check: Passed,
-): Promise<RoundEnd> {
-  const verdict = await runJudge(
-    run.deps,
-    { ...run.task, role: "judge" },
-    {
-      system: judgeInstructions,
-      user: judgeMessage({
-        today: run.today,
-        brief: run.brief,
-        // the judge sees the card the user sees
-        answer: { ...answer, cardText: check.findings.cardText },
-        pages: check.cited,
-      }),
-    },
-  );
-  if (verdict.kind === "aborted") return { kind: "aborted" };
-  logCheck(run, "judge", judgeFailure(verdict));
-  return verdictEnd(run, verdict, check, answer);
-}
-
-// Thin sources and a question for the user are told as they are: no judge and no retry.
+// Thin sources and a question for the user are told as they are: no retry.
 function statusEvent(run: CheckRun, answer: Answer): EngineEvent {
   const { taskId } = run.task;
   const card = answerFindings(answer, run.pages());
@@ -183,7 +82,7 @@ export function readTurn(
   return { kind: "malformed" };
 }
 
-// One answer turn through its checks: the code check first, the judge only for an answer that passed it.
+// One answer turn through its check: a passed code check ends the task as a result.
 export async function checkRound(
   run: CheckRun,
   turn: AnswerTurn,
@@ -194,7 +93,16 @@ export async function checkRound(
   const check = checkAnswer(answer, run.pages());
   run.built(check.findings);
   logCheck(run, "code", check.passed ? null : check.rule);
-  if (check.passed) return judged(run, answer, check);
+  if (check.passed) {
+    const spokenLine = answer.spokenLine.trim();
+    const { findings } = check;
+    return ended({
+      type: "result",
+      taskId: run.task.taskId,
+      spokenLine,
+      findings,
+    });
+  }
   const { rule, uncheckedPart: part, findings } = check;
   return { kind: "fault", fault: { stage: "code", rule, part, findings } };
 }

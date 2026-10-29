@@ -1,7 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ParentResult } from "../../../shared/engine";
-import { judgeFlags } from "../../core/judge";
-import type { JudgeFlag } from "../../core/judge";
 import type { WorkerBrief } from "./brief";
 import { briefForModel, parentResultBlock, taggedText } from "./model-text";
 
@@ -85,7 +83,7 @@ export function firstWorkerMessage(params: {
   ].join("\n\n");
 }
 
-// Fixed text for an answer the check could not take; a judge's part is model text and goes only inside the block.
+// Fixed text for an answer the check could not take.
 export const answerFaults = {
   cutOff:
     "The answer was cut off at the length limit. Write a shorter card text.",
@@ -106,21 +104,11 @@ export const nudgeMessage =
 export const thinNudgeMessage =
   'You chose "sourcesThin" without reading any page in this task. Search for the brief and read pages first; choose "sourcesThin" only when the pages you read do not answer it. Then write the whole answer again as the JSON object.';
 
-// What the retry message needs from a failed check; the judge's gaps are model text.
-type FailedCheck =
-  | { stage: "answer" | "code"; part: string }
-  | { stage: "judge"; part: string; flags: JudgeFlag[]; gaps: string[] };
-
-function checkResult(check: FailedCheck): string {
-  if (check.stage !== "judge") return check.part;
-  const failed = check.flags.map((flag) => judgeFlags[flag]).join("; ");
-  const gaps = check.gaps.length > 0 ? check.gaps : [check.part];
-  const listed = gaps.map((gap) => `- ${gap.replace(/\s+/g, " ")}`);
-  return [`Failed checks: ${failed}.`, "Gaps:", ...listed].join("\n");
-}
+// What the retry message needs from a failed check.
+type FailedCheck = { stage: "answer" | "code"; part: string };
 
 // The one message that opens a retry round, after the failed answer turn: a cut-off or invalid answer is only rewritten.
 export function retryMessage(check: FailedCheck): string {
   const line = check.stage === "answer" ? rewriteLine : researchLine;
-  return `${taggedText("check_result", checkResult(check))}\n\n${line}`;
+  return `${taggedText("check_result", check.part)}\n\n${line}`;
 }

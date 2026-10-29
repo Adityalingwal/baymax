@@ -144,19 +144,6 @@ export function workerAnswer(fields: AnswerFields = {}): ModelOutcome {
   };
 }
 
-export function verdictReply(
-  fields: Record<string, unknown> = {},
-): ModelOutcome {
-  const verdict = {
-    goalMet: true,
-    claimsBacked: true,
-    spokenLineBacked: true,
-    gaps: [],
-    ...fields,
-  };
-  return { ok: true, message: fakeMessage(JSON.stringify(verdict)) };
-}
-
 export type FakeSearchStep =
   SearchOutcome | "waitForAbort" | Promise<SearchOutcome>;
 

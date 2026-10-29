@@ -62,8 +62,8 @@ export const fakeBriefParts = {
   limits: "Leave out pricing",
 };
 
-// The three kinds of call the engine makes, told apart by the schema each asks for.
-type CallKind = "brief" | "worker" | "judge";
+// The two kinds of call the engine makes, told apart by the schema each asks for.
+type CallKind = "brief" | "worker";
 
 function schemaKeys(request: ModelRequest): string[] {
   const format = request.output_config?.format;
@@ -76,8 +76,7 @@ function schemaKeys(request: ModelRequest): string[] {
 
 function kindOf(request: ModelRequest): CallKind {
   const keys = schemaKeys(request);
-  if (keys.includes("resultShape")) return "brief";
-  return keys.includes("goalMet") ? "judge" : "worker";
+  return keys.includes("resultShape") ? "brief" : "worker";
 }
 
 const goalBlock = /<goal>\n([\s\S]*?)\n<\/goal>/;
@@ -105,7 +104,7 @@ export const noContents: ContentsFn = async () => ({
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-// The scripted model: the steps are the worker's and the judge's, in order; a brief writer request is answered from briefSteps, and by a valid brief when none is scripted.
+// The scripted model: the steps are the worker's, in order; a brief writer request is answered from briefSteps, and by a valid brief when none is scripted.
 // A request past the steps counts as missing, so settle fails and a missing step is never taken for the expected task error.
 function scriptedModel(steps: FakeStep[], briefSteps: FakeStep[]) {
   const requests: ModelRequest[] = [];
@@ -132,8 +131,7 @@ function scriptedModel(steps: FakeStep[], briefSteps: FakeStep[]) {
     requests, // every model call, in order
     briefRequests: ofKind("brief"),
     workerRequests: ofKind("worker"),
-    judgeRequests: ofKind("judge"),
-    // the worker's and the judge's calls in order: every call but the brief writer's
+    // the worker's calls in order: every call but the brief writer's
     loopRequests: () =>
       requests.filter((request) => kindOf(request) !== "brief"),
   };

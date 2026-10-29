@@ -109,17 +109,6 @@ const sendRows: SendRow[] = [
     },
   },
   {
-    name: "judge",
-    role: "judge",
-    activeMs: 0,
-    expected: {
-      model: "claude-sonnet-5-5",
-      max_tokens: 1024,
-      timeoutMs: 30_000,
-      deadlineMs: 65_000,
-    },
-  },
-  {
     name: "worker with less active time left",
     role: "worker",
     activeMs: 230_000.7,
@@ -257,7 +246,7 @@ describe("dispatch failures", () => {
       };
       const { deps, entries } = setup(failed, 40);
       const budget = { ...createTaskBudget(), dollars: 0.01 };
-      const outcome = await dispatch(deps, jobFor("judge", budget), request);
+      const outcome = await dispatch(deps, jobFor("worker", budget), request);
       expect(outcome).toEqual({
         ok: false,
         reason: "failed",
@@ -268,7 +257,7 @@ describe("dispatch failures", () => {
         {
           event: "modelCall",
           taskId: "task-1",
-          role: "judge",
+          role: "worker",
           model: "claude-sonnet-5-5",
           outcome: row.failure,
           ms: 40,

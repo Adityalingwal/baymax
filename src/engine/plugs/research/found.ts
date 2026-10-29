@@ -17,20 +17,6 @@ function pageLine(page: ReadPage): string {
   return `- ${markdownLine(label)}`;
 }
 
-// A checked card whose gaps stayed open after the last round: they join its open points, and one code-written line names them.
-export function withNotFound(findings: Findings, gaps: string[]): Findings {
-  const openPoints = [...findings.openPoints];
-  for (const gap of gaps.map((text) => text.trim())) {
-    if (!openPoints.some((point) => point.trim() === gap)) openPoints.push(gap);
-  }
-  const named = [...new Set(gaps.map(markdownLine))].join("; ");
-  return {
-    ...findings,
-    cardText: `${findings.cardText}\n\n**Not found:** ${named}`,
-    openPoints,
-  };
-}
-
 function pageList(pages: ReadPage[]): Findings {
   return {
     cardText: pages.map(pageLine).join("\n"),
