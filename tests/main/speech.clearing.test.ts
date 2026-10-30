@@ -239,7 +239,7 @@ describe("a line's life on the REST path", () => {
 describe("a REST line that never plays", () => {
   it("is not speaking while it is synthesized, and a mute then drops it unplayed", async () => {
     const h = createHarness();
-    h.speech.speak(said("Hello."));
+    h.speech.speak(said("Hello.", "t1", "answer"));
     expect(h.started).toEqual([]);
     h.speech.setMuted(true);
     await resolveCall(h, 0);
@@ -261,7 +261,7 @@ describe("a REST line that never plays", () => {
 
   it("leaves unplayed when its synthesis fails", async () => {
     const h = createHarness();
-    h.speech.speak(said("Hello."));
+    h.speech.speak(said("Hello.", "t1", "answer"));
     await resolveCall(h, 0, failure("unreachable"));
     expect(h.gone).toEqual([{ kind: "answer", lineId: null }]);
   });
@@ -302,7 +302,7 @@ describe("a line's life on the Aura socket", () => {
 
   it("moves to REST without leaving when the socket closes before audio", async () => {
     const { aura, h } = streaming();
-    h.speech.speak(said("Hello."));
+    h.speech.speak(said("Hello.", "t1", "answer"));
     aura.close();
     expect(h.gone).toEqual([]);
     await resolveCall(h, 0);
@@ -313,7 +313,7 @@ describe("a line's life on the Aura socket", () => {
 
   it("leaves with its id when the key stops it mid-line", () => {
     const { aura, h } = streaming();
-    h.speech.speak(said("Hello there."));
+    h.speech.speak(said("Hello there.", "t1", "answer"));
     aura.audio(1);
     const lineId = h.chunks[0].lineId;
     h.speech.holdStarted();

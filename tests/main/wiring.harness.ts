@@ -165,6 +165,8 @@ function playback(
     if (line === undefined) return;
     const { lineId } = line;
     send(ipcChannels.playbackFinished, { lineId, outcome: "ended" });
+    // A renderer whose island closes at once, so a later result line can play.
+    send(ipcChannels.islandClosed, { lineId });
   };
   const playAll = async (): Promise<void> => {
     for (let turn = 0; turn < 20 && settled < seen.syntheses.length; turn += 1)

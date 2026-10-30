@@ -17,6 +17,7 @@ export const ipcChannels = {
   speechEnd: "speech-end",
   stopPlayback: "stop-playback",
   playbackFinished: "playback-finished",
+  islandClosed: "island-closed",
   windowShape: "window-shape",
   getWindowShape: "get-window-shape",
   setMouseCapture: "set-mouse-capture",
@@ -102,6 +103,8 @@ export type PlaybackFinished = {
   lineId: LineId;
   outcome: "ended" | "stopped" | "failed";
 };
+// The result line whose island has finished closing; main's next result line waits for this.
+export type IslandClosed = { lineId: LineId };
 // Captured: clicks land on the panel; released: they pass through to the app below.
 export type SetMouseCapture = { captured: boolean };
 
@@ -114,6 +117,7 @@ export type RendererToMain = {
   [ipcChannels.setMuted]: SetMuted;
   [ipcChannels.micAudio]: MicAudio;
   [ipcChannels.playbackFinished]: PlaybackFinished;
+  [ipcChannels.islandClosed]: IslandClosed;
   [ipcChannels.setMouseCapture]: SetMouseCapture;
 };
 
@@ -147,6 +151,7 @@ export type BaymaxApi = {
   onSpeechEnd: (callback: (end: SpeechEnd) => void) => () => void;
   onStopPlayback: (callback: (payload: StopPlayback) => void) => () => void;
   reportPlaybackFinished: (payload: PlaybackFinished) => void;
+  reportIslandClosed: (payload: IslandClosed) => void;
   onWindowShape: (callback: (shape: WindowShape) => void) => () => void;
   setMouseCapture: (payload: SetMouseCapture) => void;
   onPointerOutside: (callback: () => void) => () => void;

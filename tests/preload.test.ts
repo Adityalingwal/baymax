@@ -108,6 +108,11 @@ const actionRows: ActionRow[] = [
     ],
   },
   {
+    name: "reportIslandClosed",
+    act: () => api.reportIslandClosed({ lineId: "l1" }),
+    expected: [ipcChannels.islandClosed, { lineId: "l1" }],
+  },
+  {
     name: "setMouseCapture",
     act: () => api.setMouseCapture({ captured: true }),
     expected: [ipcChannels.setMouseCapture, { captured: true }],

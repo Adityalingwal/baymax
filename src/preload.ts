@@ -63,6 +63,7 @@ const api: BaymaxApi = {
   onStopPlayback: (callback) => subscribe(ipcChannels.stopPlayback, callback),
   reportPlaybackFinished: (payload) =>
     send(ipcChannels.playbackFinished, payload),
+  reportIslandClosed: (payload) => send(ipcChannels.islandClosed, payload),
   onWindowShape: (callback) =>
     subscribeWithReplay(
       ipcChannels.windowShape,

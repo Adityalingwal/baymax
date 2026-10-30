@@ -77,6 +77,7 @@ type SpeechState = {
   pending: Line[];
   synthesizing: Job | null;
   playing: Playing | null;
+  island: LineId | null; // the result line whose island may still show; a later result line waits for its closing report
   held: boolean;
   muted: boolean;
   cancelled: Set<TaskId>;
@@ -100,6 +101,8 @@ type Speech = {
   cancelTask(taskId: TaskId): void;
   cutFailure(taskId: TaskId): void;
   playbackFinished(payload: PlaybackFinished): void;
+  islandClosed(lineId: LineId): void;
+  releaseResults(): void;
   rendererReset(): void;
 };
 
@@ -141,6 +144,7 @@ function audioStarted(ctx: SpeechContext, playing: Playing): void {
   if (playing.started) return;
   playing.started = true;
   const { line, lineId } = playing;
+  if (line.kind === "answer") ctx.state.island = lineId;
   guarded("onAudioStarted", () => ctx.deps.onAudioStarted(line, lineId));
 }
 
@@ -418,12 +422,21 @@ function clearSpeech(
   stopPlaying(ctx, clear.matches, clear.sendStop);
 }
 
+// While an island may show, a result line waits and other lines go ahead of it.
+function nextLine({ pending, island }: SpeechState): Line | undefined {
+  return pending.find((line) => island === null || line.kind !== "answer");
+}
+
+function takeLine(state: SpeechState, line: Line): void {
+  state.pending = state.pending.filter((other) => other !== line);
+}
+
 // The open Aura socket streams the line; without it the line goes to the REST call.
 function pump(ctx: SpeechContext): void {
   const { state, aura } = ctx;
   if (state.held || state.muted) return;
   if (state.synthesizing !== null || state.playing !== null) return;
-  let line = state.pending[0];
+  let line = nextLine(state);
   // A talker line that ended with no words has nothing to say.
   while (
     line !== undefined &&
@@ -431,13 +444,13 @@ function pump(ctx: SpeechContext): void {
     line.feed.text.trim() === ""
   ) {
     log(`line dropped: no text (${line.kind})`);
-    state.pending.shift();
+    takeLine(state, line);
     lineGone(ctx, line, null);
-    line = state.pending[0];
+    line = nextLine(state);
   }
   // A talker line waits at the head of the queue until its first words arrive.
   if (line === undefined || line.feed.text === "") return;
-  state.pending.shift();
+  takeLine(state, line);
   if (aura !== null && aura.isOpen()) startStream(ctx, aura, line);
   else startRest(ctx, line);
 }
@@ -532,9 +545,21 @@ function finishPlayback(ctx: SpeechContext, payload: PlaybackFinished) {
   pump(ctx);
 }
 
+// A stale report changes nothing: only the line that holds the wait ends it.
+function islandClosed(ctx: SpeechContext, lineId: LineId): void {
+  if (ctx.state.island !== lineId) return log("stale island report dropped");
+  releaseResults(ctx);
+}
+
+function releaseResults(ctx: SpeechContext): void {
+  ctx.state.island = null;
+  pump(ctx);
+}
+
 // The renderer and its key state are gone, so nothing is told to stop.
 function forgetRenderer(ctx: SpeechContext): void {
   ctx.state.held = false;
+  ctx.state.island = null;
   clearSpeech(ctx, {
     matches: everyLine,
     why: "renderer reset",
@@ -549,6 +574,7 @@ export function createSpeech(deps: SpeechDeps): Speech {
       pending: [],
       synthesizing: null,
       playing: null,
+      island: null,
       held: false,
       muted: false,
       cancelled: new Set(),
@@ -573,6 +599,8 @@ export function createSpeech(deps: SpeechDeps): Speech {
     cancelTask: (taskId) => cancelLines(ctx, taskId),
     cutFailure: (taskId) => cutFailure(ctx, taskId),
     playbackFinished: (payload) => finishPlayback(ctx, payload),
+    islandClosed: (lineId) => islandClosed(ctx, lineId),
+    releaseResults: () => releaseResults(ctx),
     rendererReset: () => forgetRenderer(ctx),
   };
 }

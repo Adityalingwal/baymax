@@ -17,7 +17,10 @@ export type RendererIpc = {
 
 export type ActionTargets = {
   state: MainState;
-  voice: Pick<Voice, "micAudio" | "playbackFinished" | "setMuted">;
+  voice: Pick<
+    Voice,
+    "micAudio" | "playbackFinished" | "islandClosed" | "setMuted"
+  >;
 };
 
 export type ActionDeps = {
@@ -99,6 +102,9 @@ const readPlayback: Reader<typeof ipcChannels.playbackFinished> = (f) => {
     : null;
 };
 
+const readIslandClosed: Reader<typeof ipcChannels.islandClosed> = (f) =>
+  typeof f.lineId === "string" ? { lineId: f.lineId } : null;
+
 type Listen = (targets: ActionTargets, deps: ActionDeps) => RendererListener;
 type Action = { channel: string; listen: Listen };
 
@@ -163,6 +169,9 @@ const actions: Action[] = [
   ),
   action(ipcChannels.playbackFinished, readPlayback, ({ voice }, payload) =>
     voice.playbackFinished(payload),
+  ),
+  action(ipcChannels.islandClosed, readIslandClosed, ({ voice }, { lineId }) =>
+    voice.islandClosed(lineId),
   ),
 ];
 

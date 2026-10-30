@@ -10,9 +10,89 @@ import {
   wire,
 } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
-import { findings, workRoute } from "./tasks/harness";
+import { findings, replyRoute, workRoute } from "./tasks/harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+const result = (taskId: string, spokenLine: string) =>
+  ({
+    type: "result",
+    taskId,
+    spokenLine,
+    findings: findings("A report."),
+  }) as const;
+
+// Two tasks: the first result has played, and the second result's line is ready while the first island still shows.
+async function secondResultWaiting(w: Wired): Promise<string> {
+  await admitAs(w, "hermes");
+  await admitAs(w, "laptops");
+  await w.playAll();
+  w.port.emit(result("t1", "Hermes is in."));
+  const line = await w.settleNext();
+  if (line === undefined) throw new Error("no result line played");
+  w.send(ipcChannels.playbackFinished, {
+    lineId: line.lineId,
+    outcome: "ended",
+  });
+  w.port.emit(result("t2", "Laptops are in."));
+  await flush();
+  return line.lineId;
+}
+
+async function islandClosed(w: Wired, lineId: string): Promise<void> {
+  w.send(ipcChannels.islandClosed, { lineId });
+  await flush();
+}
+
+const synthesized = (w: Wired) => w.syntheses.map((job) => job.input).at(-1);
+
+describe("one result at a time", () => {
+  it("holds the second result's line until the first island's closing report", async () => {
+    const w = wire();
+    const lineId = await secondResultWaiting(w);
+    expect(synthesized(w)).toBe("Hermes is in.");
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Laptops are in.");
+  });
+
+  it("changes nothing on a stale report", async () => {
+    const w = wire();
+    const lineId = await secondResultWaiting(w);
+    await islandClosed(w, "an older line");
+    expect(synthesized(w)).toBe("Hermes is in.");
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Laptops are in.");
+  });
+
+  it("releases the wait on a renderer reset: the next result speaks without a report", async () => {
+    const w = wire();
+    await secondResultWaiting(w);
+    w.wiring.voice.rendererReset();
+    await admitAs(w, "phones");
+    await w.playAll();
+    w.port.emit(result("t3", "Phones are in."));
+    await flush();
+    expect(synthesized(w)).toBe("Phones are in.");
+  });
+
+  it("lets a line that is not a result go ahead of the waiting one", async () => {
+    const w = wire();
+    await secondResultWaiting(w);
+    w.send(ipcChannels.submitQuestion, { text: "hello" });
+    await streamFront(w, replyRoute(), "Hello there.");
+    expect(synthesized(w)).toBe("Hello there.");
+  });
+
+  it("drops the waiting line on a key press, as any line not yet spoken", async () => {
+    const w = wire();
+    const lineId = await secondResultWaiting(w);
+    w.wiring.voice.holdChanged("listening", null);
+    w.wiring.voice.holdChanged("idle", null);
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Hermes is in.");
+    expect(w.card("t2")?.spokenLine).toBe("Laptops are in.");
+  });
+});
 
 async function spokenAll(w: Wired): Promise<string[]> {
   await flush();

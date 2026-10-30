@@ -24,6 +24,10 @@ export function useIsland(
     const timer = setTimeout(() => dispatch(event), ms);
     return () => clearTimeout(timer);
   }, [token, kind]);
+  const { closed } = island;
+  useEffect(() => {
+    if (closed !== null) window.baymax.reportIslandClosed({ lineId: closed });
+  }, [closed]);
   return { island, dispatch };
 }
 
