@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelOutcome, ModelRequest } from "../../src/providers/anthropic";
-import type { SearchOutcome } from "../../src/providers/exa";
 import type { Findings } from "../../src/shared/cards";
 import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
+  failed,
   goodAnswer,
   hits,
   pageUrl,
@@ -14,7 +14,6 @@ import {
   toolUseReply,
   workerAnswer,
 } from "./run.harness";
-import type { FakeSearchStep } from "./run.harness";
 
 afterEach(closeRuns);
 
@@ -24,7 +23,7 @@ const goodFindings: Findings = {
     { id: "s1", url: pageUrl("one"), title: "Page one" },
     { id: "s2", url: pageUrl("two"), title: "Page two" },
   ],
-  openPoints: goodAnswer.openPoints,
+  openPoints: [],
 };
 
 const reading: FakeStep[] = [
@@ -36,54 +35,70 @@ const reading: FakeStep[] = [
 const search = [hits(pageUrl("one"), pageUrl("two"))];
 
 const rewriteLine =
-  "Your answer did not pass the check above. Write the whole answer again as the JSON object, fixing that part. Cite only pages you read.";
-
-const researchLine =
-  'Your answer did not pass the check above. Research each gap first: for each gap, make a search and read at least one new page. If the web does not have a gap, put it in openPoints and say in one line of the card that it was not found. Remove any claim you cannot back with a page you read. In this retry round, use status "complete", not "sourcesThin". Then write the whole answer again as the JSON object, citing only pages you read.';
+  "Your answer did not pass the check above. Write the whole answer again as the JSON object, fixing that part. In sourceIds, name only pages you read.";
 
 const answerText = (text: string, cut = false): ModelOutcome => ({
   ok: true,
   message: fakeMessage(text, { stopReason: cut ? "max_tokens" : "end_turn" }),
 });
 
-type RetryRow = {
+const onlyUnread = () => workerAnswer({ sourceIds: ["s9"] });
+
+const empty = { report: "", line: "", sourceIds: [] };
+
+type RewriteRow = {
   name: string;
-  failed: ModelOutcome; // the first answer turn
-  stage: string;
-  rule: string;
-  result: string; // what the check_result block says
-  line: string;
+  bad: ModelOutcome; // the first answer turn
+  fault: string; // what the check_result block says
 };
 
-const readThree = toolUseReply([{ read: pageUrl("three") }]);
+const nothingFoundFault =
+  "nothingFound must be null unless you found nothing, and then it is one plain sentence with the report and the line empty.";
 
-const retryRows: RetryRow[] = [
+const noSourcesFault =
+  "sourceIds named no page you read. Name the read pages that back your answer, and read one first if you have read none.";
+
+const rewriteRows: RewriteRow[] = [
   {
-    name: "a failed code rule",
-    failed: workerAnswer({
-      claims: [{ claim: "Hermes runs a loop", sourceIds: ["s9"] }],
-    }),
-    stage: "code",
-    rule: "unreadCitation",
-    result: "citations to pages that were not read",
-    line: researchLine,
+    name: "an answer naming only unread pages",
+    bad: onlyUnread(),
+    fault: noSourcesFault,
+  },
+  {
+    name: "an answer with no source ids",
+    bad: workerAnswer({ sourceIds: [] }),
+    fault: noSourcesFault,
+  },
+  {
+    name: "an empty line",
+    bad: workerAnswer({ line: "  " }),
+    fault: "The line was empty. Write it.",
+  },
+  {
+    name: "nothingFound beside a line and a report",
+    bad: workerAnswer({ nothingFound: "Nothing helped." }),
+    fault: nothingFoundFault,
+  },
+  {
+    name: "nothingFound beside a report only",
+    bad: workerAnswer({ line: "", nothingFound: "Nothing helped." }),
+    fault: nothingFoundFault,
+  },
+  {
+    name: "a blank nothingFound",
+    bad: workerAnswer({ ...empty, nothingFound: " " }),
+    fault: nothingFoundFault,
   },
   {
     name: "malformed answer JSON",
-    failed: answerText("{ not json"),
-    stage: "answer",
-    rule: "malformed",
-    result: "The answer was not valid JSON for the schema.",
-    line: rewriteLine,
+    bad: answerText("{ not json"),
+    fault: "The answer was not valid JSON for the schema.",
   },
   {
     name: "an answer cut at max_tokens",
-    failed: answerText(JSON.stringify(goodAnswer), true),
-    stage: "answer",
-    rule: "cutOff",
-    result:
-      "The answer was cut off at the length limit. Write a shorter card text.",
-    line: rewriteLine,
+    bad: answerText(JSON.stringify(goodAnswer), true),
+    fault:
+      "The answer was cut off at the length limit. Write a shorter report.",
   },
 ];
 
@@ -92,241 +107,65 @@ const promptStart = (request: ModelRequest) =>
 
 const contentOf = (step: ModelOutcome) => (step.ok ? step.message.content : []);
 
-describe("runTask retry round", () => {
-  it.each(retryRows)(
-    "answers again after $name and ends with the second answer checked",
+describe("runTask one rewrite", () => {
+  it.each(rewriteRows)(
+    "answers again after $name, with its fault named",
     async (row) => {
-      const run = await startRun(
-        [...reading, row.failed, readThree, workerAnswer()],
-        search,
-      );
+      const run = await startRun([...reading, row.bad, workerAnswer()], search);
       run.port.send(runTask());
       const events = await run.ended();
       expect(events.filter((event) => event.type !== "progress")).toEqual([
         {
           type: "result",
           taskId: "task-1",
-          spokenLine: goodAnswer.spokenLine,
+          spokenLine: goodAnswer.line,
           findings: goodFindings,
         },
       ]);
       const asked = run.requests[3];
-      const retry = run.requests[4];
-      expect(retry.messages).toEqual([
+      const rewrite = run.requests[4];
+      expect(rewrite.messages).toEqual([
         ...asked.messages,
-        { role: "assistant", content: contentOf(row.failed) },
+        { role: "assistant", content: contentOf(row.bad) },
         {
           role: "user",
-          content: `<check_result>\n${row.result}\n</check_result>\n\n${row.line}`,
+          content: `<check_result>\n${row.fault}\n</check_result>\n\n${rewriteLine}`,
         },
       ]);
-      expect(promptStart(retry)).toBe(promptStart(run.requests[0]));
-      expect(run.entries).toContainEqual({
-        event: "retryRound",
-        taskId: "task-1",
-        round: 1,
-        stage: row.stage,
-        rule: row.rule,
-      });
-      const nudges = run.entries.filter((e) => e.event === "retryNudge");
-      expect(nudges).toEqual([]);
+      expect(promptStart(rewrite)).toBe(promptStart(run.requests[0]));
     },
   );
 });
 
-describe("runTask after the last retry round", () => {
-  it("never asks for a fourth checked answer", async () => {
-    const unread = workerAnswer({
-      claims: [{ claim: "Hermes runs a loop", sourceIds: ["s9"] }],
+describe("runTask after a bad answer", () => {
+  it("lets the rewrite read a page first when none was read", async () => {
+    const run = await startRun([
+      workerAnswer({ sourceIds: ["s1"] }),
+      toolUseReply([{ read: pageUrl("one") }]),
+      workerAnswer({ sourceIds: ["s1"] }),
+    ]);
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events.at(-1)).toMatchObject({
+      type: "result",
+      findings: { sources: [{ id: "s1" }] },
     });
-    const readNew = (name: string) => toolUseReply([{ read: pageUrl(name) }]);
+  });
+
+  it("ends failed with the pages read after a second bad answer, never asking for a third", async () => {
     const run = await startRun(
-      [
-        ...reading,
-        unread,
-        readNew("three"),
-        unread,
-        readNew("paren(1)"),
-        unread,
-        workerAnswer(),
-      ],
+      [...reading, onlyUnread(), onlyUnread()],
       search,
     );
     run.port.send(runTask());
     const events = await run.ended();
-    expect(events[events.length - 1]).toMatchObject({
-      type: "incomplete",
-      incomplete: {
-        kind: "unchecked",
-        uncheckedPart: "citations to pages that were not read",
-      },
-    });
-    expect(run.requests).toHaveLength(8);
-    const checked = run.entries.filter(
-      (entry) => entry.event === "doneCheck" && entry.stage === "code",
-    );
-    expect(checked).toHaveLength(3);
-    const retries = run.entries.filter((entry) => entry.event === "retryRound");
-    expect(retries.map((entry) => entry.round)).toEqual([1, 2]);
-  });
-});
-
-const nudgeText =
-  "You made no new search and read no new page in this round. Research the gaps in the check result above before you answer: make a search and read at least one new page for each gap, then write the whole answer again as the JSON object.";
-
-const firstSearch = hits(pageUrl("one"), pageUrl("two"));
-// A complete answer that cites a page it never read: the code check fails it.
-const unread = workerAnswer({
-  claims: [{ claim: "Hermes runs a loop", sourceIds: ["s9"] }],
-});
-
-async function runNudged(steps: FakeStep[], searches: FakeSearchStep[] = []) {
-  const started = await startRun(steps, [firstSearch, ...searches]);
-  started.port.send(runTask());
-  const events = await started.ended();
-  const nudges = started.entries.filter((e) => e.event === "retryNudge");
-  const checked = started.entries.filter(
-    (e) => e.event === "doneCheck" && e.stage === "code",
-  );
-  return {
-    ...started,
-    events,
-    last: events[events.length - 1],
-    nudges,
-    checked,
-  };
-}
-
-describe("runTask nudge", () => {
-  it("holds back a retry answer made without new research once, then checks the next one", async () => {
-    const unresearched = workerAnswer();
-    const ran = await runNudged([
-      ...reading,
-      unread,
-      unresearched,
-      workerAnswer(),
+    expect(events.filter((event) => event.type !== "progress")).toEqual([
+      failed("error", {
+        cardText: "- Page one\n- Page two",
+        sources: goodFindings.sources,
+        openPoints: [],
+      }),
     ]);
-    expect(ran.last).toMatchObject({ type: "result" });
-    expect(ran.nudges).toEqual([
-      { event: "retryNudge", taskId: "task-1", round: 1 },
-    ]);
-    expect(ran.checked).toHaveLength(2);
-    const [retry, afterNudge] = ran.requests.slice(4);
-    const content = unresearched.ok ? unresearched.message.content : [];
-    expect(afterNudge.messages).toEqual([
-      ...retry.messages,
-      { role: "assistant", content },
-      { role: "user", content: nudgeText },
-    ]);
-  });
-
-  it("nudges once in each retry round", async () => {
-    const ran = await runNudged([
-      ...reading,
-      unread,
-      unread,
-      unread,
-      workerAnswer(),
-      workerAnswer(),
-    ]);
-    expect(ran.last).toMatchObject({ type: "result" });
-    expect(ran.nudges.map((entry) => entry.round)).toEqual([1, 2]);
-    expect(ran.checked).toHaveLength(3);
-  });
-});
-
-const searchTimeout: SearchOutcome = { ok: false, cause: "timeout" };
-const noHits: SearchOutcome = { ok: true, hits: [] };
-
-const readOf = (...names: string[]) =>
-  toolUseReply(names.map((name) => ({ read: pageUrl(name) })));
-const searched = () => toolUseReply([{ search: "hermes price" }]);
-
-// name, the retry round's tool turn, its search outcomes, whether it counts as new research
-const researchRows: [string, ModelOutcome, FakeSearchStep[], boolean][] = [
-  ["a failed read", readOf("missing"), [], false],
-  ["a refused read", toolUseReply([{ read: "http://localhost/" }]), [], false],
-  ["a failed search", searched(), [searchTimeout], false],
-  ["a search with no results", searched(), [noHits], false],
-  ["a repeat read of a kept page", readOf("one"), [], false],
-  ["a failed and a repeat read together", readOf("missing", "two"), [], false],
-  ["a search with results", searched(), [hits(pageUrl("three"))], true],
-  ["a read of a new page", readOf("three"), [], true],
-];
-
-describe("runTask new research in a retry round", () => {
-  it.each(researchRows)(
-    "counts %s: %s",
-    async (_name, tools, found, counts) => {
-      const ran = await runNudged(
-        [
-          ...reading,
-          unread,
-          tools,
-          workerAnswer(),
-          ...(counts ? [] : [workerAnswer()]),
-        ],
-        found,
-      );
-      expect(ran.last).toMatchObject({ type: "result" });
-      expect(ran.nudges).toHaveLength(counts ? 0 : 1);
-    },
-  );
-});
-
-// Tool turns to the end of the model-call limit.
-const untilTheLimit = (): FakeStep[] => [
-  ...reading,
-  unread,
-  toolUseReply([{ read: pageUrl("three") }]),
-  ...Array.from({ length: 25 }, () => toolUseReply([{ read: pageUrl("one") }])),
-  workerAnswer(),
-];
-
-describe("runTask other retry rounds", () => {
-  it("gives a rewrite round after a cut-off answer no nudge", async () => {
-    const cut = workerAnswer();
-    if (cut.ok) cut.message.stop_reason = "max_tokens";
-    const ran = await runNudged([...reading, cut, workerAnswer()]);
-    expect(ran.last).toMatchObject({ type: "result" });
-    expect(ran.nudges).toEqual([]);
-  });
-
-  it("ends sourcesThin given in a retry round as sourcesThin, unchecked", async () => {
-    const ran = await runNudged([
-      ...reading,
-      unread,
-      workerAnswer({ status: "sourcesThin" }),
-    ]);
-    expect(ran.last).toMatchObject({
-      type: "incomplete",
-      incomplete: { kind: "sourcesThin" },
-    });
-    expect(ran.nudges).toEqual([]);
-    expect(ran.checked).toHaveLength(1);
-  });
-
-  it("ends limitHit with the retry card when the model-call limit comes during the retry round", async () => {
-    const ran = await runNudged(untilTheLimit());
-    expect(ran.requests).toHaveLength(30);
-    expect(ran.last).toEqual({
-      type: "incomplete",
-      taskId: "task-1",
-      incomplete: {
-        kind: "limitHit",
-        findings: {
-          cardText: goodAnswer.cardText,
-          sources: [],
-          openPoints: goodAnswer.openPoints,
-        },
-        spokenLine: goodAnswer.spokenLine,
-      },
-    });
-    expect(ran.entries).toContainEqual({
-      event: "limitHit",
-      taskId: "task-1",
-      role: "worker",
-      limit: "modelCalls",
-    });
+    expect(run.requests).toHaveLength(5);
   });
 });

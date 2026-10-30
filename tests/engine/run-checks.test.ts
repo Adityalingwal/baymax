@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ModelOutcome } from "../../src/providers/anthropic";
 import type { Findings } from "../../src/shared/cards";
 import type { EngineEvent } from "../../src/shared/engine";
 import type { FakeStep } from "./harness";
@@ -13,7 +12,6 @@ import {
   toolUseReply,
   workerAnswer,
 } from "./run.harness";
-import type { AnswerFields } from "./run.harness";
 
 afterEach(closeRuns);
 
@@ -23,16 +21,13 @@ const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
 const goodFindings: Findings = {
   cardText: "## How it works\n\nHermes runs a loop with tools.",
   sources: [one, two],
-  openPoints: goodAnswer.openPoints,
+  openPoints: [],
 };
 
-// Reads page one, then page two, after a search that also lists page three; then the given answer.
-const readTwo = (answer: ModelOutcome, ...rest: FakeStep[]): FakeStep[] => [
+const readBoth: FakeStep[] = [
   toolUseReply([{ search: "hermes" }]),
   toolUseReply([{ read: pageUrl("one") }]),
   toolUseReply([{ read: pageUrl("two") }]),
-  answer,
-  ...rest,
 ];
 
 const search = [hits(pageUrl("one"), pageUrl("two"), pageUrl("three"))];
@@ -46,128 +41,69 @@ async function finalEvent(steps: FakeStep[]): Promise<EngineEvent> {
   return terminal[0];
 }
 
-const unchecked = (uncheckedPart: string, findings: Findings): EngineEvent => ({
-  type: "incomplete",
+const result = (findings: Findings): EngineEvent => ({
+  type: "result",
   taskId: "task-1",
-  incomplete: { kind: "unchecked", uncheckedPart, findings },
+  spokenLine: goodAnswer.line,
+  findings,
 });
 
-type CodeRow = {
-  name: string;
-  answer: AnswerFields;
-  part: string;
-  findings: Findings;
-};
-
-const claimOne = [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }];
-
-const codeRows: CodeRow[] = [
+// Each row ends at once: a rewrite would ask for a model step that is not given, so settle fails.
+const validRows = [
   {
-    name: "(1) an empty spoken line",
-    answer: { spokenLine: "  " },
-    part: "an empty spoken line or card text",
+    name: "a report and read ids",
+    answer: {},
     findings: goodFindings,
   },
   {
-    name: "(1) an empty card text",
-    answer: { cardText: "\n" },
-    part: "an empty spoken line or card text",
+    name: "an empty report",
+    answer: { report: " " },
     findings: { ...goodFindings, cardText: "" },
   },
   {
-    name: "(1) a card of only markers",
-    answer: { cardText: "[s1] [s2]" },
-    part: "an empty spoken line or card text",
+    name: "a report of only markers",
+    answer: { report: "[s1] [s2]" },
     findings: { ...goodFindings, cardText: "" },
   },
   {
-    name: "(2) no claims",
-    answer: { claims: [] },
-    part: "claims without a source",
-    findings: { ...goodFindings, sources: [] },
-  },
-  {
-    name: "(2) a claim with no source id",
-    answer: {
-      claims: [...claimOne, { claim: "It uses tools", sourceIds: [] }],
-    },
-    part: "claims without a source",
+    name: "an unread id beside a read one",
+    answer: { sourceIds: ["s1", "s9"] },
     findings: { ...goodFindings, sources: [one] },
   },
   {
-    name: "(3) a claim naming a page not read",
-    answer: {
-      cardText: "A loop and memory.",
-      claims: [...claimOne, { claim: "It has memory", sourceIds: ["s7"] }],
-    },
-    part: "citations to pages that were not read",
-    findings: {
-      ...goodFindings,
-      cardText: "A loop and memory.",
-      sources: [one],
-    },
-  },
-  {
-    name: "(3) a claim citing a snippet-only page by id",
-    answer: {
-      cardText: "A loop.",
-      claims: [{ claim: "A loop", sourceIds: ["s1", "s3"] }],
-    },
-    part: "citations to pages that were not read",
-    findings: {
-      ...goodFindings,
-      cardText: "A loop.",
-      sources: [one],
-    },
+    name: "ids out of order, repeated, with markers in the report",
+    answer: { report: "A [s3] and B.", sourceIds: ["s2", "s1", "s2"] },
+    findings: { ...goodFindings, cardText: "A and B." },
   },
 ];
 
-// Each retry round researches nothing, so its first answer gets the nudge and its second fails the same way; the third check ends the run.
-const everyRound = (answer: ModelOutcome) =>
-  readTwo(answer, answer, answer, answer, answer);
-
-describe("runTask card sources", () => {
-  it("takes sources only from the claims' ids, in read order, ignoring markers", async () => {
-    const answer = workerAnswer({
-      cardText: "A [s3] and B.",
-      claims: [
-        { claim: "A", sourceIds: ["s2"] },
-        { claim: "B", sourceIds: ["s1", "s2"] },
-      ],
-    });
-    const event = await finalEvent([
-      toolUseReply([{ search: "hermes" }]),
-      toolUseReply([{ read: pageUrl("one") }]),
-      toolUseReply([{ read: pageUrl("two") }]),
-      toolUseReply([{ read: pageUrl("three") }]),
-      answer,
-    ]);
-    if (event.type !== "result") throw new Error(`ended ${event.type}`);
-    expect(event.findings.sources.map((source) => source.id)).toEqual([
-      "s1",
-      "s2",
-    ]);
-  });
+describe("runTask valid answers", () => {
+  it.each(validRows)(
+    "ends as a result with no further model call on $name",
+    async (row) => {
+      const event = await finalEvent([...readBoth, workerAnswer(row.answer)]);
+      expect(event).toEqual(result(row.findings));
+    },
+  );
 });
 
-describe("runTask code check", () => {
-  it.each(codeRows)("fails rule $name in every round", async (row) => {
-    const event = await finalEvent(everyRound(workerAnswer(row.answer)));
-    expect(event).toEqual(unchecked(row.part, row.findings));
-  });
-
-  it("ends as a result at once when the code check passes, with no further model call", async () => {
-    const run = await startRun(readTwo(workerAnswer(), workerAnswer()), search);
-    run.port.send(runTask());
-    const events = await run.ended();
-    expect(events.filter((event) => event.type !== "progress")).toEqual([
-      {
-        type: "result",
-        taskId: "task-1",
-        spokenLine: goodAnswer.spokenLine,
-        findings: goodFindings,
-      },
+describe("runTask nothing found", () => {
+  it("ends failed with the worker's own sentence, with no rewrite, even after reading", async () => {
+    const event = await finalEvent([
+      ...readBoth,
+      workerAnswer({
+        report: "",
+        line: " ",
+        sourceIds: [],
+        nothingFound: " No page mentions a Hermes 9. ",
+      }),
     ]);
-    expect(run.requests).toHaveLength(4);
+    expect(event).toEqual({
+      type: "failed",
+      taskId: "task-1",
+      cause: "nothingFound",
+      reason: "No page mentions a Hermes 9.",
+      findings: null,
+    });
   });
 });

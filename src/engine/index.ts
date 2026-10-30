@@ -39,11 +39,7 @@ type Engine = {
 
 function endOf(event: EngineEvent | null): string {
   if (event === null) return "cancelled";
-  if (event.type !== "incomplete") return event.type;
-  const { incomplete } = event;
-  return incomplete.kind === "error"
-    ? `error:${incomplete.cause}`
-    : incomplete.kind;
+  return event.type === "failed" ? `failed:${event.cause}` : event.type;
 }
 
 // One fresh budget per run; the hold sends the one terminal event.
@@ -77,9 +73,11 @@ function startRun(engine: Engine, command: RunTaskCommand): void {
     },
     found: () => found.current(),
     onThrow: (findings: Findings | null) => ({
-      type: "incomplete",
+      type: "failed",
       taskId,
-      incomplete: { kind: "error", cause: "error", findings },
+      cause: "error",
+      reason: null,
+      findings,
     }),
   });
 }

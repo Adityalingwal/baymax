@@ -32,6 +32,9 @@ export type ProgressStep =
 export type FailureKind =
   "modelsUnreachable" | "keyRejected" | "noCredit" | "searchDown" | "error";
 
+// Why a task ended failed: a failure above, nothing found, or a limit.
+export type FailureCause = FailureKind | "nothingFound" | "limitHit";
+
 export type Incomplete =
   | { kind: "limitHit"; findings: Findings | null; spokenLine?: string } // spokenLine is set, possibly empty, when findings are the worker's latest answer
   | { kind: "sourcesThin"; findings: Findings | null }
@@ -49,6 +52,13 @@ export type EngineEvent =
     }
   | { type: "result"; taskId: TaskId; spokenLine: string; findings: Findings }
   | { type: "incomplete"; taskId: TaskId; incomplete: Incomplete }
+  | {
+      type: "failed";
+      taskId: TaskId;
+      cause: FailureCause;
+      reason: string | null; // the worker's own sentence when it found nothing
+      findings: Findings | null;
+    }
   | { type: "cancelled"; taskId: TaskId; findings: Findings | null }; // sent after the work has really stopped; partial findings, if any, for a follow-up
 
 // Serializable only; test fakes enter the engine's start function through its own optional parameter.

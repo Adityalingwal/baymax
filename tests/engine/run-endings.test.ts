@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelOutcome, ModelRequest } from "../../src/providers/anthropic";
 import type { SearchOutcome } from "../../src/providers/exa";
-import type { EngineEvent, Incomplete } from "../../src/shared/engine";
 import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
+  failed,
   goodAnswer,
   hits,
   pageUrl,
@@ -17,18 +17,8 @@ import type { FakeSearchStep } from "./run.harness";
 
 afterEach(closeRuns);
 
-const ended = (incomplete: Incomplete): EngineEvent => ({
-  type: "incomplete",
-  taskId: "task-1",
-  incomplete,
-});
-
-const errorEnd = ended({ kind: "error", cause: "error", findings: null });
-const searchDown = ended({
-  kind: "error",
-  cause: "searchDown",
-  findings: null,
-});
+const errorEnd = failed("error");
+const searchDown = failed("searchDown");
 const modelError: ModelOutcome = { ok: false, failure: "error", detail: "x" };
 
 async function runOf(steps: FakeStep[], searches: FakeSearchStep[] = []) {
@@ -113,11 +103,11 @@ const reply = (
 ) => ({ ok: true, message: fakeMessage(text, { stopReason }) }) as ModelOutcome;
 const answerWith = (fields: Record<string, unknown>) =>
   reply(JSON.stringify({ ...goodAnswer, ...fields }), "end_turn");
-const withoutOpenPoints = Object.fromEntries(
-  Object.entries(goodAnswer).filter(([key]) => key !== "openPoints"),
+const withoutSources = Object.fromEntries(
+  Object.entries(goodAnswer).filter(([key]) => key !== "sourceIds"),
 );
 
-// Stop reasons that are no answer turn end the run at once, with no retry round.
+// Stop reasons that are no answer turn end the run at once, with no rewrite.
 const unanswered: { name: string; step: ModelOutcome }[] = [
   { name: "refusal", step: reply(answerJson, "refusal") },
   { name: "pause_turn", step: reply(answerJson, "pause_turn") },
@@ -128,26 +118,21 @@ const malformedAnswers: { name: string; step: ModelOutcome }[] = [
   { name: "invalid JSON", step: reply("{ not json", "end_turn") },
   {
     name: "a missing field",
-    step: reply(JSON.stringify(withoutOpenPoints), "end_turn"),
+    step: reply(JSON.stringify(withoutSources), "end_turn"),
   },
   { name: "an extra field", step: answerWith({ notes: "x" }) },
-  {
-    name: "a claim with an extra field",
-    step: answerWith({
-      claims: [{ claim: "c", sourceIds: ["s1"], weight: 1 }],
-    }),
-  },
+  { name: "an old status field", step: answerWith({ status: "complete" }) },
   {
     name: "a source id that is not a string",
-    step: answerWith({ claims: [{ claim: "c", sourceIds: [1] }] }),
+    step: answerWith({ sourceIds: [1] }),
   },
   {
-    name: "open points that are not strings",
-    step: answerWith({ openPoints: [null] }),
+    name: "a line that is not a string",
+    step: answerWith({ line: 3 }),
   },
   {
-    name: "a spoken line that is not a string",
-    step: answerWith({ spokenLine: 3 }),
+    name: "a nothingFound that is not a string",
+    step: answerWith({ nothingFound: 3 }),
   },
 ];
 
@@ -158,9 +143,9 @@ describe("runTask malformed answers", () => {
   });
 
   it.each(malformedAnswers)(
-    "ends error on $name in every round when nothing was found",
+    "ends error on $name twice when nothing was found",
     async (row) => {
-      const { last } = await runOf([row.step, row.step, row.step]);
+      const { last } = await runOf([row.step, row.step]);
       expect(last).toEqual([errorEnd]);
     },
   );
@@ -211,11 +196,7 @@ describe("runTask tool batches", () => {
     );
     run.port.send(runTask());
     const events = await run.ended();
-    expect(events[events.length - 1]).toEqual({
-      type: "incomplete",
-      taskId: "task-1",
-      incomplete: { kind: "error", cause: "searchDown", findings: null },
-    });
+    expect(events[events.length - 1]).toEqual(searchDown);
     const tools = run.entries.filter((entry) => entry.event === "toolCall");
     expect(tools.map((entry) => [entry.tool, entry.outcome])).toEqual([
       ["search", "keyRejected"],
@@ -236,11 +217,7 @@ describe("runTask tool batches", () => {
     );
     run.port.send(runTask());
     const events = await run.ended();
-    expect(events[events.length - 1]).toEqual({
-      type: "incomplete",
-      taskId: "task-1",
-      incomplete: { kind: "limitHit", findings: null },
-    });
+    expect(events[events.length - 1]).toEqual(failed("limitHit"));
     expect(run.queries).toEqual(
       queries.slice(0, 20).map((call) => call.search),
     );

@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelOutcome } from "../../src/providers/anthropic";
 import type { Findings } from "../../src/shared/cards";
-import type { Incomplete } from "../../src/shared/engine";
+import type { EngineEvent } from "../../src/shared/engine";
 import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
-  goodAnswer,
+  failed,
   hits,
   pageUrl,
   runTask,
@@ -27,14 +27,17 @@ function costly(step: ModelOutcome): ModelOutcome {
 
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
-const claimOne = [{ claim: "A loop", sourceIds: ["s1"] }];
-const unreadClaims = [...claimOne, { claim: "Memory", sourceIds: ["s7"] }];
 
 type FoundRow = {
   name: string;
   steps: () => FakeStep[];
   found: Findings | null;
-  spokenLine?: string; // only when the found card is the worker's answer
+};
+
+const listOne: Findings = {
+  cardText: "- Page one",
+  sources: [one],
+  openPoints: [],
 };
 
 const foundRows: FoundRow[] = [
@@ -56,88 +59,40 @@ const foundRows: FoundRow[] = [
     },
   },
   {
-    name: "the failed first answer's card, unread ids left out of its sources",
+    name: "only the read pages, never the report of an answer rejected for its line",
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
-      costly(
-        workerAnswer({
-          cardText: "A loop and memory.",
-          claims: unreadClaims,
-        }),
-      ),
+      costly(workerAnswer({ line: " ", sourceIds: ["s1"] })),
     ],
-    found: {
-      cardText: "A loop and memory.",
-      sources: [one],
-      openPoints: ["How it stores memory"],
-    },
-    spokenLine: goodAnswer.spokenLine,
+    found: listOne,
   },
   {
-    name: "the failed answer's card and its empty spoken line",
+    name: "only the read pages, never the report of an answer rejected for its ids",
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
-      costly(workerAnswer({ spokenLine: " ", claims: claimOne })),
+      costly(workerAnswer({ sourceIds: ["s9"] })),
     ],
-    found: {
-      cardText: goodAnswer.cardText,
-      sources: [one],
-      openPoints: goodAnswer.openPoints,
-    },
-    spokenLine: "",
-  },
-  {
-    name: "the read pages after an empty failed answer",
-    steps: () => [
-      toolUseReply([{ read: pageUrl("one") }]),
-      costly(workerAnswer({ cardText: " ", claims: claimOne })),
-    ],
-    found: {
-      cardText: "- Page one",
-      sources: [one],
-      openPoints: [],
-    },
+    found: listOne,
   },
 ];
 
-describe("runTask what was found", () => {
-  it.each(foundRows)("ends limitHit with $name", async (row) => {
+describe("runTask what was found at a limit", () => {
+  it.each(foundRows)("ends failed with $name", async (row) => {
     const run = await startRun(row.steps(), [hits(pageUrl("one"))]);
     run.port.send(runTask());
     const events = await run.ended();
     expect(events.filter((event) => event.type !== "progress")).toEqual([
-      {
-        type: "incomplete",
-        taskId: "task-1",
-        incomplete:
-          row.spokenLine === undefined
-            ? { kind: "limitHit", findings: row.found }
-            : {
-                kind: "limitHit",
-                findings: row.found,
-                spokenLine: row.spokenLine,
-              },
-      },
+      failed("limitHit", row.found),
     ]);
   });
 });
 
-const listOne: Findings = {
-  cardText: "- Page one",
-  sources: [one],
-  openPoints: [],
-};
-const unreadCard: Findings = {
-  cardText: "A loop and memory.",
-  sources: [one],
-  openPoints: ["How it stores memory"],
-};
 const answerText = (text: string, cut = false): ModelOutcome => ({
   ok: true,
   message: fakeMessage(text, { stopReason: cut ? "max_tokens" : "end_turn" }),
 });
 const notJson = () => answerText("{ not json");
-const cutOff = () => answerText(JSON.stringify({ cardText: "A long" }), true);
+const cutOff = () => answerText(JSON.stringify({ report: "A long" }), true);
 
 // Handled here so it only rejects where the engine awaits it.
 function thrown(): Promise<ModelOutcome> {
@@ -146,60 +101,35 @@ function thrown(): Promise<ModelOutcome> {
   return call;
 }
 
-type EndRow = { name: string; steps: () => FakeStep[]; ending: Incomplete };
+type EndRow = { name: string; steps: () => FakeStep[]; ending: EngineEvent };
 
-const wholeAnswer = (findings: Findings): Incomplete => ({
-  kind: "unchecked",
-  uncheckedPart: "the whole answer",
-  findings,
-});
+const readOne = () => toolUseReply([{ read: pageUrl("one") }]);
 
 const endRows: EndRow[] = [
   {
-    name: "a malformed answer in every round after a read",
-    steps: () => [
-      toolUseReply([{ read: pageUrl("one") }]),
-      notJson(),
-      notJson(),
-      notJson(),
-    ],
-    ending: wholeAnswer(listOne),
+    name: "a malformed answer twice after a read",
+    steps: () => [readOne(), notJson(), notJson()],
+    ending: failed("error", listOne),
   },
   {
-    name: "a cut-off answer in every round after a read",
-    steps: () => [
-      toolUseReply([{ read: pageUrl("one") }]),
-      cutOff(),
-      cutOff(),
-      cutOff(),
-    ],
-    ending: wholeAnswer(listOne),
+    name: "a cut-off answer twice after a read",
+    steps: () => [readOne(), cutOff(), cutOff()],
+    ending: failed("error", listOne),
   },
   {
-    name: "a failed answer, then malformed ones",
-    steps: () => [
-      toolUseReply([{ read: pageUrl("one") }]),
-      workerAnswer({
-        cardText: "A loop and memory.",
-        claims: unreadClaims,
-      }),
-      notJson(),
-      notJson(),
-    ],
-    ending: wholeAnswer(unreadCard),
+    name: "an invalid answer, then a malformed one",
+    steps: () => [readOne(), workerAnswer({ line: "" }), notJson()],
+    ending: failed("error", listOne),
   },
   {
     name: "a thrown run after a read",
-    steps: () => [toolUseReply([{ read: pageUrl("one") }]), thrown()],
-    ending: { kind: "error", cause: "error", findings: listOne },
+    steps: () => [readOne(), thrown()],
+    ending: failed("error", listOne),
   },
   {
     name: "a search that is down after a read",
-    steps: () => [
-      toolUseReply([{ read: pageUrl("one") }]),
-      toolUseReply([{ search: "hermes" }]),
-    ],
-    ending: { kind: "error", cause: "searchDown", findings: listOne },
+    steps: () => [readOne(), toolUseReply([{ search: "hermes" }])],
+    ending: failed("searchDown", listOne),
   },
 ];
 
@@ -211,7 +141,7 @@ describe("runTask other short endings", () => {
     run.port.send(runTask());
     const events = await run.ended();
     expect(events.filter((event) => event.type !== "progress")).toEqual([
-      { type: "incomplete", taskId: "task-1", incomplete: row.ending },
+      row.ending,
     ]);
   });
 });
@@ -243,8 +173,8 @@ describe("runTask page list", () => {
     run.port.send(runTask());
     const events = await run.ended();
     const last = events[events.length - 1];
-    if (last.type !== "incomplete") throw new Error(`ended ${last.type}`);
-    const { findings } = last.incomplete;
+    if (last.type !== "failed") throw new Error(`ended ${last.type}`);
+    const { findings } = last;
     if (findings === null) throw new Error("no findings");
     const lines = findings.cardText.split("\n");
     const ids = findings.sources.map((source) => source.id);

@@ -1,4 +1,5 @@
 import type {
+  FailureCause,
   FailureKind,
   Incomplete,
   ParentResult,
@@ -34,6 +35,15 @@ const failureLines: Record<FailureKind, string> = {
 
 function failureLine(kind: FailureKind): string {
   return failureLines[kind];
+}
+
+// What a failed task says and shows: the worker's own sentence when it found nothing, else a fixed line naming the cause and the fix.
+export function failedLine(cause: FailureCause, reason: string | null): string {
+  if (cause === "limitHit") {
+    return "I ran out of time on that one before I had an answer.";
+  }
+  if (cause === "nothingFound") return reason ?? failureLine("error");
+  return failureLine(cause);
 }
 
 // The line of a failed front call: setup problems name the fix; otherwise it depends on whether Baymax had already spoken.

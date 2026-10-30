@@ -7,6 +7,7 @@ import type {
 import type { Decision } from "./decision";
 import { appendResult } from "./history";
 import {
+  failedLine,
   fixedLines,
   incompleteLines,
   partialParentLine,
@@ -27,7 +28,10 @@ const QUEUE_LIMIT = 3;
 
 type RunEvent = Extract<
   EngineEvent,
-  { type: "progress" } | { type: "result" } | { type: "incomplete" }
+  | { type: "progress" }
+  | { type: "result" }
+  | { type: "incomplete" }
+  | { type: "failed" }
 >;
 type Admitted = Extract<Decision, { route: "newTask" | "followUp" }>;
 
@@ -93,6 +97,18 @@ function endIncomplete(
   record.card.missing = lines.missing;
   // Without a fixed line, the spoken text is the worker's own (its next question or its answer), said as given.
   say(change, record.card.taskId, lines.spoken, "incomplete");
+}
+
+function endFailed(
+  change: Change,
+  record: TaskRecord,
+  event: Extract<EngineEvent, { type: "failed" }>,
+): void {
+  const line = failedLine(event.cause, event.reason);
+  closeTask(change, record, "incomplete", event.findings);
+  record.card.answer = event.findings;
+  record.card.line = line;
+  say(change, record.card.taskId, line, "failure");
 }
 
 function clearForLeaving(change: Change, record: TaskRecord): void {
@@ -260,6 +276,9 @@ export function receiveRunEvent(
     case "incomplete":
       endIncomplete(change, record, event.incomplete);
       return true;
+    case "failed":
+      endFailed(change, record, event);
+      return true;
   }
 }
 
@@ -267,6 +286,7 @@ function carriedFindings(event: EngineEvent): Findings | null {
   switch (event.type) {
     case "cancelled":
     case "result":
+    case "failed":
       return event.findings;
     case "incomplete":
       return event.incomplete.findings;

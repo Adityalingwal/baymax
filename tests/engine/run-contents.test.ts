@@ -15,10 +15,7 @@ afterEach(async () => {
   await closeRuns();
 });
 
-const oneCited = {
-  cardText: "Hermes runs a loop.",
-  claims: [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }],
-};
+const oneCited = { report: "Hermes runs a loop.", sourceIds: ["s1"] };
 
 const steps = () => [
   toolUseReply([{ search: "hermes" }]),
@@ -66,7 +63,12 @@ describe("runTask with Exa Contents", () => {
   });
 });
 
-const thin = { status: "sourcesThin", cardText: "Little found.", claims: [] };
+const nothing = {
+  report: "",
+  line: "",
+  sourceIds: [],
+  nothingFound: "Little found.",
+};
 const readEntries = (entries: { event: string; tool?: string }[]) =>
   entries.filter(
     (entry) => entry.event === "toolCall" && entry.tool === "read",
@@ -94,8 +96,7 @@ describe("runTask refused reads", () => {
     async ({ url, logged }) => {
       const run = await startRun([
         toolUseReply([{ read: url }]),
-        workerAnswer(thin),
-        workerAnswer(thin),
+        workerAnswer(nothing),
       ]);
       run.port.send(runTask());
       await run.ended();

@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ModelOutcome, ModelRequest } from "../../src/providers/anthropic";
+import type { ModelRequest } from "../../src/providers/anthropic";
 import type { Findings } from "../../src/shared/cards";
 import type { EngineEvent } from "../../src/shared/engine";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
+  failed,
+  goodAnswer,
   hits,
   pageUrl,
   runTask,
@@ -34,11 +36,8 @@ const listTwo: Findings = {
   openPoints: [],
 };
 
-const limitHit = (findings: Findings | null): EngineEvent => ({
-  type: "incomplete",
-  taskId: "task-1",
-  incomplete: { kind: "limitHit", findings },
-});
+const limitHit = (findings: Findings | null): EngineEvent =>
+  failed("limitHit", findings);
 
 // The fake clock reads what the run has done so far, so a chosen call or batch takes the whole active time.
 type Seen = { calls: number; connects: number };
@@ -170,46 +169,43 @@ describe("runTask full prompt", () => {
   });
 });
 
-const cited = {
-  cardText: "Hermes runs a loop.",
-  claims: [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }],
-};
-const checkedCard = {
-  cardText: "Hermes runs a loop.",
-  sources: [one],
-  openPoints: ["How it stores memory"],
-};
-
-type LateRow = { name: string; slowCall: number; end: EngineEvent };
-
-const lateRows: LateRow[] = [
-  {
-    name: "an answer is kept",
-    slowCall: 2,
-    end: {
-      type: "result",
-      taskId: "task-1",
-      spokenLine: "Hermes runs a loop of model calls and tools.",
-      findings: checkedCard,
-    },
-  },
-];
-
 // A reply already received is used; the limit stops only the next step.
-describe("runTask a call past the active time", () => {
-  it.each(lateRows)("ends as received: $name", async (row) => {
-    const steps: ModelOutcome[] = [readOne(), workerAnswer(cited)];
+describe("runTask a valid answer that uses up the budget", () => {
+  it.each([
+    {
+      name: "active time",
+      clock: (seen: Seen) => (seen.calls >= 2 ? 250_000 : 0),
+    },
+    {
+      name: "dollars",
+      clock: still,
+      input: 248_000,
+    },
+  ])("keeps its line and findings: $name", async ({ clock, input }) => {
+    const answer = workerAnswer({ sourceIds: ["s1"] });
+    if (answer.ok && input !== undefined) {
+      answer.message.usage.input_tokens = input;
+    }
     const run = await startClocked({
-      steps: () => steps,
+      steps: () => [readOne(), answer],
       searches: [],
-      clock: (seen) => (seen.calls >= row.slowCall ? 250_000 : 0),
+      clock,
     });
     run.port.send(runTask());
     const events = await run.ended();
     expect(events.filter((event) => event.type !== "progress")).toEqual([
-      row.end,
+      {
+        type: "result",
+        taskId: "task-1",
+        spokenLine: goodAnswer.line,
+        findings: {
+          cardText: goodAnswer.report,
+          sources: [one],
+          openPoints: [],
+        },
+      },
     ]);
-    expect(run.requests).toHaveLength(row.slowCall);
+    expect(run.requests).toHaveLength(2);
   });
 });
 

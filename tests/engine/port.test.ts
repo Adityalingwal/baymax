@@ -95,9 +95,11 @@ describe("startEngine holds", () => {
     const engine = startTestEngine([thrown, failedCall]);
     engine.port.send(runTask());
     const errorEnd: EngineEvent = {
-      type: "incomplete",
+      type: "failed",
       taskId: "task-1",
-      incomplete: { kind: "error", cause: "error", findings: null },
+      cause: "error",
+      reason: null,
+      findings: null,
     };
     expect(await engine.settle(1)).toEqual([errorEnd]);
     engine.port.send(runTask());
@@ -171,9 +173,11 @@ describe("startEngine dev log", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(events).toEqual([
       {
-        type: "incomplete",
+        type: "failed",
         taskId: "task-1",
-        incomplete: { kind: "error", cause: "error", findings: null },
+        cause: "error",
+        reason: null,
+        findings: null,
       },
       cancelled("task-2"),
     ]);
@@ -202,7 +206,7 @@ describe("startEngine command from a listener", () => {
     const engine = startTestEngine([failedCall, "waitForAbort"]);
     let resent = false;
     engine.port.onMessage((event) => {
-      if (event.type !== "incomplete" || resent) return;
+      if (event.type !== "failed" || resent) return;
       resent = true;
       engine.port.send(runTask());
     });
@@ -221,10 +225,7 @@ describe("startEngine command from a listener", () => {
     });
     engine.port.send(cancel("task-1"));
     const events = await engine.settle(2);
-    expect(events.map((event) => event.type)).toEqual([
-      "incomplete",
-      "cancelled",
-    ]);
+    expect(events.map((event) => event.type)).toEqual(["failed", "cancelled"]);
     expect(engine.requests).toHaveLength(2);
     engine.port.close();
   });
