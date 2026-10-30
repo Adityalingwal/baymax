@@ -1,5 +1,8 @@
-import type { ContentsFn } from "../../../providers/page-contents";
-import type { SearchFn, SearchOutcome } from "../../../providers/search";
+import type {
+  ContentsFn,
+  SearchFn,
+  SearchOutcome,
+} from "../../../providers/exa";
 import { connectSocket, lookupHost } from "./connection";
 import type { Connect, LookupAll } from "./connection";
 import { pageTextFrom } from "./page-text";

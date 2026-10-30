@@ -4,7 +4,7 @@ import type {
   ModelOutcome,
   ModelRequest,
 } from "../providers/anthropic";
-import type { ContentsFn } from "../providers/page-contents";
+import type { ContentsFn } from "../providers/exa";
 import type { EngineEvent } from "../shared/engine";
 import type { DevLogEntry } from "./core/dev-log";
 import { startEngine } from "./index";

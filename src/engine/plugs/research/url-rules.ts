@@ -1,5 +1,5 @@
 import { BlockList, isIP } from "node:net";
-import { exaApiHost } from "../../../providers/exa-request";
+import { exaApiHost } from "../../../providers/exa";
 
 export type RefusalRule =
   | "scheme"

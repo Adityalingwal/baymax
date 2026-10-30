@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readPageContents } from "./page-contents";
-import type { ContentsOutcome } from "./page-contents";
+import { readPageContents } from "./exa";
+import type { ContentsOutcome } from "./exa";
 
 const key = "exa-test-key-123";
 const never = new AbortController().signal;

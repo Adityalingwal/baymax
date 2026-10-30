@@ -1,7 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ModelOutcome } from "../providers/anthropic";
-import type { ContentsFn } from "../providers/page-contents";
-import type { SearchFn, SearchOutcome } from "../providers/search";
+import type { ContentsFn, SearchFn, SearchOutcome } from "../providers/exa";
 import type { Findings } from "../shared/cards";
 import type {
   EngineCommand,

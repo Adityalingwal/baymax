@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type {
-  ContentsFn,
-  ContentsOutcome,
-} from "../../../providers/page-contents";
+import type { ContentsFn, ContentsOutcome } from "../../../providers/exa";
 import { htmlPage, sendRoute, startFakeNetwork } from "./fake-network";
 import type { FakeNetwork } from "./fake-network";
 import { createWebTool } from "./web-tool";

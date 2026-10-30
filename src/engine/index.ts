@@ -1,9 +1,7 @@
 import { createModelCall } from "../providers/anthropic";
 import type { ModelCall } from "../providers/anthropic";
-import { readPageContents } from "../providers/page-contents";
-import type { ContentsFn } from "../providers/page-contents";
-import { searchWeb } from "../providers/search";
-import type { SearchFn } from "../providers/search";
+import { readPageContents, searchWeb } from "../providers/exa";
+import type { ContentsFn, SearchFn } from "../providers/exa";
 import type { Findings } from "../shared/cards";
 import type {
   EngineCommand,
@@ -25,8 +23,8 @@ export type EngineFakes = {
   model?: ModelCall; // replaces the real Anthropic call (src/providers/anthropic.ts)
   now?: () => number; // milliseconds; replaces performance.now
   log?: DevLog; // replaces the dev log
-  search?: SearchFn; // replaces the real search call (src/providers/search.ts)
-  contents?: ContentsFn; // replaces the real page-contents call (src/providers/page-contents.ts)
+  search?: SearchFn; // replaces the real search call (src/providers/exa.ts)
+  contents?: ContentsFn; // replaces the real page-contents call (src/providers/exa.ts)
   lookup?: WebAccess["lookup"]; // replaces DNS for page reads
   connect?: WebAccess["connect"]; // replaces sockets for page reads
   today?: () => string; // ISO date, such as 2026-10-27

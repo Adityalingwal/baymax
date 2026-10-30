@@ -1,6 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { ContentsFn } from "../../../providers/page-contents";
-import type { SearchFn } from "../../../providers/search";
+import type { ContentsFn, SearchFn } from "../../../providers/exa";
 import type { Findings, TaskId } from "../../../shared/cards";
 import type {
   EngineCommand,

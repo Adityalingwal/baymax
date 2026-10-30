@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelOutcome } from "../providers/anthropic";
-import type { SearchOutcome } from "../providers/search";
+import type { SearchOutcome } from "../providers/exa";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,

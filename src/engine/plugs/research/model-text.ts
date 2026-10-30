@@ -1,4 +1,4 @@
-import type { SearchHit } from "../../../providers/search";
+import type { SearchHit } from "../../../providers/exa";
 import type { Findings } from "../../../shared/cards";
 import type { ParentResult } from "../../../shared/engine";
 import type { ReadPage } from "./page-text";

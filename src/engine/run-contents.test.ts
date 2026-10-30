@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ContentsFn } from "../providers/page-contents";
+import type { ContentsFn } from "../providers/exa";
 import {
   closeRuns,
   hits,

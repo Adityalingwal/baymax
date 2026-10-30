@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { SearchFailure } from "../../../providers/search";
+import type { SearchFailure } from "../../../providers/exa";
 import type { ProgressStep } from "../../../shared/engine";
 import type { DispatchDeps, DispatchJob } from "../../core/dispatch";
 import { taskLimits } from "../../core/limits";
