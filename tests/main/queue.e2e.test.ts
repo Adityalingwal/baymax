@@ -28,7 +28,6 @@ describe("five typed questions through the wiring", () => {
     expect(runTaskIds(w)).toEqual(["t1"]);
     expect(w.card("t1")).toMatchObject({
       state: "running",
-      reply: "Checking hermes.",
       line: null,
     });
     for (const taskId of ["t2", "t3", "t4", "t5"]) {
@@ -74,7 +73,6 @@ describe("the queue moving on through the wiring", () => {
     expect(runTaskIds(w)).toEqual(["t1", "t2"]);
     expect(w.card("t2")).toMatchObject({
       state: "running",
-      reply: "Checking rust.",
       line: null,
     });
     expect(w.card("t3")?.state).toBe("queued");

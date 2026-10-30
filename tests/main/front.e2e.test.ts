@@ -76,9 +76,7 @@ describe("the work route", () => {
     expect(w.card("t1")).toMatchObject({
       state: "running",
       title: "the forecast",
-      sayBack: null,
       line: null,
-      reply: "I'll check the forecast.",
       parentTaskId: null,
     });
     expect(w.port.sent).toEqual([

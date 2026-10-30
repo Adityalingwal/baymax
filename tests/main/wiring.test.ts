@@ -43,7 +43,6 @@ describe("wireMain typed path", () => {
     expect(w.port.sent.at(-1)).toMatchObject({ type: "runTask", taskId: "t1" });
     expect(w.card("t1")).toMatchObject({
       state: "running",
-      reply: "I'll look into Hermes.",
       line: null,
     });
     w.port.emit({

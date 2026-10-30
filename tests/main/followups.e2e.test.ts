@@ -311,7 +311,6 @@ describe("a follow-up with the real engine", () => {
     expect(shown).toMatchObject({
       parentTaskId: "t1",
       line: null,
-      reply: "I'll compare them.",
     });
     expect(lastRun(w, "t2")).toMatchObject({
       parent: { taskId: "t1", outcome: "failed", findings: null },

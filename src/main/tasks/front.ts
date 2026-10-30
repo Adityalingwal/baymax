@@ -118,7 +118,7 @@ function applyDecision(
       holdQuestion(change, target, line, attempt.order);
       return true;
     case "work":
-      return admit(change, target, decision, line);
+      return admit(change, target, decision);
   }
 }
 

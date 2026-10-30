@@ -14,9 +14,7 @@ function demoCard(taskId: TaskId, fields: Partial<TaskCard>): TaskCard {
     words: "",
     title: null,
     parentTaskId: null,
-    sayBack: null,
     line: null,
-    reply: null,
     spokenLine: null,
     step: null,
     sourcesRead: 0,
@@ -70,14 +68,12 @@ const demoCards: TaskCard[] = [
     state: "done",
     words: "How does Hermes agent work inside?",
     title: "How Hermes agent works inside",
-    sayBack: "how Hermes agent works inside",
     sourcesRead: 4,
     answer: { cardText: hermesAnswer, sources: hermesSources },
   }),
   demoCard("demo-2", {
     state: "done",
     words: "Thanks, that helps",
-    reply: "Glad it helped. Ask me anything else.",
     answer: {
       cardText: "Glad it helped. Ask me anything else.",
       sources: [],
@@ -86,7 +82,6 @@ const demoCards: TaskCard[] = [
   demoCard("demo-3", {
     state: "failed",
     words: "Compare the pricing of three search APIs",
-    sayBack: "the pricing of three search APIs",
     line: "I ran out of time on that one before I had an answer.",
     sourcesRead: 3,
     answer: {
@@ -109,7 +104,6 @@ const demoCards: TaskCard[] = [
   demoCard("demo-6", {
     state: "running",
     words: "How is Hermes different from Claude Code?",
-    sayBack: "how Hermes differs from Claude Code",
     line: "Let me check.",
     step: "reading github.com",
     sourcesRead: 3,
@@ -122,7 +116,6 @@ const demoCards: TaskCard[] = [
   demoCard("demo-8", {
     state: "clarifying",
     words: "Find me a good laptop",
-    sayBack: "a good laptop",
   }),
   demoCard("demo-9", {
     state: "thinking",

@@ -67,7 +67,6 @@ export function endChat(change: Change, record: TaskRecord, text: string) {
   closeTask(change, record, { outcome: "done", findings, spokenLine: text });
   record.spokenLine = text;
   record.card.spokenLine = text;
-  record.card.reply = text;
   record.card.answer = findings;
   record.card.line = null;
 }
@@ -179,7 +178,6 @@ export function admit(
   change: Change,
   record: TaskRecord,
   decision: Admitted,
-  line: string,
 ): boolean {
   const { model } = change;
   const { card } = record;
@@ -188,7 +186,6 @@ export function admit(
   record.admission = { ask: decision.ask };
   record.topic = decision.topic;
   card.title = record.topic;
-  card.reply = line;
   card.parentTaskId = decision.parentTaskId;
   card.canRetry = false;
   card.line = null;
