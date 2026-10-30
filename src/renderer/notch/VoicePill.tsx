@@ -14,7 +14,7 @@ type VoicePillProps = {
   pill: PillState;
   windowWidth: number;
   interactive: boolean;
-  quiet: boolean; // the answer island outlives its line: the word and mute fade out, and the strip stays empty
+  quiet: boolean; // the answer island outlives its line: the word and mute fade out, and the strip stays empty until it has closed
   layers: VoiceLayers;
   onMute: () => void;
 };

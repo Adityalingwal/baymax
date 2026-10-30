@@ -197,7 +197,6 @@ function ClosedLayers(props: ClosedLayersProps) {
   const { frame, open, closed, voice, layers } = props;
   const showing = (view: ClosedShape["view"]) => !open && closed.view === view;
   const onIsland = showing("island") || showing("report");
-  const islandView = closed.view === "island" || closed.view === "report";
   return (
     <>
       <RunningRing
@@ -210,7 +209,7 @@ function ClosedLayers(props: ClosedLayersProps) {
         pill={voice.pill}
         windowWidth={frame.width}
         interactive={showing("pill") || onIsland}
-        quiet={islandView && !voice.pill.shown}
+        quiet={props.island.line !== null && !voice.pill.shown}
         layers={layers}
         onMute={props.onMute}
       />
