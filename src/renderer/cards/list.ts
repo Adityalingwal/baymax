@@ -2,7 +2,7 @@ import type { TaskCard, TaskState } from "../../shared/cards";
 
 type ListCard = Pick<TaskCard, "state">;
 
-// One list for the demo (tabs come later): work in flight, then results.
+// Work in flight, then results.
 function rank(state: TaskState): number {
   return state === "done" || state === "failed" || state === "cancelled"
     ? 1

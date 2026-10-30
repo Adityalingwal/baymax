@@ -45,19 +45,18 @@ const rightWing = { maxWidth: "calc(50% - var(--notch-width) / 2)" };
 type TopBarProps = {
   accessibility: boolean | null;
   state: DisplayState;
-  demo: boolean;
   setMuted: CardActions["setMuted"];
   openAccessibilitySettings: () => void;
 };
 
 // The 32 pt top strip (content only in its wings), then the Accessibility hint and the notice when there is one.
 export function TopBar(props: TopBarProps) {
-  const { accessibility, state, demo, setMuted } = props;
+  const { accessibility, state, setMuted } = props;
   const needsAccess = accessibility === false;
   return (
     <>
       <div className="absolute inset-x-0 top-0 flex h-8 items-center justify-between px-[14px]">
-        <span className="type-label">{demo ? "Demo" : ""}</span>
+        <span />
         <div
           className="flex min-w-0 items-center justify-end gap-2"
           style={rightWing}

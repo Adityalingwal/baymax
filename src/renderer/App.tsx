@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useReducer, useState, type Dispatch } from "react";
+import { useEffect, useState } from "react";
 import type { DisplayState } from "../shared/cards";
 import type { VoicePhase } from "../shared/ipc";
 import type { CardActions } from "./actions";
 import { orderCards } from "./cards/list";
 import { TaskCard } from "./cards/TaskCard";
-import { applyDemoAction, demoDisplayState, type DemoAction } from "./demo";
 import { startMicrophone } from "./microphone";
 import { NotchShell } from "./notch/NotchShell";
 import { startPlayback } from "./playback";
@@ -46,45 +45,6 @@ function useMainState() {
   return { accessibility, holdKeyLabel, display, phase };
 }
 
-// Cmd+Shift+D or Ctrl+Shift+D; event.code, since Shift changes event.key per layout.
-function useDemoSwitch(): boolean {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    const toggle = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return;
-      if (event.code !== "KeyD") return;
-      event.preventDefault();
-      setOn((value) => !value);
-    };
-    window.addEventListener("keydown", toggle);
-    return () => window.removeEventListener("keydown", toggle);
-  }, []);
-  return on;
-}
-
-function demoActions(dispatch: Dispatch<DemoAction>): CardActions {
-  return {
-    submitQuestion: (payload) => dispatch({ kind: "submitQuestion", payload }),
-    cancelTask: (payload) => dispatch({ kind: "cancelTask", payload }),
-    retryTask: (payload) => dispatch({ kind: "retryTask", payload }),
-    openSource: (payload) => {
-      console.log("[Demo] openSource", payload);
-      dispatch({ kind: "openSource", payload });
-    },
-    setMuted: (payload) => dispatch({ kind: "setMuted", payload }),
-  };
-}
-
-// The demo display state and its local actions while Cmd+Shift+D is on; main's state and window.baymax otherwise.
-function useShownState(display: DisplayState) {
-  const demo = useDemoSwitch();
-  const [demoState, dispatch] = useReducer(applyDemoAction, demoDisplayState);
-  const demoCardActions = useMemo(() => demoActions(dispatch), [dispatch]);
-  const state = demo ? demoState : display;
-  const actions: CardActions = demo ? demoCardActions : window.baymax;
-  return { demo, state, actions };
-}
-
 function ChatList({ chat }: { chat: DisplayState["chat"] }) {
   if (chat.length === 0) return null;
   return (
@@ -100,9 +60,9 @@ function ChatList({ chat }: { chat: DisplayState["chat"] }) {
 
 export function App() {
   const { accessibility, holdKeyLabel, display, phase } = useMainState();
-  const { demo, state, actions } = useShownState(display);
+  const actions: CardActions = window.baymax;
   const [draft, setDraft] = useState("");
-  const cards = orderCards(state.tasks);
+  const cards = orderCards(display.tasks);
 
   useEffect(() => {
     const stopMicrophone = startMicrophone(window.baymax);
@@ -118,20 +78,19 @@ export function App() {
       needsAccess={accessibility === false}
       draft={draft}
       phase={phase}
-      tasks={state.tasks}
-      muted={state.muted}
+      tasks={display.tasks}
+      muted={display.muted}
       setMuted={actions.setMuted}
     >
       <TopBar
         accessibility={accessibility}
-        state={state}
-        demo={demo}
+        state={display}
         setMuted={actions.setMuted}
         openAccessibilitySettings={() =>
           window.baymax.openAccessibilitySettings()
         }
       />
-      <ChatList chat={state.chat} />
+      <ChatList chat={display.chat} />
       {cards.length > 0 && (
         <section className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto">
           {cards.map((card) => (
