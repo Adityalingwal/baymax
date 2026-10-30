@@ -47,7 +47,11 @@ function canStop(model: Model, taskId: TaskId): boolean {
 // A task that can still say more keeps its exchange, so the later line has somewhere to go.
 function canSayMore(model: Model, taskId: TaskId): boolean {
   const state = model.records.get(taskId)?.card.state;
-  return state === "queued" || state === "running" || state === "failed";
+  if (state === "queued" || state === "running") return true;
+  return (
+    model.failureCall?.taskId === taskId ||
+    model.pendingFailures.some((pending) => pending.taskId === taskId)
+  );
 }
 
 function canRetry(model: Model, taskId: TaskId): boolean {
