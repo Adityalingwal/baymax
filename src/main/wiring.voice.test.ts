@@ -2,9 +2,20 @@ import { describe, expect, it } from "vitest";
 import type { Synthesis } from "../providers/deepgram";
 import type { UtteranceId } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
-import { fixedLines } from "./tasks/lines";
 import { failFront, fakeSender, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
+
+// The fixed lines as written, so a changed cause or fix in the app fails here.
+const fixedLines = {
+  wordsNotCaught: "I didn't catch that, say it again.",
+  micBlocked:
+    "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question.",
+  noMicrophone:
+    "I can't find a microphone. Connect one, or type your question.",
+  voiceUnavailable:
+    "Voice isn't working right now. You can type your question instead.",
+  restarting: "Baymax hit a problem and is restarting.",
+};
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -103,14 +114,6 @@ describe("main's lines and voice", () => {
     expect(w.speeches).toEqual([]);
   });
 
-  it("mutes main's state and speech together", () => {
-    const w = wire();
-    w.send(ipcChannels.setMuted, { muted: true });
-    w.wiring.state.showNotice("wordsNotCaught");
-    expect(w.published.at(-1)?.muted).toBe(true);
-    expect(w.syntheses).toEqual([]);
-  });
-
   it("shows and says voice down from the start without a Deepgram key", () => {
     const w = wire({ deepgramKeyPresent: false });
     expect(w.published).toHaveLength(1);
@@ -121,6 +124,20 @@ describe("main's lines and voice", () => {
     expect(w.syntheses.map((call) => call.input)).toEqual([
       fixedLines.voiceUnavailable,
     ]);
+  });
+});
+
+describe("mute", () => {
+  it("mutes main's state and speech together", () => {
+    const w = wire();
+    w.send(ipcChannels.setMuted, { muted: true });
+    w.wiring.state.showNotice("wordsNotCaught");
+    expect(w.published.at(-1)?.muted).toBe(true);
+    expect(w.syntheses).toEqual([]);
+    w.send(ipcChannels.setMuted, { muted: false });
+    expect(w.published.at(-1)?.muted).toBe(false);
+    w.wiring.voice.say({ taskId: "t1", text: "Again.", kind: "answer" });
+    expect(w.syntheses.map((call) => call.input)).toEqual(["Again."]);
   });
 });
 

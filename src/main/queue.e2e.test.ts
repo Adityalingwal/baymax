@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { TaskId } from "../shared/cards";
-import { fixedLines } from "./tasks/lines";
 import { admitAs, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
+
+// The fixed lines as written, so a changed cause or fix in the app fails here.
+const fixedLines = {
+  queued: "Okay, I'll look at that after the current one.",
+  queueFull: "I already have three waiting. Cancel one or ask again later.",
+};
 
 const names = ["hermes", "rust", "zig", "go", "ocaml"];
 
@@ -83,6 +88,23 @@ describe("speech for five typed questions", () => {
 });
 
 describe("the queue moving on through the wiring", () => {
+  it("says only the running task's result when the next one starts", async () => {
+    const w = await fiveAsked();
+    await flush();
+    await w.playAll();
+    const spokenBefore = w.spoken().length;
+    w.port.emit({
+      type: "result",
+      taskId: "t1",
+      spokenLine: "Done. spoken",
+      findings: { cardText: "Done.", sources: [], openPoints: [] },
+    });
+    expect(runTaskIds(w)).toEqual(["t1", "t2"]);
+    await flush();
+    await w.playAll();
+    expect(w.spoken().slice(spokenBefore)).toEqual(["Done. spoken"]);
+  });
+
   it("starts the oldest queued task when the running one ends, and keeps the rest in order", async () => {
     const w = await fiveAsked();
     finish(w, "t1");

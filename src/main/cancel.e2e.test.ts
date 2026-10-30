@@ -224,6 +224,20 @@ function expectNextStarted(
   expect(unmoved(others(w, row.taskId))).toEqual(unmoved(othersBefore));
 }
 
+describe("cancelling a running task's speech", () => {
+  it("stops its playing line at the cancel, before the engine replies", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await w.settleNext();
+    const lineId = w.speeches[0].lineId;
+    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    expect(w.port.events).toEqual([]);
+    expect(w.stops).toEqual([{ lineId }]);
+    w.port.emit(cancelled("t1"));
+    expect(w.stops).toEqual([{ lineId }]);
+  });
+});
+
 describe("the queue after a cancel", () => {
   it.each(rows)(
     "runs the waiting tasks oldest first after $name",

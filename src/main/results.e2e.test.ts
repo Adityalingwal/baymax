@@ -131,6 +131,14 @@ const incompleteRows: IncompleteRow[] = [
   },
   ...errorCauseRows,
   {
+    name: "error caused by noCredit, nothing found",
+    incomplete: { kind: "error", cause: "noCredit", findings: null },
+    line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
+    missing: null,
+    spoken:
+      "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
+  },
+  {
     name: "unchecked",
     incomplete: {
       kind: "unchecked",

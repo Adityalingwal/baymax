@@ -14,6 +14,7 @@ import {
 } from "./fake-network";
 import type { FakeNetwork, FakeRoute } from "./fake-network";
 import type { PageOutcome, ReadLimits } from "./read-page";
+import { createWebTool } from "./web-tool";
 
 const gzipped = promisify(gzip);
 const brotlied = promisify(brotliCompress);
@@ -378,5 +379,41 @@ describe("readPage protocol upgrades", () => {
       cause: "httpError",
     });
     expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+// The Exa path's own cap: the port cannot set the read limits, so this stays below it.
+describe("createWebTool reads through Exa Contents", () => {
+  it("keeps Exa's text, collapsed and capped, under the checked URL it asked for", async () => {
+    const asked: string[] = [];
+    const web = createWebTool({
+      search: async () => ({ ok: true, hits: [] }),
+      contents: async (url) => {
+        asked.push(url);
+        return {
+          ok: true,
+          title: " Exa\n  title ",
+          text: `  Exa   text\n\n\n\nfrom its crawler. ${words.repeat(10)}`,
+        };
+      },
+      lookup: network.lookup,
+      connect: network.connect,
+      limits: { timeoutMs: 5_000, minChars: 20, maxChars: 60 },
+    });
+    const outcome = await web.read(
+      "http://example.test./one#part",
+      new AbortController().signal,
+    );
+    expect(outcome).toEqual({
+      ok: true,
+      page: {
+        id: "s1",
+        url: "http://example.test/one",
+        title: "Exa title",
+        text: "Exa text\n\nfrom its crawler. Plain words for a reader to keep",
+      },
+    });
+    expect(asked).toEqual(["http://example.test/one"]);
+    expect(network.targets).toHaveLength(0);
   });
 });
