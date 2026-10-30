@@ -7,8 +7,6 @@ import type { ReadPage } from "./page-text";
 import { rewriteMessage } from "./worker-prompt";
 import type { AnswerFault } from "./worker-prompt";
 
-export type KeptAnswer = { findings: Findings; spokenLine: string };
-
 export type WorkTurn =
   | {
       kind: "turn";
@@ -27,7 +25,7 @@ export type Rounds = {
   pages: () => ReadPage[];
   history: Anthropic.MessageParam[];
   work: () => Promise<WorkTurn>;
-  keep: (answer: KeptAnswer) => void; // told each answer that passes the check, and only those
+  keep: (findings: Findings) => void; // told only a card that passed the check, so a cancel racing the result still carries it
   endShort: (cause: FailureCause) => EngineEvent;
 };
 
@@ -69,7 +67,7 @@ function checkedTurn(rounds: Rounds, json: string): RoundEnd {
     return { kind: "event", event };
   }
   const { spokenLine, findings } = check;
-  rounds.keep({ findings, spokenLine });
+  rounds.keep(findings);
   const event: EngineEvent = { type: "result", taskId, spokenLine, findings };
   return { kind: "event", event };
 }

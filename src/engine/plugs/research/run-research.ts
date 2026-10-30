@@ -16,7 +16,7 @@ import { runWorkerLoop } from "../../core/worker-loop";
 import { answerSchema, foundFindings } from "./answer";
 import type { Connect, LookupAll } from "./connection";
 import { runRounds } from "./rounds";
-import type { KeptAnswer, Rounds, WorkTurn } from "./rounds";
+import type { Rounds, WorkTurn } from "./rounds";
 import { createToolRunner, researchTools } from "./tool-runner";
 import { hostOf } from "./url-rules";
 import { createWebTool } from "./web-tool";
@@ -90,19 +90,16 @@ async function work(worker: Worker): Promise<WorkTurn> {
 function startRounds(run: ResearchRun): Rounds {
   const { taskId } = run.task;
   const web = createWebTool(run.access);
-  let kept: KeptAnswer | null = null;
-  run.found.current = () => foundFindings(kept?.findings ?? null, web.pages());
-  // A rejected answer is never kept, so a run with no kept answer shows only the pages it read.
-  const endShort = (cause: FailureCause): EngineEvent =>
-    kept === null
-      ? {
-          type: "failed",
-          taskId,
-          cause,
-          reason: null,
-          findings: run.found.current(),
-        }
-      : { type: "result", taskId, ...kept };
+  let kept: Findings | null = null;
+  run.found.current = () => foundFindings(kept, web.pages());
+  // A valid answer ends the run at once, so a run that ends short shows only the pages it read.
+  const endShort = (cause: FailureCause): EngineEvent => ({
+    type: "failed",
+    taskId,
+    cause,
+    reason: null,
+    findings: foundFindings(null, web.pages()),
+  });
   const job = { ...run.task, role: "worker" as const };
   const progress = (step: ProgressStep, sourcesRead: number) =>
     run.progress({ type: "progress", taskId, step, sourcesRead });
@@ -120,7 +117,7 @@ function startRounds(run: ResearchRun): Rounds {
     pages: web.pages,
     history,
     work: () => work(worker),
-    keep: (answer) => (kept = answer),
+    keep: (findings) => (kept = findings),
     endShort,
   };
 }
