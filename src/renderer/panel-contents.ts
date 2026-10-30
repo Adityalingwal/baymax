@@ -7,7 +7,7 @@ import type {
 import { shownReport } from "./cards/forms";
 import { orderCards } from "./cards/list";
 
-// What the open panel shows. Rules: design-lock-panel-contents.md.
+// What the open panel shows.
 export type PanelTab = "chat" | "tasks";
 
 // reportOf: the task whose report page replaces the Tasks list.

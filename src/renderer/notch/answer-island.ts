@@ -3,7 +3,6 @@ import type { LineId, VoicePhase } from "../../shared/ipc";
 import { closedTiming } from "./closed-plans";
 
 // The answer island's life, from its result line's first audio until main hears it has closed.
-// Rules: design-lock-panel-contents.md, "Answer island"; the close motion: closed-plans.ts.
 export const islandDelays = {
   closeMs: 2000, // after the line ends, counted only while the pointer is off
   closingMs: closedTiming.shapeMs,

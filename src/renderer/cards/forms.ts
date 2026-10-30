@@ -30,7 +30,7 @@ export type CardContents = {
   sources: Source[]; // the row on the card itself; a report keeps its sources on its page
 };
 
-// What each kind of card shows. Rules: design-lock-panel-contents.md, "Tasks tab" and "Report card".
+// What each kind of card shows.
 export function cardContents(card: TaskCard): CardContents {
   const { state, answer } = card;
   const report = state === "done" ? shownReport(card) : null;

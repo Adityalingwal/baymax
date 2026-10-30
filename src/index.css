@@ -268,7 +268,7 @@ body {
   cursor: pointer;
 }
 
-/* The Chat tab: design-lock-panel-contents.md, "Chat tab". */
+/* The Chat tab's bubbles and times. */
 .chat-bubble {
   max-width: 80%;
   min-width: 0;
