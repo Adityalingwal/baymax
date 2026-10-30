@@ -22,11 +22,32 @@ export type Silhouette = {
   ry: number;
 };
 
-// Sizes from the locked design: notch-design-locked.md, "Panel".
-export const panelShape = { ear: 6, rx: 26, ry: 28, strip: 32 } as const;
+// Sizes from the locked design: design-lock-shape.md, "Ears".
+export const panelShape = { ear: 24, rx: 26, ry: 28, strip: 32 } as const;
+export const pillShape: Silhouette = {
+  width: 360,
+  height: 32,
+  ear: 14,
+  rx: 16.6,
+  ry: 18,
+};
+const ringWing = 18;
 const hoverMargin = 12;
-// The corner curve's control points, as in the locked pill preview.
+// The curves' control points, as in the selected ears preview.
+const earPull = 0.3;
 const cornerPull = 0.35;
+// Stops the ear passing the shape's bottom on a frame shorter than its ear.
+const earClearance = 4;
+
+export function ringSilhouette(shape: WindowShape): Silhouette {
+  return {
+    width: shape.notchWidth + 2 * ringWing,
+    height: shape.notchHeight,
+    ear: 8,
+    rx: 10,
+    ry: 10,
+  };
+}
 
 // Ears count inside the window, so the open panel's top edge spans the whole window and its body is two ears narrower.
 export function openBodyWidth(geometry: OutlineGeometry): number {
@@ -65,13 +86,41 @@ export function silhouettePath(windowWidth: number, s: Silhouette): string {
   const left = round((windowWidth - s.width) / 2);
   const right = round(left + s.width);
   const n = (value: number) => round(value);
-  const { ear, rx, ry, height: h } = s;
+  const h = s.height;
+  const ear = Math.min(s.ear, Math.max(0, h - earClearance));
+  // The ear and the corner share the height; without this the outline folds back on itself and shows a cut line.
+  const ry = Math.min(s.ry, h - ear);
+  const rx = s.ry === 0 ? 0 : (s.rx * ry) / s.ry;
+  const pull = earPull * ear;
   return [
-    `M${n(left - ear)},0 H${n(right + ear)} Q${right},0 ${right},${n(ear)}`,
+    `M${n(left - ear)},0 H${n(right + ear)} C${n(right + pull)},0 ${right},${n(ear - pull)} ${right},${n(ear)}`,
     `V${n(h - ry)} C${right},${n(h - cornerPull * ry)} ${n(right - cornerPull * rx)},${n(h)} ${n(right - rx)},${n(h)}`,
     `H${n(left + rx)} C${n(left + cornerPull * rx)},${n(h)} ${left},${n(h - cornerPull * ry)} ${left},${n(h - ry)}`,
-    `V${n(ear)} Q${left},0 ${n(left - ear)},0 Z`,
+    `V${n(ear)} C${left},${n(ear - pull)} ${n(left - pull)},0 ${n(left - ear)},0 Z`,
   ].join(" ");
+}
+
+const rimInset = 1;
+const rimAlong = 56;
+
+// One of the pill's corner lines, its 2 pt stroke just inside the edge: from where the ear ends, round the corner, then along the bottom.
+export function rimLine(side: "left" | "right", boxWidth: number) {
+  const { height, rx, ry } = pillShape;
+  const x = side === "left" ? rimInset : boxWidth - rimInset;
+  const along = (by: number) => round(side === "left" ? x + by : x - by);
+  const bottom = height - rimInset;
+  const cornerX = rx - rimInset;
+  const cornerY = ry - rimInset;
+  const end = along(cornerX + rimAlong);
+  return {
+    x,
+    end,
+    path: [
+      `M${x},${round(bottom - cornerY)}`,
+      `C${x},${round(bottom - cornerPull * cornerY)} ${along(cornerPull * cornerX)},${bottom} ${along(cornerX)},${bottom}`,
+      `H${end}`,
+    ].join(" "),
+  };
 }
 
 // The hover sensor that opens the panel: the notch and a margin past it, since the notch has no pixels to point at.

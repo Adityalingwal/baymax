@@ -1,8 +1,8 @@
 import type { RefObject } from "react";
+import { pillShape, rimLine } from "./outline";
 import type { PillState } from "./pill";
 
-// Sizes from the locked design: notch-design-locked.md, "Voice pill".
-export const pillShape = { width: 360, height: 32, ear: 6, rx: 24, ry: 26 };
+const rimBox = { width: 80, height: pillShape.height };
 
 export type VoiceLayers = {
   voice: RefObject<HTMLDivElement | null>; // sized to the drawn shape each frame, so the word and mute follow its edges
@@ -18,8 +18,7 @@ type VoicePillProps = {
   onMute: () => void;
 };
 
-// One corner line, as in the locked preview: from under the ear, round the corner, then along the bottom.
-// The path is keyed by the pill's opening, so it draws in once per opening.
+// One corner line; its path is keyed by the pill's opening, so it draws in once per opening.
 function Corner({
   side,
   session,
@@ -27,22 +26,19 @@ function Corner({
   side: "left" | "right";
   session: number;
 }) {
-  const left = side === "left";
-  const x = left ? 1 : 79;
-  const along = (by: number) => (left ? x + by : x - by);
-  const path = `M${x},6 V8 Q${x},31 ${along(24)},31 H${along(78)}`;
+  const { x, end, path } = rimLine(side, rimBox.width);
   return (
     <svg
       aria-hidden="true"
-      className={`absolute bottom-0 overflow-visible ${left ? "left-0" : "right-0"}`}
-      width={80}
-      height={32}
+      className={`absolute bottom-0 overflow-visible ${side === "left" ? "left-0" : "right-0"}`}
+      width={rimBox.width}
+      height={rimBox.height}
     >
       <linearGradient
         id={`pill-rim-${side}`}
         gradientUnits="userSpaceOnUse"
         x1={x}
-        x2={along(78)}
+        x2={end}
         y1={0}
         y2={0}
       >

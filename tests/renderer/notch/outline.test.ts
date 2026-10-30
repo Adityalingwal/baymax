@@ -4,6 +4,8 @@ import {
   notchZone,
   openBodyWidth,
   openSilhouette,
+  pillShape,
+  ringSilhouette,
   silhouettePath,
 } from "../../../src/renderer/notch/outline";
 import type {
@@ -21,8 +23,7 @@ const plain: OutlineGeometry = {
   ...notched,
   shape: { ...notched.shape, notched: false },
 };
-// A pill-sized shape with ears, as later collapsed shapes will be.
-const pill: Silhouette = { width: 360, height: 32, ear: 6, rx: 24, ry: 26 };
+const ring = ringSilhouette(notched.shape);
 
 function commands(path: string): string {
   return path.replace(/[^A-Za-z]/g, "");
@@ -62,7 +63,7 @@ describe("silhouettePath", () => {
       notchSilhouette(notched.shape),
       notchSilhouette(plain.shape),
       openSilhouette(notched),
-      pill,
+      pillShape,
     ];
     const sequences = shapes.map((shape) =>
       commands(silhouettePath(640, shape)),
@@ -92,9 +93,14 @@ describe("silhouettePath", () => {
       box: { left: 0, right: 640, top: 0, bottom: 60 },
     },
     {
-      name: "a pill's ears flare 6 points past its body",
-      shape: pill,
-      box: { left: 134, right: 506, top: 0, bottom: 32 },
+      name: "the pill's ears flare 14 points past its body",
+      shape: pillShape,
+      box: { left: 126, right: 514, top: 0, bottom: 32 },
+    },
+    {
+      name: "the ring's ears flare 8 points past its body",
+      shape: ring,
+      box: { left: 224.5, right: 415.5, top: 0, bottom: 25 },
     },
   ])("$name", ({ shape, box }) => {
     expect(pathBox(silhouettePath(640, shape))).toEqual(box);
@@ -102,10 +108,54 @@ describe("silhouettePath", () => {
 });
 
 describe("silhouettePath segments", () => {
-  it("draws the open panel segment by segment", () => {
+  it("draws the open panel segment by segment, its ears' control points 30% from the corner", () => {
     expect(silhouettePath(640, openSilhouette(notched))).toBe(
-      "M0,0 H640 Q634,0 634,6 V272 C634,290.2 624.9,300 608,300 H32 C15.1,300 6,290.2 6,272 V6 Q6,0 0,0 Z",
+      "M0,0 H640 C623.2,0 616,16.8 616,24 V272 C616,290.2 606.9,300 590,300 H50 C33.1,300 24,290.2 24,272 V24 C24,16.8 16.8,0 0,0 Z",
     );
+  });
+
+  it.each<{
+    name: string;
+    shape: Silhouette;
+    ear: number;
+    ry: number;
+    rx: number;
+  }>([
+    {
+      name: "the pill's ear and corner fill its height exactly",
+      shape: pillShape,
+      ear: 14,
+      ry: 18,
+      rx: 16.6,
+    },
+    {
+      name: "the ring keeps its corner",
+      shape: ring,
+      ear: 8,
+      ry: 10,
+      rx: 10,
+    },
+    {
+      name: "a height smaller than ear plus corner shrinks the corner, with rx scaled",
+      shape: { width: 360, height: 30, ear: 14, rx: 16.6, ry: 18 },
+      ear: 14,
+      ry: 16,
+      rx: 14.756,
+    },
+    {
+      name: "a height smaller than the ear keeps the outline from folding",
+      shape: { width: 360, height: 10, ear: 14, rx: 16.6, ry: 18 },
+      ear: 6,
+      ry: 4,
+      rx: 3.689,
+    },
+  ])("$name", ({ shape, ear, ry, rx }) => {
+    const left = (640 - shape.width) / 2;
+    const h = shape.height;
+    const path = silhouettePath(640, shape);
+    expect(path).toContain(`M${left - ear},0`);
+    expect(path).toContain(`V${h - ry} C`);
+    expect(path).toContain(`H${left + rx} C`);
   });
 
   it("rounds the notch's bottom corners only without a notch", () => {
@@ -119,8 +169,8 @@ describe("silhouettePath segments", () => {
 
 describe("open panel", () => {
   it("has a body two ears narrower than the window", () => {
-    expect(openBodyWidth(notched)).toBe(628);
-    expect(openSilhouette(notched).width).toBe(628);
+    expect(openBodyWidth(notched)).toBe(592);
+    expect(openSilhouette(notched).width).toBe(592);
   });
 });
 

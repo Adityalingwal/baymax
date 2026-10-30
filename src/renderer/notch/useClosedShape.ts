@@ -2,14 +2,17 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { TaskCard } from "../../shared/cards";
 import type { WindowShape } from "../../shared/ipc";
 import type { IslandSize } from "./Island";
-import { notchSilhouette, panelShape } from "./outline";
+import {
+  notchSilhouette,
+  panelShape,
+  pillShape,
+  ringSilhouette,
+} from "./outline";
 import type { Silhouette } from "./outline";
 import { islandShown } from "./pill";
 import type { PillState } from "./pill";
-import { ringSilhouette } from "./RunningRing";
 import { closedView, islandLayout, islandWidth, runningCount } from "./views";
 import type { ClosedView } from "./views";
-import { pillShape } from "./VoicePill";
 
 type IslandCard = Pick<TaskCard, "taskId" | "words" | "spokenLine">;
 

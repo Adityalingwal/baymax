@@ -1,19 +1,6 @@
 import type { RefObject } from "react";
 import type { WindowShape } from "../../shared/ipc";
-import type { Silhouette } from "./outline";
-
-// Sizes from the locked design: notch-design-locked.md, "Running task: spinning ring".
-const wing = 18;
-
-export function ringSilhouette(shape: WindowShape): Silhouette {
-  return {
-    width: shape.notchWidth + 2 * wing,
-    height: shape.notchHeight,
-    ear: 6,
-    rx: 10,
-    ry: 10,
-  };
-}
+import { ringSilhouette } from "./outline";
 
 type RunningRingProps = {
   count: number;
