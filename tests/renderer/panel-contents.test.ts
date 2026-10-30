@@ -113,6 +113,11 @@ describe("what the panel shows", () => {
       kind: "report",
     },
     {
+      name: "the list after a click on Tasks on the report page",
+      events: [openReport, toTasks],
+      kind: "tasks",
+    },
+    {
       name: "the list after an island click, never a report",
       events: [openReport, islandClick],
       kind: "tasks",

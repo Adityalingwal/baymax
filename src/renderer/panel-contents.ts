@@ -24,8 +24,11 @@ export const initialView: PanelView = { tab: "tasks", reportOf: null };
 
 export function viewReducer(view: PanelView, event: PanelViewEvent): PanelView {
   switch (event.kind) {
+    // Tasks clicked on the report page goes back to the list; Chat and back keeps the page.
     case "tab":
-      return { ...view, tab: event.tab };
+      return event.tab === "tasks" && view.tab === "tasks"
+        ? { ...view, reportOf: null }
+        : { ...view, tab: event.tab };
     case "open-report":
       return { tab: "tasks", reportOf: event.taskId };
     case "back":
