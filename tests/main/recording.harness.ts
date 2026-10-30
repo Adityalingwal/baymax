@@ -94,6 +94,34 @@ export function createHarness(fakeFlux: FakeFlux | null = null) {
 
 export type Harness = ReturnType<typeof createHarness>;
 
+export function openHarness() {
+  const flux = createFakeFlux();
+  const h = createHarness(flux);
+  flux.open();
+  return { flux, h };
+}
+
+export const pcmOf = (h: Harness, call: number) => [
+  ...new Uint8Array(h.pending[call].audio, 44),
+];
+
+export const manual = (transcript: string): FluxEvent => ({
+  kind: "endOfTurn",
+  trigger: "manual",
+  transcript,
+});
+
+export const timeout = (transcript: string): FluxEvent => ({
+  kind: "endOfTurn",
+  trigger: "timeout",
+  transcript,
+});
+
+export const update = (transcript: string): FluxEvent => ({
+  kind: "update",
+  transcript,
+});
+
 export const flush = () =>
   new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -104,9 +132,15 @@ export function hold(h: Harness, outcome: HoldOutcome): UtteranceId {
   return utteranceId;
 }
 
-// A frame's first byte names it, so a test can follow it through the socket.
+// A frame's first byte names it, so a test can follow it through the socket; its second sample is at speech level.
 export function frame(h: Harness, utteranceId: UtteranceId, mark = 1): void {
-  const pcm = new Uint8Array([mark, 0, 0, 0]).buffer;
+  const pcm = new Uint8Array([mark, 0, 0, 0x10]).buffer;
+  h.flow.micAudio({ type: "frames", utteranceId, pcm });
+}
+
+// A frame under the speech level, as in a hold where nothing was said.
+export function quietFrame(h: Harness, utteranceId: UtteranceId): void {
+  const pcm = new Uint8Array([1, 0, 0, 0]).buffer;
   h.flow.micAudio({ type: "frames", utteranceId, pcm });
 }
 

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bytesIn, createHarness, flush } from "./playback.harness";
+import { createWebAudioPlayer } from "../../src/renderer/web-audio";
+import {
+  bytesIn,
+  createHarness,
+  createStubOutput,
+  flush,
+} from "./playback.harness";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -196,6 +202,31 @@ describe("a streamed line (L10b)", () => {
     h.end("a");
     h.end("a");
     expect(h.reports).toEqual([{ lineId: "a", outcome: "ended" }]);
+  });
+});
+
+describe("a streamed line on the real player", () => {
+  it("that ends before its start buffer runs out plays it and reports ended once", () => {
+    const stub = createStubOutput("running");
+    const h = createHarness(createWebAudioPlayer(stub.createOutput));
+    h.chunk("a", 0);
+    h.end("a");
+    expect(h.reports).toEqual([]);
+    stub.sources[0].onended?.(new Event("ended"));
+    stub.sources[0].onended?.(new Event("ended"));
+    expect(h.reports).toEqual([{ lineId: "a", outcome: "ended" }]);
+  });
+
+  it("stopped during its start buffer never plays, and reports stopped once", () => {
+    const stub = createStubOutput("running");
+    const h = createHarness(createWebAudioPlayer(stub.createOutput));
+    h.chunk("a", 0);
+    h.stopLine("a");
+    h.chunk("a", 1);
+    expect(stub.sources).toHaveLength(1);
+    expect(stub.sources[0].stop).toHaveBeenCalledTimes(1);
+    expect(stub.sources[0].disconnect).toHaveBeenCalledTimes(1);
+    expect(h.reports).toEqual([{ lineId: "a", outcome: "stopped" }]);
   });
 });
 

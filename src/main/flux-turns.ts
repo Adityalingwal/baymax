@@ -4,12 +4,15 @@ import { wavFromPcm } from "../providers/wav";
 import type { UtteranceId } from "../shared/cards";
 import type { Timers } from "./tasks/state";
 
+// silent: a hold with audio but no speech, so nothing needs saying.
+export type TurnResult = Transcription | { kind: "silent" };
+
 export type TurnsDeps = {
   startFlux: (listener: FluxListener) => Flux | null; // null when there is no Deepgram key
   transcribe: (audio: ArrayBuffer, mimeType: string) => Promise<Transcription>;
   timers: Timers;
   log: (message: string) => void;
-  onResult: (utteranceId: UtteranceId, result: Transcription) => void;
+  onResult: (utteranceId: UtteranceId, result: TurnResult) => void;
 };
 
 // One held utterance; its whole PCM stays until it resolves, so the batch call can still take it.
@@ -17,6 +20,7 @@ type Utterance = {
   id: UtteranceId;
   frames: ArrayBuffer[];
   bytes: number;
+  peak: number; // the loudest sample so far, 0 to 1
   sentFrames: number;
   onSocket: boolean;
   ended: boolean;
@@ -24,7 +28,6 @@ type Utterance = {
   batch: "no" | "marked" | "sent";
   done: boolean;
   kept: string[];
-  update: string;
   cancelDeadline: () => void;
 };
 
@@ -52,6 +55,8 @@ const deadlineMs = 2000;
 const batchWaitMs = 3000;
 // The 90 s hold cap is about 2.9 MB; frames past this bound are dropped.
 const pcmLimitBytes = 96 * sampleRate * 2;
+// Under this peak a hold counts as nothing said; measured on one Mac (silence 1-1.5%, a whisper 5%).
+const speechPeak = 0.03;
 
 function describeError(error: unknown): string {
   return error instanceof Error
@@ -66,18 +71,32 @@ function joined(texts: string[]): string {
     .join(" ");
 }
 
-function transcription(text: string): Transcription {
-  return text === "" ? { kind: "empty" } : { kind: "words", words: text };
+function peakOf(pcm: ArrayBuffer): number {
+  const samples = new Int16Array(pcm, 0, Math.floor(pcm.byteLength / 2));
+  let peak = 0;
+  for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
+  return peak / 0x8000;
+}
+
+// What an empty transcript means for this hold; null when speech was lost.
+function resultOfNothingHeard(utterance: Utterance): TurnResult | null {
+  const kept = joined(utterance.kept);
+  if (kept !== "") return { kind: "words", words: kept };
+  return utterance.peak < speechPeak ? { kind: "silent" } : null;
 }
 
 function finish(state: State, utterance: Utterance): void {
+  if (utterance.done) return;
+  const peak = Math.round(utterance.peak * 100);
+  const audioMs = Math.round((utterance.bytes / 2 / sampleRate) * 1000);
+  state.deps.log(`hold level: peak ${peak}%, ${audioMs} ms of audio`);
   utterance.done = true;
   utterance.cancelDeadline();
   utterance.frames = [];
   state.byId.delete(utterance.id);
 }
 
-function deliver(state: State, utterance: Utterance, result: Transcription) {
+function deliver(state: State, utterance: Utterance, result: TurnResult) {
   if (utterance.done) {
     state.deps.log("transcript dropped: its hold already ended");
     return;
@@ -127,7 +146,11 @@ function startBatch(state: State, utterance: Utterance): void {
       cause: "error" as const,
       detail: describeError(error),
     }))
-    .then((result) => deliver(state, utterance, result))
+    .then((result) => {
+      const empty = result.kind === "empty";
+      const meant = empty ? resultOfNothingHeard(utterance) : null;
+      deliver(state, utterance, meant ?? result);
+    })
     .catch((error: unknown) => {
       state.deps.log(`delivering a batch transcript failed: ${String(error)}`);
     });
@@ -155,9 +178,11 @@ function pump(state: State): void {
       abandon(state, head);
       continue;
     }
-    // A resolved or dropped utterance still waiting for its final could bind it to this audio's turn.
+    // A resolved, dropped or batched utterance still waiting for its final could bind it to this audio's turn.
     const unsent = head.sentFrames < head.frames.length;
-    const missing = state.awaiting.some((other) => other.done);
+    const missing = state.awaiting.some(
+      (other) => other.done || other.batch !== "no",
+    );
     if (unsent && missing) {
       return restartSocket(state, "an earlier final is still missing");
     }
@@ -182,6 +207,7 @@ function receiveFrames(state: State, id: UtteranceId, pcm: ArrayBuffer) {
   }
   utterance.frames.push(pcm);
   utterance.bytes += pcm.byteLength;
+  utterance.peak = Math.max(utterance.peak, peakOf(pcm));
   if (utterance.batch === "no") pump(state);
 }
 
@@ -198,30 +224,30 @@ function receiveEnd(state: State, id: UtteranceId): void {
   pump(state);
 }
 
-function resolveLatest(state: State, utterance: Utterance): void {
-  state.deps.log("final transcript deadline passed; the latest update is used");
-  const text = joined([...utterance.kept, utterance.update]);
-  deliver(state, utterance, transcription(text));
-  abandon(state, utterance);
-  pump(state);
-}
-
 // At the cap the utterance goes to batch with the PCM it has; with none it is not caught.
 function batchWaitPassed(state: State, utterance: Utterance): void {
   if (utterance.done || utterance.batch === "sent") return;
-  if (utterance.batch === "no" && utterance.onSocket) {
-    return resolveLatest(state, utterance);
-  }
   state.deps.log("no end of frames by the cap; the utterance goes to batch");
   utterance.ended = true;
   startBatch(state, utterance);
 }
 
-// An utterance bound for batch, or whose socket is not open, is never resolved empty here: it waits for its frames.
+// A partial Update is never used, as it can be a question cut short. With every frame here batch starts and the
+// first whole result wins. Otherwise batch waits for the later frames, and the socket restarts so no final comes
+// from the audio it already has.
 function deadlinePassed(state: State, utterance: Utterance): void {
   if (utterance.done || utterance.batch === "sent") return;
-  const open = state.flux?.isOpen() ?? false;
-  if (utterance.batch === "no" && open) return resolveLatest(state, utterance);
+  state.deps.log("final transcript deadline passed");
+  if (utterance.ended) {
+    startBatch(state, utterance);
+    return pump(state);
+  }
+  utterance.batch = "marked";
+  if (utterance.onSocket) {
+    restartSocket(state, "frames still pending at the deadline");
+  }
+  abandon(state, utterance);
+  pump(state);
   utterance.cancelDeadline = state.deps.timers.setTimer(batchWaitMs, () =>
     batchWaitPassed(state, utterance),
   );
@@ -241,24 +267,34 @@ function dropUtterance(state: State, utterance: Utterance): void {
   abandon(state, utterance);
 }
 
+// A hold's last turn event: its words, or the empty rule, where speech lost goes to batch.
+function turnEnded(state: State, utterance: Utterance, last: string): void {
+  const text = joined([...utterance.kept, last]);
+  if (text !== "") {
+    return deliver(state, utterance, { kind: "words", words: text });
+  }
+  const meant = resultOfNothingHeard(utterance);
+  if (meant !== null) return deliver(state, utterance, meant);
+  startBatch(state, utterance);
+}
+
 function heard(state: State, event: FluxEvent): void {
   const head = state.awaiting[0];
   if (event.kind === "other") return state.deps.log(`flux: ${event.summary}`);
+  if (event.kind === "update") return;
   if (head === undefined) return state.deps.log(`flux ${event.kind}: no turn`);
-  if (event.kind === "update") {
-    head.update = event.transcript;
-    return;
-  }
   // A timeout ends Flux's turn inside one long hold; its words wait for the rest of that hold.
   if (event.kind === "endOfTurn" && event.trigger === "timeout") {
     head.kept.push(event.transcript);
-    head.update = "";
     return;
   }
   state.awaiting.shift();
+  // An ignored ForceEndTurn leaves this audio in Flux's open turn, where it would join the next hold's words.
+  if (event.kind === "noActiveTurn" && head.peak >= speechPeak) {
+    restartSocket(state, "a no-turn hold left its audio in the turn");
+  }
   if (head.done) return state.deps.log(`late flux ${event.kind} dropped`);
-  const last = event.kind === "endOfTurn" ? event.transcript : "";
-  deliver(state, head, transcription(joined([...head.kept, last])));
+  turnEnded(state, head, event.kind === "endOfTurn" ? event.transcript : "");
 }
 
 // Results that came over the closed socket are dropped; an utterance whose frames went over it goes to batch.
@@ -267,7 +303,7 @@ function socketClosed(state: State): void {
   state.awaiting = [];
   for (const utterance of lost) {
     utterance.onSocket = false;
-    if (utterance.done) continue;
+    if (utterance.done || utterance.batch === "sent") continue;
     utterance.batch = "marked";
     if (utterance.ended) startBatch(state, utterance);
   }
@@ -279,6 +315,7 @@ function begin(state: State, id: UtteranceId): void {
     id,
     frames: [],
     bytes: 0,
+    peak: 0,
     sentFrames: 0,
     onSocket: false,
     ended: false,
@@ -286,7 +323,6 @@ function begin(state: State, id: UtteranceId): void {
     batch: "no",
     done: false,
     kept: [],
-    update: "",
     cancelDeadline: () => undefined,
   };
   state.byId.set(id, utterance);
