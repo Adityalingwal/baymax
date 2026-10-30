@@ -1,9 +1,4 @@
-import type {
-  LineId,
-  SetMuted,
-  SpeakingLine,
-  VoicePhase,
-} from "../../shared/ipc";
+import type { SetMuted, SpeakingLine, VoicePhase } from "../../shared/ipc";
 
 // The closed-panel voice pill and the answer island it grows into. Rules and timings: notch-design-locked.md,
 // "Voice pill", the pill close and mute sections, and "Task finish", with design-lock-timing.md's updates.
@@ -18,8 +13,7 @@ export type PillClose = "soft" | "silent";
 export type PillState = {
   phase: VoicePhase["phase"];
   line: SpeakingLine | null; // the line speaking now
-  island: boolean; // that line is a done task's answer, so the pill grows into the answer island
-  dismissed: LineId | null; // a line whose island was clicked open: it goes on as a plain pill line
+  island: boolean; // the answer island is showing that line, so its close rules step aside for the island's
   shown: boolean;
   word: PillWord;
   clearLabel: "Muted" | "Unmuted" | null; // the label after a mute click; it stays until the pill closes
@@ -35,14 +29,12 @@ export type PillEvent =
   | { kind: "main-muted"; muted: boolean }
   | { kind: "threshold-elapsed"; token: number }
   | { kind: "hold-elapsed"; token: number }
-  | { kind: "mute-clicked" }
-  | { kind: "open-result" };
+  | { kind: "mute-clicked" };
 
 export const initialPill: PillState = {
   phase: "idle",
   line: null,
   island: false,
-  dismissed: null,
   shown: false,
   word: "Listening",
   clearLabel: null,
@@ -53,10 +45,9 @@ export const initialPill: PillState = {
   tokens: 0,
 };
 
-// The island shows while its line speaks, unless it was clicked open.
+// The island is showing the line that speaks now.
 export function islandShown(state: PillState): boolean {
-  const { shown, island, line, dismissed } = state;
-  return shown && island && line !== null && line.lineId !== dismissed;
+  return state.shown && state.island && state.line !== null;
 }
 
 function startWait(state: PillState, kind: "threshold" | "hold"): PillState {
@@ -77,7 +68,7 @@ function show(state: PillState, word: PillWord): PillState {
   };
 }
 
-// After speech: the pill holds 800 ms, the island closes at once.
+// After speech: the pill holds 800 ms; under the island it just ends, and the island keeps its own time.
 // A hold that ends in Listening or Thinking has no line to hold after: it closes at once, faster unless muted.
 function speechEnded(state: PillState, next: PillState): PillState {
   if (!state.shown) return { ...next, wait: null };
@@ -117,7 +108,7 @@ function receivePhase(
   }
 }
 
-// On the island there is no 800 ms confirmation: the line stops, and the island closes when it ends.
+// On the island there is no 800 ms confirmation: the line stops, and the island goes on as its line ended.
 // Each click toggles and shows its own label for 800 ms from that click.
 function muteClicked(state: PillState): PillState {
   if (!state.shown || state.word !== "Speaking") return state;
@@ -156,9 +147,5 @@ export function pillReducer(state: PillState, event: PillEvent): PillState {
       return { ...state, shown: false, wait: null };
     case "mute-clicked":
       return muteClicked(state);
-    case "open-result":
-      return state.line === null
-        ? state
-        : { ...state, dismissed: state.line.lineId };
   }
 }

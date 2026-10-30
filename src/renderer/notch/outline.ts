@@ -60,15 +60,21 @@ export const panelLimits = {
   reportWidth: 640,
   maxHeight: 420,
   reportHeight: 560,
+  wing: 126, // beside the notch, so the top strip's tabs and controls never run under it
 } as const;
 
 // The window's height is already capped for a short screen, so the panel never runs past it.
-export function panelBox(windowHeight: number, fullReport: boolean) {
-  const { minWidth, maxWidth, reportWidth, maxHeight, reportHeight } =
+export function panelBox(
+  windowHeight: number,
+  fullReport: boolean,
+  notchWidth: number,
+) {
+  const { minWidth, maxWidth, reportWidth, maxHeight, reportHeight, wing } =
     panelLimits;
+  const narrowest = Math.max(minWidth, notchWidth + 2 * wing);
   return {
-    minWidth: fullReport ? reportWidth : minWidth,
-    maxWidth: fullReport ? reportWidth : maxWidth,
+    minWidth: fullReport ? reportWidth : narrowest,
+    maxWidth: fullReport ? reportWidth : Math.max(maxWidth, narrowest),
     maxHeight: Math.min(fullReport ? reportHeight : maxHeight, windowHeight),
   };
 }
@@ -92,7 +98,11 @@ export function notchSilhouette(shape: WindowShape): Silhouette {
 // Never shorter than its strip and corners, so the path is valid before the content is measured.
 export function openSilhouette(geometry: OutlineGeometry): Silhouette {
   const { ear, rx, ry, strip } = panelShape;
-  const box = panelBox(geometry.height, geometry.fullReport);
+  const box = panelBox(
+    geometry.height,
+    geometry.fullReport,
+    geometry.shape.notchWidth,
+  );
   const content = Math.min(geometry.contentHeight, box.maxHeight);
   return {
     width: Math.min(

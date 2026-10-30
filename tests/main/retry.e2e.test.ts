@@ -96,6 +96,22 @@ describe("an open retry offer", () => {
   });
 });
 
+describe("the finish order on the cards", () => {
+  it("gives a retried older task a higher number than a newer one, and none while it runs", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await admitAs(w, "laptops");
+    failTask(w, "t1");
+    await streamFront(w, replyRoute(), "Hermes failed. Try again?");
+    w.port.emit({ ...newResult, taskId: "t2" });
+    w.send(ipcChannels.retryTask, { taskId: "t1" });
+    expect(w.card("t1")?.finishOrder).toBeNull();
+    w.port.emit(newResult);
+    const finished = (taskId: string) => w.card(taskId)?.finishOrder ?? 0;
+    expect(finished("t1")).toBeGreaterThan(finished("t2"));
+  });
+});
+
 describe("a yes routed retry", () => {
   it("runs the same task again with its saved ask and leaves no card from the yes", async () => {
     const w = wire();
@@ -109,7 +125,6 @@ describe("a yes routed retry", () => {
       state: "running",
       line: null,
       answer: null,
-      sourcesRead: 0,
       canRetry: false,
     });
     const shown = w.published.at(-1)?.tasks.map((card) => card.taskId);

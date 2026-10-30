@@ -12,6 +12,7 @@ export type PanelState = {
   inNotch: boolean; // in the notch's hover sensor
   inOpenOutline: boolean; // in the open panel's full outline
   inVisible: boolean; // in the shape as drawn right now
+  hovering: boolean; // in that shape after the pointer really moved: a shape that grew under a still pointer does not count
   draft: string; // the field's text
   mouseDown: boolean; // a button pressed inside the panel is still down
   needsAccess: boolean; // the Accessibility hint holds the panel open
@@ -28,12 +29,14 @@ export type PanelEvent =
       inNotch: boolean;
       inOpenOutline: boolean;
       inVisible: boolean;
+      moved: boolean; // from a mouse move, not a shape changing under a still pointer
     }
   | { kind: "pointer-gone" }
   | { kind: "dwell-elapsed"; token: number }
   | { kind: "leave-elapsed"; token: number }
   | { kind: "draft-leave-elapsed"; token: number }
   | { kind: "escape" }
+  | { kind: "close-control" }
   | { kind: "draft"; text: string }
   | { kind: "mouse"; down: boolean }
   | { kind: "access"; needed: boolean }
@@ -46,6 +49,7 @@ export const initialPanel: PanelState = {
   inNotch: false,
   inOpenOutline: false,
   inVisible: false,
+  hovering: false,
   draft: "",
   mouseDown: false,
   needsAccess: false,
@@ -66,7 +70,8 @@ function pointerMoved(
   event: Extract<PanelEvent, { kind: "pointer" }>,
 ): PanelState {
   const { inNotch, inOpenOutline, inVisible } = event;
-  const moved = { ...state, inNotch, inOpenOutline, inVisible };
+  const hovering = inVisible && (event.moved || state.hovering);
+  const moved = { ...state, inNotch, inOpenOutline, inVisible, hovering };
   // Only a pointer coming onto the shrinking shape turns the motion around, not one the shrink left behind.
   const reentered = inVisible && !state.inVisible;
   if (!state.open && state.closing && reentered && !state.waitForExit) {
@@ -85,6 +90,7 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
         inNotch: false,
         inOpenOutline: false,
         inVisible: false,
+        hovering: false,
       };
     case "dwell-elapsed":
       if (event.token !== state.dwell) return state;
@@ -101,6 +107,11 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
       const closed = close(state);
       return closed === state ? state : { ...closed, waitForExit: true };
     }
+    // Closes in every state, even over the Accessibility hint, so nothing can trap the user; the text stays.
+    case "close-control":
+      return state.open
+        ? { ...state, open: false, closing: true, waitForExit: true }
+        : state;
     // Each change drops the running timer, so a key typed outside restarts the 3 s.
     case "draft":
       return event.text === state.draft

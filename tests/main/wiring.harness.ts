@@ -11,6 +11,7 @@ import type {
   RecordingCommand,
   SpeechLine,
   StopPlayback,
+  VoicePhase,
 } from "../../src/shared/ipc";
 import type {
   RendererListener,
@@ -46,6 +47,7 @@ function fakeVoice(deepgramKeyPresent: boolean, fails: boolean) {
     transcriptions: [] as Pending<Transcription>[],
     syntheses: [] as Pending<Synthesis>[],
     voiceLogs: [] as string[],
+    voicePhases: [] as VoicePhase[],
   };
   const deps = {
     sendRecording: (command: RecordingCommand) => seen.recordings.push(command),
@@ -54,7 +56,7 @@ function fakeVoice(deepgramKeyPresent: boolean, fails: boolean) {
     sendEnd: () => undefined,
     startAura: () => null,
     sendStop: (payload: StopPlayback) => seen.stops.push(payload),
-    sendVoicePhase: () => undefined,
+    sendVoicePhase: (phase: VoicePhase) => seen.voicePhases.push(phase),
     // The input is the mime type and the PCM after the 44-byte WAV header.
     transcribe: (audio: ArrayBuffer, mimeType: string) =>
       new Promise<Transcription>((resolve) => {
@@ -165,6 +167,8 @@ function playback(
     if (line === undefined) return;
     const { lineId } = line;
     send(ipcChannels.playbackFinished, { lineId, outcome: "ended" });
+    // A renderer whose island closes at once, so a later result line can play.
+    send(ipcChannels.islandClosed, { lineId });
   };
   const playAll = async (): Promise<void> => {
     for (let turn = 0; turn < 20 && settled < seen.syntheses.length; turn += 1)

@@ -167,7 +167,7 @@ export const flush = () =>
 export function said(
   text: string,
   taskId: TaskId | null = "t1",
-  kind: SaidKind = "answer",
+  kind: SaidKind = "talk",
 ): SaidLine {
   return { taskId, text, kind };
 }

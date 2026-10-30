@@ -43,6 +43,10 @@ function closeTask(change: Change, record: TaskRecord, ending: Ending): void {
   record.attempt = null;
   record.card.state = ending.outcome;
   record.card.step = null;
+  if (record.shown) {
+    model.finishes += 1;
+    record.card.finishOrder = model.finishes;
+  }
 }
 
 // The result's spoken line is said as the worker wrote it, and joins the conversation history.
@@ -187,6 +191,7 @@ function startOrQueue(
   admission: Admission,
 ): void {
   const { model } = change;
+  record.card.finishOrder = null;
   // Its line is already spoken, so work is never refused: a race past the limit queues one extra.
   if (!slotBusy(model) && canStart(model, record)) {
     startTask(change, record, admission);
@@ -229,7 +234,6 @@ export function retryTask(change: Change, taskId: TaskId): boolean {
   card.canRetry = false;
   card.line = null;
   card.answer = null;
-  card.sourcesRead = 0;
   startOrQueue(change, record, admission);
   return true;
 }
@@ -260,7 +264,6 @@ export function receiveRunEvent(
   switch (event.type) {
     case "progress":
       record.card.step = stepText(event.step);
-      record.card.sourcesRead = event.sourcesRead;
       return true;
     case "result":
       endDone(change, record, event.spokenLine, event.findings);

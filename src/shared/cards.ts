@@ -36,9 +36,9 @@ export type TaskCard = {
   line: string | null; // a fixed status or failure line
   spokenLine: string | null; // a done task's result line as spoken (the answer island shows it), else null
   step: string | null; // latest progress, e.g. "searching: how Hermes works"
-  sourcesRead: number;
   answer: Findings | null; // may be partial when state is "failed"
   canRetry: boolean;
+  finishOrder: number | null; // grows with each shown task that ends; null while it has not, also after a retry
 };
 
 // One side of the conversation: what the user said, or what Baymax said that was no task's card.

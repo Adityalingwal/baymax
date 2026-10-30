@@ -14,6 +14,7 @@ type VoicePillProps = {
   pill: PillState;
   windowWidth: number;
   interactive: boolean;
+  quiet: boolean; // the answer island outlives its line: the word and mute fade out, and the strip stays empty until it has closed
   layers: VoiceLayers;
   onMute: () => void;
 };
@@ -88,30 +89,35 @@ const labelClass = (shows: boolean) =>
   `pill-label col-start-1 row-start-1 ${shows ? "" : "pill-label-out"}`;
 
 // All labels share one grid cell, so swapping them moves nothing.
-function Word({ pill }: { pill: PillState }) {
+function Word({ pill, quiet }: { pill: PillState; quiet: boolean }) {
   const { clearLabel, word } = pill;
   const thinking = word === "Thinking" && clearLabel === null;
   return (
     <span className="absolute top-0 left-5 grid h-8 items-center text-[12.5px] font-semibold text-[#F5F5F7]">
       <span
-        className={`${labelClass(clearLabel === null)} ${thinking ? "shimmer" : ""}`}
+        className={`${labelClass(clearLabel === null && !quiet)} ${thinking ? "shimmer" : ""}`}
       >
         {word}
       </span>
-      <span className={labelClass(clearLabel === "Muted")}>Muted</span>
-      <span className={labelClass(clearLabel === "Unmuted")}>Unmuted</span>
+      <span className={labelClass(clearLabel === "Muted" && !quiet)}>
+        Muted
+      </span>
+      <span className={labelClass(clearLabel === "Unmuted" && !quiet)}>
+        Unmuted
+      </span>
     </span>
   );
 }
 
-function MuteButton({ pill, onMute }: Pick<VoicePillProps, "pill" | "onMute">) {
+function MuteButton(props: Pick<VoicePillProps, "pill" | "quiet" | "onMute">) {
+  const { pill, quiet, onMute } = props;
   const crossed = pill.mainMuted;
   return (
     <button
       type="button"
       aria-label={crossed ? "Unmute Baymax" : "Mute Baymax"}
       aria-pressed={crossed}
-      className="absolute top-[5px] right-5 grid h-[22px] w-[22px] cursor-pointer place-items-center rounded-full bg-[#1C1C1E]"
+      className={`pill-label absolute top-[5px] right-5 grid h-[22px] w-[22px] cursor-pointer place-items-center rounded-full bg-[#1C1C1E] ${quiet ? "pill-label-out pointer-events-none" : ""}`}
       onClick={onMute}
     >
       <span className={labelClass(!crossed)}>
@@ -127,7 +133,7 @@ function MuteButton({ pill, onMute }: Pick<VoicePillProps, "pill" | "onMute">) {
 // The voice pill's strip: the state word on the left, mute on the right while Baymax speaks, the corner lines.
 // It is also the answer island's top strip.
 export function VoicePill(props: VoicePillProps) {
-  const { pill, windowWidth, interactive, layers, onMute } = props;
+  const { pill, windowWidth, interactive, quiet, layers, onMute } = props;
   const speaking = pill.word === "Speaking" || pill.clearLabel !== null;
   const { width, height } = pillShape;
   return (
@@ -143,8 +149,8 @@ export function VoicePill(props: VoicePillProps) {
         <Corner side="right" session={pill.session} />
       </div>
       <div ref={layers.word} className="absolute inset-0" aria-live="polite">
-        <Word pill={pill} />
-        {speaking && <MuteButton pill={pill} onMute={onMute} />}
+        <Word pill={pill} quiet={quiet} />
+        {speaking && <MuteButton pill={pill} quiet={quiet} onMute={onMute} />}
       </div>
     </div>
   );

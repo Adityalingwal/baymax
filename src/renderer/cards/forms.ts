@@ -1,12 +1,5 @@
 import type { Source, TaskCard, TaskState } from "../../shared/cards";
 
-export type CardForm = "pill" | "open";
-
-// Results stay open in the panel; folding into the notch is gone with the reopen dot.
-export function cardForm(card: Pick<TaskCard, "state">): CardForm {
-  return card.state === "done" || card.state === "failed" ? "open" : "pill";
-}
-
 // One line naming the task: the front call's title, or the raw words until there is one.
 export function cardTitle(card: Pick<TaskCard, "title" | "words">): string {
   return card.title ?? card.words;
@@ -18,29 +11,45 @@ export function shownReport(card: Pick<TaskCard, "answer">): string | null {
   return report === "" ? null : report;
 }
 
-// Work still in flight, so its live line may shimmer; a failed attempt waiting for Retry is not.
-export function isPending(card: Pick<TaskCard, "state" | "canRetry">): boolean {
-  const { state } = card;
-  return (state === "queued" || state === "running") && !card.canRetry;
-}
-
-export function canCancel(state: TaskState): boolean {
-  return state === "queued" || state === "running";
-}
-
-const stateLabels: Record<TaskState, string> = {
-  thinking: "Thinking",
-  clarifying: "Clarifying",
+// Only the Running layout has a label: a finished or failed card shows none.
+const stateLabels: Partial<Record<TaskState, string>> = {
   queued: "Queued",
   running: "Running",
   cancelling: "Cancelling",
-  done: "Done",
-  failed: "Failed",
   cancelled: "Cancelled",
 };
 
-export function stateLabel(state: TaskState): string {
-  return stateLabels[state];
+export type CardContents = {
+  label: string | null;
+  pulse: boolean; // the label's pulsing dot
+  live: string | null; // the progress line that shimmers
+  line: string | null; // a finished card's summary or a failed card's cause
+  stop: boolean;
+  retry: boolean;
+  report: string | null; // behind the card's button, on the report page
+  sources: Source[]; // the row on the card itself; a report keeps its sources on its page
+};
+
+// What each kind of card shows.
+export function cardContents(card: TaskCard): CardContents {
+  const { state, answer } = card;
+  const report = state === "done" ? shownReport(card) : null;
+  const finished = state === "done" || state === "failed";
+  return {
+    label: stateLabels[state] ?? null,
+    pulse: state === "running",
+    live: state === "running" ? card.step : null,
+    line:
+      state === "done"
+        ? card.spokenLine
+        : state === "failed"
+          ? card.line
+          : null,
+    stop: state === "queued" || state === "running",
+    retry: state === "failed" && card.canRetry,
+    report,
+    sources: finished && report === null ? (answer?.sources ?? []) : [],
+  };
 }
 
 export type SourceGroup = {

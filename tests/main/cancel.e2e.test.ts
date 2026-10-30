@@ -227,7 +227,6 @@ describe("a cancelled card's lifetime", () => {
         type: "progress",
         taskId,
         step: { tool: "search", query: "late" },
-        sourcesRead: 1,
       });
       w.port.emit({
         type: "result",

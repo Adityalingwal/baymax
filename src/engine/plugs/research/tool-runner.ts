@@ -13,7 +13,7 @@ type ToolRunner = {
   web: WebTool;
   deps: DispatchDeps;
   job: DispatchJob;
-  progress: (step: ProgressStep, sourcesRead: number) => void;
+  progress: (step: ProgressStep) => void;
 };
 
 type Counts = { searches: number; failedSearches: number };
@@ -129,7 +129,7 @@ function report(
   signal: AbortSignal,
   step: ProgressStep,
 ): void {
-  if (!signal.aborted) runner.progress(step, runner.web.pages().length);
+  if (!signal.aborted) runner.progress(step);
 }
 
 // Key and quota failures end the task at once; other failures are told to the worker, and the second one ends it.

@@ -339,7 +339,6 @@ const progress = (taskId: string) =>
     type: "progress",
     taskId,
     step: { tool: "search", query: "q" },
-    sourcesRead: 2,
   }) as const;
 
 const result = (taskId: string, text = "Done.") =>

@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { TaskCard } from "../../shared/cards";
-import { islandLayout } from "./views";
+import type { CardActions } from "../actions";
+import { ReportButton } from "../cards/Chevron";
+import { cardTitle, shownReport } from "../cards/forms";
+import { ReportBody } from "../cards/ReportPage";
+import { islandCardMaxHeight, islandLayout } from "./views";
 
 export type IslandSize = { cardHeight: number; linesAt480: number };
 
 type IslandProps = {
-  card: Pick<TaskCard, "taskId" | "words" | "spokenLine"> | null;
-  width: number; // the island's body width: 480, or the panel's width for a long line
+  card: TaskCard | null;
+  width: number; // the island's body width: 480, or the panel's width for a long line or an open report
   windowWidth: number;
+  windowHeight: number;
   interactive: boolean;
-  cardRef: RefObject<HTMLButtonElement | null>;
+  reportOpen: boolean;
+  cardRef: RefObject<HTMLDivElement | null>;
   onOpen: (taskId: string) => void;
+  onToggleReport: () => void;
+  openSource: CardActions["openSource"];
   onSize: (size: IslandSize) => void;
 };
 
@@ -24,12 +32,12 @@ function useIslandSize(
   cardRef: IslandProps["cardRef"],
   onSize: IslandProps["onSize"],
 ) {
-  const [card, setCard] = useState<HTMLButtonElement | null>(null);
+  const [card, setCard] = useState<HTMLDivElement | null>(null);
   const [probe, setProbe] = useState<HTMLParagraphElement | null>(null);
   const report = useRef(onSize);
   report.current = onSize;
   const attachCard = useCallback(
-    (element: HTMLButtonElement | null) => {
+    (element: HTMLDivElement | null) => {
       cardRef.current = element;
       setCard(element);
     },
@@ -50,15 +58,72 @@ function useIslandSize(
   return { attachCard, setProbe };
 }
 
-// The answer island's card under the Speaking strip: the task's title and its spoken line. A click opens the result in the panel.
+type HeadingProps = Pick<IslandProps, "reportOpen" | "onToggleReport"> & {
+  title: string;
+  hasReport: boolean;
+};
+
+// The button stays in place, and with the title it stays outside the report's scroll.
+function Heading(props: HeadingProps) {
+  const { reportOpen } = props;
+  return (
+    <div className="flex shrink-0 items-start gap-3">
+      <span className="min-w-0 flex-1 truncate text-[14px] leading-5 font-bold text-[#F5F5F7]">
+        {props.title}
+      </span>
+      {props.hasReport && (
+        <ReportButton
+          direction={reportOpen ? "up" : "down"}
+          label={reportOpen ? "Fold the report" : "Open the full report"}
+          expanded={reportOpen}
+          onClick={props.onToggleReport}
+        />
+      )}
+    </div>
+  );
+}
+
+// A click elsewhere on the card opens the panel on the Tasks tab; with the report open the card is for reading, so it opens nothing.
+function CardContents(props: IslandProps) {
+  const { card, reportOpen, onOpen } = props;
+  const report = card === null ? null : shownReport(card);
+  return (
+    <>
+      {card !== null && !reportOpen && (
+        <button
+          type="button"
+          aria-label="Open in the Tasks tab"
+          className="absolute inset-0 cursor-pointer rounded-[20px]"
+          onClick={() => onOpen(card.taskId)}
+        />
+      )}
+      <Heading
+        title={card === null ? "" : cardTitle(card)}
+        hasReport={report !== null}
+        reportOpen={reportOpen}
+        onToggleReport={props.onToggleReport}
+      />
+      <span className="shrink-0 text-[12.5px] leading-[19px]" style={lineColor}>
+        {card?.spokenLine ?? ""}
+      </span>
+      {reportOpen && card !== null && report !== null && (
+        <div className="mt-[5px] flex min-h-0 flex-col gap-2.5 overflow-y-auto">
+          <ReportBody
+            card={card}
+            report={report}
+            openSource={props.openSource}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+// The answer island's card under the Speaking strip: the task's title and its spoken line, and its report when opened here.
 export function Island(props: IslandProps) {
-  const { card, width, windowWidth, interactive, onOpen } = props;
+  const { width, windowWidth, interactive, reportOpen } = props;
   const { attachCard, setProbe } = useIslandSize(props.cardRef, props.onSize);
-  const line = card?.spokenLine ?? "";
   const { strip, gap, side } = islandLayout;
-  const open = () => {
-    if (card !== null) onOpen(card.taskId);
-  };
   return (
     <div
       className="panel-type absolute"
@@ -70,26 +135,24 @@ export function Island(props: IslandProps) {
       aria-hidden={!interactive}
       inert={!interactive}
     >
-      <button
+      <div
         ref={attachCard}
-        type="button"
-        className="glass flex w-full cursor-pointer flex-col gap-[5px] rounded-[20px] px-4 py-2.5 text-left"
-        onClick={open}
+        className="glass relative flex w-full flex-col gap-[5px] rounded-[20px] px-4 py-2.5 text-left"
+        style={{
+          maxHeight: reportOpen
+            ? islandCardMaxHeight(props.windowHeight)
+            : undefined,
+        }}
       >
-        <span className="w-full truncate text-[14px] leading-5 font-bold text-[#F5F5F7]">
-          {card?.words ?? ""}
-        </span>
-        <span className="text-[12.5px] leading-[19px]" style={lineColor}>
-          {line}
-        </span>
-      </button>
+        <CardContents {...props} />
+      </div>
       <p
         ref={setProbe}
         aria-hidden="true"
         className="invisible absolute top-0 left-0 text-[12.5px] leading-[19px]"
         style={{ width: textWidthAt480 }}
       >
-        {line}
+        {props.card?.spokenLine ?? ""}
       </p>
     </div>
   );

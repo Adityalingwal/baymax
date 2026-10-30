@@ -11,13 +11,14 @@ import type { Frame, Motion, Timing } from "./motion";
 import type { Silhouette } from "./outline";
 import type { ClosedView } from "./views";
 
-// Which layers show at rest: the panel's content when open; the word and lines on the pill; the word and card on the island; the ring.
+// Which layers show at rest: the panel's content when open; the word and lines on the pill; the word and card on the island, its report open or not; the ring.
 export function restingFrame(
   shape: Silhouette,
   view: ClosedView | "open",
 ): Frame {
   const on = (shows: boolean) => (shows ? 1 : 0);
-  const voice = view === "pill" || view === "island";
+  const onIsland = view === "island" || view === "report";
+  const voice = view === "pill" || onIsland;
   const { hidden, ...outline } = shape;
   return {
     ...outline,
@@ -25,7 +26,7 @@ export function restingFrame(
     shade: on(hidden !== true),
     pill: on(voice),
     rim: on(view === "pill"),
-    card: on(view === "island"),
+    card: on(onIsland),
     ring: on(view === "ring"),
   };
 }

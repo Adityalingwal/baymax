@@ -6,7 +6,7 @@ import type { NotchSizes } from "./panel-geometry";
 
 export const isMac = process.platform === "darwin";
 
-// Shown in the panel's field hint ("⌥ hold to talk") and the hotkey log.
+// Shown in the panel's field placeholder and the hotkey log.
 export const holdKeyLabel = isMac ? "⌥" : "Ctrl+Win";
 
 // Windows uses a combo because single keys conflict with the OS: Alt opens the menu bar, Win opens Start.

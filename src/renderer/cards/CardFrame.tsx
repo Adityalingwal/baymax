@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import type { TaskCard } from "../../shared/cards";
 import type { CardActions } from "../actions";
-import { canCancel } from "./forms";
 
 // One glass card; the id lets the panel scroll a result into view.
 export function CardShell({
@@ -14,16 +13,16 @@ export function CardShell({
   return (
     <article
       id={`card-${card.taskId}`}
-      className="glass relative flex flex-col gap-1.5 rounded-[20px] px-4 py-3.5"
+      className="glass relative flex shrink-0 flex-col gap-1.5 rounded-[20px] px-4 py-3.5"
     >
       {children}
     </article>
   );
 }
 
-type LabelProps = { pulse?: boolean; children: ReactNode };
+type LabelProps = { pulse: boolean; children: ReactNode };
 
-export function LabelLine({ pulse = false, children }: LabelProps) {
+export function LabelLine({ pulse, children }: LabelProps) {
   return (
     <p className="type-label flex min-w-0 items-center gap-2 pr-9">
       {pulse && (
@@ -40,7 +39,6 @@ export function LabelLine({ pulse = false, children }: LabelProps) {
 type ControlProps = { card: TaskCard; actions: CardActions };
 
 export function StopButton({ card, actions }: ControlProps) {
-  if (!canCancel(card.state)) return null;
   return (
     <button
       type="button"
@@ -54,7 +52,6 @@ export function StopButton({ card, actions }: ControlProps) {
 }
 
 export function RetryButton({ card, actions }: ControlProps) {
-  if (!card.canRetry) return null;
   return (
     <button
       type="button"
@@ -64,9 +61,4 @@ export function RetryButton({ card, actions }: ControlProps) {
       Retry
     </button>
   );
-}
-
-// The fixed status or failure line main wrote.
-export function StatusLines({ card }: { card: TaskCard }) {
-  return card.line === null ? null : <p className="type-body">{card.line}</p>;
 }

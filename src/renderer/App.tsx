@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useReducer, useState, type Dispatch } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import type { Dispatch } from "react";
 import type { DisplayState } from "../shared/cards";
 import type { VoicePhase } from "../shared/ipc";
 import type { CardActions } from "./actions";
-import { orderCards } from "./cards/list";
-import { TaskCard } from "./cards/TaskCard";
-import { applyDemoAction, demoDisplayState, type DemoAction } from "./demo";
+import { ReportPage } from "./cards/ReportPage";
+import { TasksList } from "./cards/TasksList";
+import { ChatList } from "./ChatList";
 import { startMicrophone } from "./microphone";
 import { NotchShell } from "./notch/NotchShell";
+import { initialView, panelContent, viewReducer } from "./panel-contents";
+import type { PanelContent, PanelViewEvent } from "./panel-contents";
 import { startPlayback } from "./playback";
 import { TextBox } from "./TextBox";
 import { TopBar } from "./TopBar";
@@ -46,64 +49,40 @@ function useMainState() {
   return { accessibility, holdKeyLabel, display, phase };
 }
 
-// Cmd+Shift+D or Ctrl+Shift+D; event.code, since Shift changes event.key per layout.
-function useDemoSwitch(): boolean {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    const toggle = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return;
-      if (event.code !== "KeyD") return;
-      event.preventDefault();
-      setOn((value) => !value);
-    };
-    window.addEventListener("keydown", toggle);
-    return () => window.removeEventListener("keydown", toggle);
-  }, []);
-  return on;
+type PanelBodyProps = {
+  content: PanelContent;
+  actions: CardActions;
+  changeView: Dispatch<PanelViewEvent>;
+};
+
+function PanelBody({ content, actions, changeView }: PanelBodyProps) {
+  const keptScroll = useRef(0);
+  switch (content.kind) {
+    case "chat":
+      return <ChatList rows={content.rows} />;
+    case "tasks":
+      return (
+        <TasksList
+          cards={content.cards}
+          actions={actions}
+          keptScroll={keptScroll}
+          onOpenReport={(taskId) => changeView({ kind: "open-report", taskId })}
+        />
+      );
+    case "report":
+      return (
+        <ReportPage
+          key={content.card.taskId}
+          card={content.card}
+          report={content.report}
+          openSource={actions.openSource}
+          onBack={() => changeView({ kind: "back" })}
+        />
+      );
+  }
 }
 
-function demoActions(dispatch: Dispatch<DemoAction>): CardActions {
-  return {
-    submitQuestion: (payload) => dispatch({ kind: "submitQuestion", payload }),
-    cancelTask: (payload) => dispatch({ kind: "cancelTask", payload }),
-    retryTask: (payload) => dispatch({ kind: "retryTask", payload }),
-    openSource: (payload) => {
-      console.log("[Demo] openSource", payload);
-      dispatch({ kind: "openSource", payload });
-    },
-    setMuted: (payload) => dispatch({ kind: "setMuted", payload }),
-  };
-}
-
-// The demo display state and its local actions while Cmd+Shift+D is on; main's state and window.baymax otherwise.
-function useShownState(display: DisplayState) {
-  const demo = useDemoSwitch();
-  const [demoState, dispatch] = useReducer(applyDemoAction, demoDisplayState);
-  const demoCardActions = useMemo(() => demoActions(dispatch), [dispatch]);
-  const state = demo ? demoState : display;
-  const actions: CardActions = demo ? demoCardActions : window.baymax;
-  return { demo, state, actions };
-}
-
-function ChatList({ chat }: { chat: DisplayState["chat"] }) {
-  if (chat.length === 0) return null;
-  return (
-    <section className="flex min-h-0 shrink flex-col gap-1 overflow-y-auto">
-      {chat.map((entry) => (
-        <p key={entry.id} className="type-body">
-          {entry.text}
-        </p>
-      ))}
-    </section>
-  );
-}
-
-export function App() {
-  const { accessibility, holdKeyLabel, display, phase } = useMainState();
-  const { demo, state, actions } = useShownState(display);
-  const [draft, setDraft] = useState("");
-  const cards = orderCards(state.tasks);
-
+function useAudio() {
   useEffect(() => {
     const stopMicrophone = startMicrophone(window.baymax);
     const stopPlayback = startPlayback(window.baymax);
@@ -112,38 +91,53 @@ export function App() {
       stopPlayback();
     };
   }, []);
+}
+
+export function App() {
+  const { accessibility, holdKeyLabel, display, phase } = useMainState();
+  const actions: CardActions = window.baymax;
+  const [draft, setDraft] = useState("");
+  const [view, changeView] = useReducer(viewReducer, initialView);
+  const content = panelContent(view, display);
+  useAudio();
 
   return (
     <NotchShell
       needsAccess={accessibility === false}
       draft={draft}
       phase={phase}
-      tasks={state.tasks}
-      muted={state.muted}
+      tasks={display.tasks}
+      muted={display.muted}
       setMuted={actions.setMuted}
+      openSource={actions.openSource}
+      fullReportOpen={content.kind === "report"}
+      onOpenResult={() => changeView({ kind: "open-result" })}
     >
-      <TopBar
-        accessibility={accessibility}
-        state={state}
-        demo={demo}
-        setMuted={actions.setMuted}
-        openAccessibilitySettings={() =>
-          window.baymax.openAccessibilitySettings()
-        }
-      />
-      <ChatList chat={state.chat} />
-      {cards.length > 0 && (
-        <section className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto">
-          {cards.map((card) => (
-            <TaskCard key={card.taskId} card={card} actions={actions} />
-          ))}
-        </section>
+      {(closePanel) => (
+        <>
+          <TopBar
+            tab={view.tab}
+            onTab={(tab) => changeView({ kind: "tab", tab })}
+            accessibility={accessibility}
+            state={display}
+            setMuted={actions.setMuted}
+            onClose={closePanel}
+            openAccessibilitySettings={() =>
+              window.baymax.openAccessibilitySettings()
+            }
+          />
+          <PanelBody
+            content={content}
+            actions={actions}
+            changeView={changeView}
+          />
+          <TextBox
+            submitQuestion={actions.submitQuestion}
+            onDraft={setDraft}
+            holdKeyLabel={holdKeyLabel}
+          />
+        </>
       )}
-      <TextBox
-        submitQuestion={actions.submitQuestion}
-        onDraft={setDraft}
-        holdKeyLabel={holdKeyLabel}
-      />
     </NotchShell>
   );
 }

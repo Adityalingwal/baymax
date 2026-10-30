@@ -27,7 +27,7 @@ function setCapture(tracker: Tracker, captured: boolean): void {
 }
 
 // Clicks land only on what is drawn; a press that started inside keeps them until it is released, so its mouse-up comes back.
-function evaluate(tracker: Tracker): void {
+function evaluate(tracker: Tracker, moved = false): void {
   const { point, zones, hitTest } = tracker;
   if (point === null) {
     setCapture(tracker, tracker.mouseDown);
@@ -41,6 +41,7 @@ function evaluate(tracker: Tracker): void {
     inNotch: zones.notch !== null && hitTest(zones.notch, x, y),
     inOpenOutline: hitTest(zones.opened, x, y),
     inVisible,
+    moved,
   });
 }
 
@@ -62,7 +63,7 @@ function listen(tracker: Tracker): () => void {
     tracker.point = { x: event.clientX, y: event.clientY };
     // A release that happened where this window could not see it.
     if (tracker.mouseDown && event.buttons === 0) setMouseDown(tracker, false);
-    evaluate(tracker);
+    evaluate(tracker, true);
   };
   const leave = (event: MouseEvent) => {
     const { clientX: x, clientY: y } = event;

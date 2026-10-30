@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import type { TaskCard, TaskId } from "../../shared/cards";
 import type { VoicePhase } from "../../shared/ipc";
 import type { CardActions } from "../actions";
@@ -23,7 +23,9 @@ import { usePill } from "./usePill";
 import { usePointer } from "./usePointer";
 import { useWindowShape } from "./useWindowShape";
 import type { WindowGeometry } from "./useWindowShape";
-import { isAnswerLine } from "./views";
+import { islandSpeaks } from "./answer-island";
+import type { IslandState } from "./answer-island";
+import { useIsland, useIslandFollows } from "./useIsland";
 import { VoicePill } from "./VoicePill";
 
 type NotchShellProps = {
@@ -33,17 +35,14 @@ type NotchShellProps = {
   tasks: TaskCard[];
   muted: boolean; // main's mute
   setMuted: CardActions["setMuted"];
-  fullReportOpen?: boolean; // the panel takes its full-report size
-  children: ReactNode;
+  openSource: CardActions["openSource"];
+  fullReportOpen: boolean; // the panel takes its full-report size
+  onOpenResult: () => void; // a click on the answer island's card
+  children: (closePanel: () => void) => ReactNode;
 };
 
 const rowGap = 12;
 const sidePadding = 14;
-
-// For the panel's children, which main's shape does not reach: the top strip keeps to the wings beside the notch.
-function notchWidthVariable(notchWidth: number): CSSProperties {
-  return { "--notch-width": `${notchWidth}px` } as CSSProperties;
-}
 
 function isTextField(target: EventTarget): target is HTMLElement {
   return (
@@ -93,7 +92,8 @@ function useShapes(
     const keys = { collapsed, opened, view };
     // Hovering the answer island never opens the panel; only a click on its card does.
     const zones = {
-      notch: view === "island" ? null : notchZone(geometry),
+      notch:
+        view === "island" || view === "report" ? null : notchZone(geometry),
       opened: { kind: "path" as const, path: silhouettePath(width, opened) },
     };
     return { keys, zones };
@@ -156,11 +156,10 @@ function usePanel(input: PanelInput) {
     pointer.dispatch({ kind: "escape" });
     event.target.blur();
   };
-  const { open } = pointer.state;
-  const { layers } = motion;
   return {
-    open,
-    layers,
+    open: pointer.state.open,
+    hovering: pointer.state.hovering,
+    layers: motion.layers,
     contentElement,
     onKeyDown,
     dispatch: pointer.dispatch,
@@ -186,14 +185,18 @@ type ClosedLayersProps = {
   closed: ClosedShape;
   voice: ReturnType<typeof usePill>;
   layers: Layers;
+  island: IslandState;
+  openSource: CardActions["openSource"];
   onMute: () => void;
   onOpenResult: (taskId: TaskId) => void;
+  onToggleReport: () => void;
 };
 
 // What the closed notch draws inside the shape: the running ring, the voice pill's strip and the island's card.
 function ClosedLayers(props: ClosedLayersProps) {
   const { frame, open, closed, voice, layers } = props;
   const showing = (view: ClosedShape["view"]) => !open && closed.view === view;
+  const onIsland = showing("island") || showing("report");
   return (
     <>
       <RunningRing
@@ -205,7 +208,8 @@ function ClosedLayers(props: ClosedLayersProps) {
       <VoicePill
         pill={voice.pill}
         windowWidth={frame.width}
-        interactive={showing("pill") || showing("island")}
+        interactive={showing("pill") || onIsland}
+        quiet={props.island.line !== null && !voice.pill.shown}
         layers={layers}
         onMute={props.onMute}
       />
@@ -213,32 +217,64 @@ function ClosedLayers(props: ClosedLayersProps) {
         card={closed.island.card}
         width={closed.island.width}
         windowWidth={frame.width}
-        interactive={showing("island")}
+        windowHeight={frame.height}
+        interactive={onIsland}
+        reportOpen={props.island.reportOpen}
         cardRef={layers.card}
         onOpen={props.onOpenResult}
+        onToggleReport={props.onToggleReport}
+        openSource={props.openSource}
         onSize={closed.onIslandSize}
       />
     </>
   );
 }
 
+type PanelLayerProps = {
+  panel: ReturnType<typeof usePanel>;
+  frame: WindowGeometry;
+  fullReport: boolean;
+  children: NotchShellProps["children"];
+};
+
+// The panel's content inside the shape; it hands its children the close control's action.
+function PanelLayer(props: PanelLayerProps) {
+  const { panel, frame, fullReport, children } = props;
+  return (
+    <main
+      ref={panel.contentElement}
+      className="panel-type absolute inset-x-0 top-0 mx-auto flex w-fit flex-col"
+      style={{
+        ...panelBox(frame.height, fullReport, frame.shape.notchWidth),
+        gap: rowGap,
+        padding: `${panelShape.strip + rowGap}px ${sidePadding}px ${sidePadding}px`,
+      }}
+      aria-hidden={!panel.open}
+      inert={!panel.open}
+    >
+      {children(() => panel.dispatch({ kind: "close-control" }))}
+    </main>
+  );
+}
+
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
-  const { frame, children, phase, tasks, setMuted } = props;
-  const fullReport = props.fullReportOpen ?? false;
-  const voice = usePill(phase, isAnswerLine(phase, tasks), props.muted);
-  const closed = useClosedShape(voice.pill, tasks, {
+  const { frame, phase, tasks, setMuted } = props;
+  const fullReport = props.fullReportOpen;
+  const { island, dispatch } = useIsland(tasks);
+  const voice = usePill(phase, islandSpeaks(island, phase), props.muted);
+  const closed = useClosedShape(voice.pill, island, tasks, {
     shape: frame.shape,
     wide: panelLimits.reportWidth,
   });
   const panel = usePanel({ ...props, closed, fullReport });
   const { open, layers } = panel;
+  useIslandFollows(dispatch, panel);
   const scrollTo = useScrollTo(open);
   const onMute = () =>
     clickMute(voice.pill, { dispatch: voice.dispatch, setMuted });
-  // The explicit open-result event: it ends the island, opens the panel and scrolls to the result.
   const onOpenResult = (taskId: TaskId) => {
-    voice.dispatch({ kind: "open-result" });
     panel.dispatch({ kind: "open-result" });
+    props.onOpenResult();
     scrollTo(taskId);
   };
   return (
@@ -248,22 +284,20 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
       onKeyDown={panel.onKeyDown}
     >
       <ClosedLayers
-        {...{ frame, open, closed, voice, layers, onMute, onOpenResult }}
+        frame={frame}
+        open={open}
+        closed={closed}
+        voice={voice}
+        layers={layers}
+        island={island}
+        onMute={onMute}
+        onOpenResult={onOpenResult}
+        openSource={props.openSource}
+        onToggleReport={() => dispatch({ kind: "toggle-report" })}
       />
-      <main
-        ref={panel.contentElement}
-        className="panel-type absolute inset-x-0 top-0 mx-auto flex w-fit flex-col"
-        style={{
-          ...panelBox(frame.height, fullReport),
-          gap: rowGap,
-          padding: `${panelShape.strip + rowGap}px ${sidePadding}px ${sidePadding}px`,
-          ...notchWidthVariable(frame.shape.notchWidth),
-        }}
-        aria-hidden={!open}
-        inert={!open}
-      >
-        {children}
-      </main>
+      <PanelLayer panel={panel} frame={frame} fullReport={fullReport}>
+        {props.children}
+      </PanelLayer>
     </div>
   );
 }

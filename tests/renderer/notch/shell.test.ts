@@ -12,7 +12,14 @@ const pointer = (
   inNotch: boolean,
   inOpenOutline: boolean,
   inVisible: boolean,
-): PanelEvent => ({ kind: "pointer", inNotch, inOpenOutline, inVisible });
+  moved = true,
+): PanelEvent => ({
+  kind: "pointer",
+  inNotch,
+  inOpenOutline,
+  inVisible,
+  moved,
+});
 
 const onNotch = pointer(true, true, true);
 const onPanel = pointer(false, true, true);
@@ -36,6 +43,7 @@ const draftLeave: Step = (state) => ({
   token: state.draftLeave ?? -1,
 });
 const escape: PanelEvent = { kind: "escape" };
+const closeControl: PanelEvent = { kind: "close-control" };
 const closed: PanelEvent = { kind: "closed" };
 const draft = (text: string): PanelEvent => ({ kind: "draft", text });
 const mouse = (down: boolean): PanelEvent => ({ kind: "mouse", down });
@@ -58,6 +66,32 @@ type Expected = {
 };
 
 const rows: { name: string; steps: Step[]; expected: Expected }[] = [
+  {
+    name: "the close control closes at once with the pointer on the panel",
+    steps: [...opened, onPanel, closeControl],
+    expected: { open: false, closing: true, leaving: false },
+  },
+  {
+    name: "the close control closes with text in the field",
+    steps: [...opened, onPanel, draft("hello"), closeControl],
+    expected: { open: false, closing: true, draftLeaving: false },
+  },
+  {
+    name: "the close control closes over the Accessibility hint",
+    steps: [access, closeControl],
+    expected: { open: false, closing: true },
+  },
+  {
+    name: "the close control closes while a timer runs, and its firing does nothing",
+    steps: [
+      ...opened,
+      away,
+      closeControl,
+      closed,
+      { kind: "leave-elapsed", token: 2 },
+    ],
+    expected: { open: false, closing: false, leaving: false },
+  },
   {
     name: "resting 200 ms on the notch opens",
     steps: opened,
@@ -240,6 +274,46 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { open: true, closing: false },
   },
 ];
+
+describe("a pointer hovering the shape", () => {
+  // The shape grows or shrinks under a pointer that does not move.
+  const grewUnder = pointer(false, false, true, false);
+  const shrankAway = pointer(false, false, false, false);
+  it.each<{ name: string; steps: Step[]; hovering: boolean }>([
+    {
+      name: "a shape growing under a still pointer: no",
+      steps: [grewUnder],
+      hovering: false,
+    },
+    {
+      name: "the pointer moving onto it: yes",
+      steps: [onPanel],
+      hovering: true,
+    },
+    {
+      name: "the pointer moving inside after it grew under: yes",
+      steps: [grewUnder, onPanel],
+      hovering: true,
+    },
+    {
+      name: "a frame re-checked after it moved on: still yes",
+      steps: [onPanel, grewUnder],
+      hovering: true,
+    },
+    {
+      name: "the shape shrinking away from it: no",
+      steps: [onPanel, shrankAway],
+      hovering: false,
+    },
+    {
+      name: "the pointer gone from the window: no",
+      steps: [onPanel, gone],
+      hovering: false,
+    },
+  ])("$name", ({ steps, hovering }) => {
+    expect(run(steps).hovering).toBe(hovering);
+  });
+});
 
 describe("panelReducer", () => {
   it.each(rows)("$name", ({ steps, expected }) => {

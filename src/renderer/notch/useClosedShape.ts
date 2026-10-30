@@ -9,19 +9,17 @@ import {
   ringSilhouette,
 } from "./outline";
 import type { Silhouette } from "./outline";
-import { islandShown } from "./pill";
+import type { IslandState } from "./answer-island";
 import type { PillClose, PillState } from "./pill";
 import { closedView, islandLayout, islandWidth, runningCount } from "./views";
 import type { ClosedView } from "./views";
-
-type IslandCard = Pick<TaskCard, "taskId" | "words" | "spokenLine">;
 
 export type ClosedShape = {
   view: ClosedView;
   shape: Silhouette;
   running: number;
   pillClose: PillClose;
-  island: { card: IslandCard | null; width: number };
+  island: { card: TaskCard | null; width: number };
   onIslandSize: (size: IslandSize) => void;
 };
 
@@ -40,6 +38,7 @@ function silhouetteFor(
 ): Silhouette {
   switch (view) {
     case "island":
+    case "report":
       return island;
     case "pill":
       return pillShape;
@@ -50,9 +49,10 @@ function silhouetteFor(
   }
 }
 
-// What the closed notch shows and its shape; wide: the panel's body width, for an island whose line needs four lines.
+// What the closed notch shows and its shape; wide: the panel's full-report width, for an open report or a line that needs four lines.
 export function useClosedShape(
   pill: PillState,
+  answerIsland: IslandState,
   tasks: readonly TaskCard[],
   frame: { shape: WindowShape; wide: number },
 ): ClosedShape {
@@ -67,15 +67,19 @@ export function useClosedShape(
         : next,
     );
   }, []);
-  const island = islandShown(pill);
   const running = runningCount(tasks);
-  const view = closedView({ island, pill: pill.shown, running });
+  const view = closedView({
+    island: answerIsland.shown,
+    report: answerIsland.reportOpen,
+    pill: pill.shown,
+    running,
+  });
   // The last island's card stays, so its text is still there while the island closes.
-  const last = useRef<IslandCard | null>(null);
-  const taskId = island ? pill.line?.taskId : undefined;
-  const current = tasks.find((card) => card.taskId === taskId);
+  const last = useRef<TaskCard | null>(null);
+  const current = tasks.find((card) => card.taskId === answerIsland.taskId);
   if (current !== undefined) last.current = current;
-  const width = islandWidth(size.linesAt480, frame.wide);
+  const width =
+    view === "report" ? frame.wide : islandWidth(size.linesAt480, frame.wide);
   const { shape } = frame;
   const silhouette = useMemo(
     () => silhouetteFor(view, shape, islandSilhouette(width, size.cardHeight)),

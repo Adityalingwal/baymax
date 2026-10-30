@@ -11,7 +11,9 @@ import type {
   SpeechLine,
   StopPlayback,
 } from "../shared/ipc";
-import { takeClauses } from "./clauses";
+import { describeError, guarded, log } from "./speech-log";
+import { newStreamJob, sendText } from "./speech-stream";
+import type { LineText, StreamJob } from "./speech-stream";
 import type { SaidKind, SaidLine, Timers } from "./tasks/state";
 
 export type VoiceDownCause = "unreachable" | "keyRejected" | "noCredit";
@@ -38,31 +40,17 @@ type SpeechDeps = {
   timers: Timers;
 };
 
-type LineText = {
-  text: string;
-  ended: boolean;
-  changed: (() => void) | null;
-};
-
 // key: the generation (release or typed question) of a talker reply, else null.
 type Line = {
   taskId: TaskId | null;
   kind: SaidKind;
   key: string | null;
   feed: LineText;
+  silent?: boolean; // a result with no audio to play: it still gets its turn and its island
 };
 
 // A distinct object per synthesis, so a settled job can tell whether it still owns the slot.
 type Job = { line: Line; abort: AbortController };
-
-// A line on the Aura socket while its text and audio still flow; seq numbers its chunks.
-type StreamJob = {
-  seq: number;
-  taken: number; // characters of the line's text already cut into clauses
-  flushesSent: number;
-  flushesDone: number;
-  textEnded: boolean;
-};
 
 // The line that owns playback until the renderer reports its end; started tells whether its audio began.
 type Playing = {
@@ -77,6 +65,7 @@ type SpeechState = {
   pending: Line[];
   synthesizing: Job | null;
   playing: Playing | null;
+  island: LineId | null; // the result line whose island may still show; a later result line waits for its closing report
   held: boolean;
   muted: boolean;
   cancelled: Set<TaskId>;
@@ -100,6 +89,8 @@ type Speech = {
   cancelTask(taskId: TaskId): void;
   cutFailure(taskId: TaskId): void;
   playbackFinished(payload: PlaybackFinished): void;
+  islandClosed(lineId: LineId): void;
+  releaseResults(): void;
   rendererReset(): void;
 };
 
@@ -111,27 +102,6 @@ const playbackDeadlineMs = 60_000;
 const cancelledLimit = 64;
 const everyLine: Matches = () => true;
 
-function log(message: string): void {
-  console.log(`[Speech] ${message}`);
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error
-    ? `${error.name}: ${error.message}`
-    : String(error);
-}
-
-// An injected callback that throws is logged; it never breaks the speech state.
-function guarded(name: string, call: () => void): boolean {
-  try {
-    call();
-    return true;
-  } catch (error) {
-    log(`${name} threw: ${describeError(error)}`);
-    return false;
-  }
-}
-
 // A line that leaves speech, played or not; every drop and every end of playback comes through here once.
 function lineGone(ctx: SpeechContext, line: Line, lineId: LineId | null): void {
   guarded("onLineGone", () => ctx.deps.onLineGone(line, lineId));
@@ -141,6 +111,7 @@ function audioStarted(ctx: SpeechContext, playing: Playing): void {
   if (playing.started) return;
   playing.started = true;
   const { line, lineId } = playing;
+  if (line.kind === "answer") ctx.state.island = lineId;
   guarded("onAudioStarted", () => ctx.deps.onAudioStarted(line, lineId));
 }
 
@@ -226,6 +197,14 @@ function startPlaying(ctx: SpeechContext, line: Line, result: Audio) {
   audioStarted(ctx, playing);
 }
 
+// One turn through the usual phases in the same tick, so the renderer shows the island and later reports it closed; no word shows.
+function silentTurn(ctx: SpeechContext, line: Line): void {
+  const lineId = randomUUID();
+  ctx.state.island = lineId;
+  guarded("onAudioStarted", () => ctx.deps.onAudioStarted(line, lineId));
+  lineGone(ctx, line, lineId);
+}
+
 function synthesisFailed(ctx: SpeechContext, failure: Failed): void {
   if (failure.cause === "error") {
     log(`line dropped: synthesis error ${failure.detail}`);
@@ -249,7 +228,8 @@ function synthesisSettled(
   log(`synthesis in ${Math.round(performance.now() - startedAt)} ms`);
   if (result.kind === "failed") {
     synthesisFailed(ctx, result);
-    lineGone(ctx, job.line, null);
+    if (job.line.kind === "answer") silentTurn(ctx, job.line);
+    else lineGone(ctx, job.line, null);
     pump(ctx);
     return;
   }
@@ -291,32 +271,6 @@ function startRest(ctx: SpeechContext, line: Line): void {
   };
 }
 
-// Every send is checked; false means the socket failed and the line takes the socket-failure path.
-function sendClauses(
-  aura: Aura,
-  stream: StreamJob,
-  clauses: string[],
-): boolean {
-  for (const clause of clauses) {
-    if (!aura.speak(clause)) return false;
-    stream.flushesSent += 1;
-    if (!aura.flush()) return false;
-  }
-  return true;
-}
-
-// Text goes out sentence by sentence as it arrives, with a Flush each time.
-function sendText(aura: Aura, stream: StreamJob, line: Line): boolean {
-  const { text, ended } = line.feed;
-  const { clauses, rest } = takeClauses(text.slice(stream.taken), ended);
-  stream.taken = text.length - rest.length;
-  if (!sendClauses(aura, stream, clauses)) return false;
-  if (!ended) return true;
-  stream.textEnded = true;
-  line.feed.changed = null;
-  return true;
-}
-
 function audioDone(ctx: SpeechContext): void {
   const playing = ctx.state.playing;
   const stream = playing?.stream ?? null;
@@ -327,17 +281,11 @@ function audioDone(ctx: SpeechContext): void {
 }
 
 function startStream(ctx: SpeechContext, aura: Aura, line: Line): void {
-  const stream: StreamJob = {
-    seq: 0,
-    taken: 0,
-    flushesSent: 0,
-    flushesDone: 0,
-    textEnded: false,
-  };
+  const stream = newStreamJob();
   if (occupy(ctx, line, stream) === null) return pump(ctx);
   const next = () => {
     if (ctx.state.playing?.stream !== stream) return;
-    if (!sendText(aura, stream, line)) return sendFailed(ctx, aura);
+    if (!sendText(aura, stream, line.feed)) return sendFailed(ctx, aura);
     audioDone(ctx);
   };
   line.feed.changed = next;
@@ -418,12 +366,21 @@ function clearSpeech(
   stopPlaying(ctx, clear.matches, clear.sendStop);
 }
 
+// While an island may show, a result line waits and other lines go ahead of it.
+function nextLine({ pending, island }: SpeechState): Line | undefined {
+  return pending.find((line) => island === null || line.kind !== "answer");
+}
+
+function takeLine(state: SpeechState, line: Line): void {
+  state.pending = state.pending.filter((other) => other !== line);
+}
+
 // The open Aura socket streams the line; without it the line goes to the REST call.
 function pump(ctx: SpeechContext): void {
   const { state, aura } = ctx;
-  if (state.held || state.muted) return;
+  if (state.held) return;
   if (state.synthesizing !== null || state.playing !== null) return;
-  let line = state.pending[0];
+  let line = nextLine(state);
   // A talker line that ended with no words has nothing to say.
   while (
     line !== undefined &&
@@ -431,13 +388,19 @@ function pump(ctx: SpeechContext): void {
     line.feed.text.trim() === ""
   ) {
     log(`line dropped: no text (${line.kind})`);
-    state.pending.shift();
+    takeLine(state, line);
     lineGone(ctx, line, null);
-    line = state.pending[0];
+    line = nextLine(state);
   }
   // A talker line waits at the head of the queue until its first words arrive.
   if (line === undefined || line.feed.text === "") return;
-  state.pending.shift();
+  if (line.silent === true) {
+    takeLine(state, line);
+    silentTurn(ctx, line);
+    return pump(ctx);
+  }
+  if (state.muted) return;
+  takeLine(state, line);
   if (aura !== null && aura.isOpen()) startStream(ctx, aura, line);
   else startRest(ctx, line);
 }
@@ -445,15 +408,17 @@ function pump(ctx: SpeechContext): void {
 function queueLine(ctx: SpeechContext, line: Line): void {
   const { state } = ctx;
   const taskId = line.taskId;
-  const why = state.muted
-    ? "muted"
-    : taskId !== null && state.cancelled.has(taskId)
-      ? "task cancelled"
-      : null;
+  const why =
+    state.muted && line.kind !== "answer"
+      ? "muted"
+      : taskId !== null && state.cancelled.has(taskId)
+        ? "task cancelled"
+        : null;
   if (why !== null) {
     log(`line dropped: ${why} (${line.kind})`);
     return lineGone(ctx, line, null);
   }
+  line.silent = state.muted;
   state.pending.push(line);
   pump(ctx);
 }
@@ -486,9 +451,13 @@ function speakFed(ctx: SpeechContext, spoken: Spoken): LineFeed {
   };
 }
 
+// A result line not yet spoken stays: it plays after the release, with its own island.
 function startHold(ctx: SpeechContext): void {
   ctx.state.held = true;
-  clearSpeech(ctx, { matches: everyLine, why: "key pressed", sendStop: true });
+  const why = "key pressed";
+  dropPending(ctx, (line) => line.kind !== "answer", why);
+  dropSynthesis(ctx, everyLine, why);
+  stopPlaying(ctx, everyLine, true);
 }
 
 function endHold(ctx: SpeechContext): void {
@@ -497,12 +466,23 @@ function endHold(ctx: SpeechContext): void {
   pump(ctx);
 }
 
+// Everything stops; a result not yet heard stays as a silent turn.
+function muteSpeech(ctx: SpeechContext): void {
+  const { synthesizing, playing, pending } = ctx.state;
+  const unplayed = playing?.started === false ? playing.line : undefined;
+  const unheard = [synthesizing?.line, unplayed, ...pending].filter(
+    (line) => line?.kind === "answer",
+  );
+  clearSpeech(ctx, { matches: everyLine, why: "muted", sendStop: true });
+  ctx.state.pending = unheard.flatMap((line) =>
+    line === undefined ? [] : [{ ...line, silent: true }],
+  );
+}
+
 function changeMuted(ctx: SpeechContext, muted: boolean): void {
   if (ctx.state.muted === muted) return;
   ctx.state.muted = muted;
-  if (muted) {
-    clearSpeech(ctx, { matches: everyLine, why: "muted", sendStop: true });
-  }
+  if (muted) muteSpeech(ctx);
   pump(ctx);
 }
 
@@ -532,9 +512,21 @@ function finishPlayback(ctx: SpeechContext, payload: PlaybackFinished) {
   pump(ctx);
 }
 
+// A stale report changes nothing: only the line that holds the wait ends it.
+function islandClosed(ctx: SpeechContext, lineId: LineId): void {
+  if (ctx.state.island !== lineId) return log("stale island report dropped");
+  releaseResults(ctx);
+}
+
+function releaseResults(ctx: SpeechContext): void {
+  ctx.state.island = null;
+  pump(ctx);
+}
+
 // The renderer and its key state are gone, so nothing is told to stop.
 function forgetRenderer(ctx: SpeechContext): void {
   ctx.state.held = false;
+  ctx.state.island = null;
   clearSpeech(ctx, {
     matches: everyLine,
     why: "renderer reset",
@@ -549,6 +541,7 @@ export function createSpeech(deps: SpeechDeps): Speech {
       pending: [],
       synthesizing: null,
       playing: null,
+      island: null,
       held: false,
       muted: false,
       cancelled: new Set(),
@@ -573,6 +566,8 @@ export function createSpeech(deps: SpeechDeps): Speech {
     cancelTask: (taskId) => cancelLines(ctx, taskId),
     cutFailure: (taskId) => cutFailure(ctx, taskId),
     playbackFinished: (payload) => finishPlayback(ctx, payload),
+    islandClosed: (lineId) => islandClosed(ctx, lineId),
+    releaseResults: () => releaseResults(ctx),
     rendererReset: () => forgetRenderer(ctx),
   };
 }

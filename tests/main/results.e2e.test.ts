@@ -10,9 +10,145 @@ import {
   wire,
 } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
-import { findings, workRoute } from "./tasks/harness";
+import { findings, replyRoute, workRoute } from "./tasks/harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+const result = (taskId: string, spokenLine: string) =>
+  ({
+    type: "result",
+    taskId,
+    spokenLine,
+    findings: findings("A report."),
+  }) as const;
+
+// Two tasks: the first result has played, and the second result's line is ready while the first island still shows.
+async function secondResultWaiting(w: Wired): Promise<string> {
+  await admitAs(w, "hermes");
+  await admitAs(w, "laptops");
+  await w.playAll();
+  w.port.emit(result("t1", "Hermes is in."));
+  const line = await w.settleNext();
+  if (line === undefined) throw new Error("no result line played");
+  w.send(ipcChannels.playbackFinished, {
+    lineId: line.lineId,
+    outcome: "ended",
+  });
+  w.port.emit(result("t2", "Laptops are in."));
+  await flush();
+  return line.lineId;
+}
+
+async function islandClosed(w: Wired, lineId: string): Promise<void> {
+  w.send(ipcChannels.islandClosed, { lineId });
+  await flush();
+}
+
+const synthesized = (w: Wired) => w.syntheses.map((job) => job.input).at(-1);
+
+const phases = (w: Wired) => w.voicePhases.map(({ phase }) => phase);
+
+const noAudioRows = [
+  {
+    name: "muted",
+    options: {},
+    setUp: (w: Wired) => w.send(ipcChannels.setMuted, { muted: true }),
+  },
+  {
+    name: "with the voice provider down",
+    options: { voiceFails: true },
+    setUp: () => undefined,
+  },
+];
+
+describe("a result with no audio", () => {
+  // The first result's phases, then the wait: a later result still waits for its closing report.
+  it.each(noAudioRows)(
+    "$name still gets its turn and its closing report",
+    async ({ options, setUp }) => {
+      const w = wire(options);
+      await admitAs(w, "hermes");
+      await admitAs(w, "laptops");
+      await flush();
+      setUp(w);
+      await w.playAll();
+      w.voicePhases.length = 0;
+      w.port.emit(result("t1", "Hermes is in."));
+      await flush();
+      expect(phases(w).slice(-2)).toEqual(["speaking", "idle"]);
+      const first = w.voicePhases.find((voice) => voice.phase === "speaking");
+      if (first?.phase !== "speaking") throw new Error("no silent turn");
+      expect(first.line).toMatchObject({ taskId: "t1", kind: "answer" });
+      w.voicePhases.length = 0;
+      w.port.emit(result("t2", "Laptops are in."));
+      await flush();
+      expect(phases(w)).toEqual([]);
+      await islandClosed(w, first.line.lineId);
+      expect(phases(w).slice(-2)).toEqual(["speaking", "idle"]);
+    },
+  );
+
+  it("keeps a waiting result as a silent turn when mute comes on", async () => {
+    const w = wire();
+    const lineId = await secondResultWaiting(w);
+    w.send(ipcChannels.setMuted, { muted: true });
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Hermes is in.");
+    expect(w.voicePhases.at(-2)).toMatchObject({
+      phase: "speaking",
+      line: { taskId: "t2", kind: "answer" },
+    });
+  });
+});
+
+describe("one result at a time", () => {
+  it("holds the second result's line until the first island's closing report", async () => {
+    const w = wire();
+    const lineId = await secondResultWaiting(w);
+    expect(synthesized(w)).toBe("Hermes is in.");
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Laptops are in.");
+  });
+
+  it("changes nothing on a stale report", async () => {
+    const w = wire();
+    const lineId = await secondResultWaiting(w);
+    await islandClosed(w, "an older line");
+    expect(synthesized(w)).toBe("Hermes is in.");
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Laptops are in.");
+  });
+
+  it("releases the wait on a renderer reset: the next result speaks without a report", async () => {
+    const w = wire();
+    await secondResultWaiting(w);
+    w.wiring.voice.rendererReset();
+    await admitAs(w, "phones");
+    await w.playAll();
+    w.port.emit(result("t3", "Phones are in."));
+    await flush();
+    expect(synthesized(w)).toBe("Phones are in.");
+  });
+
+  it("lets a line that is not a result go ahead of the waiting one", async () => {
+    const w = wire();
+    await secondResultWaiting(w);
+    w.send(ipcChannels.submitQuestion, { text: "hello" });
+    await streamFront(w, replyRoute(), "Hello there.");
+    expect(synthesized(w)).toBe("Hello there.");
+  });
+
+  it("keeps the waiting line through a key press, and plays it after the closing report", async () => {
+    const w = wire();
+    const lineId = await secondResultWaiting(w);
+    w.wiring.voice.holdChanged("listening", null);
+    w.wiring.voice.holdChanged("idle", "discard");
+    await flush();
+    expect(synthesized(w)).toBe("Hermes is in.");
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Laptops are in.");
+  });
+});
 
 async function spokenAll(w: Wired): Promise<string[]> {
   await flush();
@@ -141,7 +277,6 @@ describe("a failed task through the wiring", () => {
         type: "progress",
         taskId: "t1",
         step: { tool: "search", query: "hermes" },
-        sourcesRead: 2,
       });
       w.port.emit({
         type: "failed",
@@ -156,7 +291,6 @@ describe("a failed task through the wiring", () => {
         line,
         spokenLine: null,
         step: null,
-        sourcesRead: 2,
       });
       expect(w.talkerCalls).toHaveLength(2);
       const turn = String(w.talkerCalls[1].request.messages.at(-1)?.content);
@@ -206,8 +340,8 @@ describe("a running task's step", () => {
   it.each(stepRows)("shows $text", async ({ step, text }) => {
     const w = wire();
     await admitAs(w, "hermes");
-    w.port.emit({ type: "progress", taskId: "t1", step, sourcesRead: 1 });
-    expect(w.card("t1")).toMatchObject({ step: text, sourcesRead: 1 });
+    w.port.emit({ type: "progress", taskId: "t1", step });
+    expect(w.card("t1")).toMatchObject({ step: text });
   });
 });
 

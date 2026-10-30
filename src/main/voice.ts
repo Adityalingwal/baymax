@@ -52,6 +52,7 @@ export type Voice = {
   holdChanged(holdState: HoldState, outcome: HoldOutcome | null): void;
   micAudio(audio: MicAudio): void;
   playbackFinished(payload: PlaybackFinished): void;
+  islandClosed(lineId: LineId): void;
   setMuted(muted: boolean): void;
   say(line: SaidLine): void;
   talk(spoken: Spoken): LineFeed;
@@ -437,6 +438,7 @@ function stopVoice(model: VoiceModel, flows: Flows): void {
   flows.phases.holdEnded(null);
   flows.phases.reset();
   flows.speech.holdEnded();
+  flows.speech.releaseResults();
 }
 
 // Joins recording and speech to main's state; main's state is built with say and silence first, then given here by start.
@@ -463,6 +465,7 @@ export function createVoice(deps: VoiceDeps): Voice {
     micAudio: (audio) =>
       withState("mic audio", () => recording.micAudio(audio)),
     playbackFinished: (payload) => speech.playbackFinished(payload),
+    islandClosed: (lineId) => speech.islandClosed(lineId),
     setMuted: (muted) =>
       withState("mute", (state) => {
         try {
