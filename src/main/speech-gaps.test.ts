@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGapWatch } from "./speech-gaps";
+import { createGapWatch } from "./voice-timing";
 
 // 4,800 bytes of 16-bit mono at 24 kHz is 100 ms of audio.
 const chunk = (lineId: string, seq: number, ms: number) => ({

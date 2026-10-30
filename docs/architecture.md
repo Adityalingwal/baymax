@@ -314,16 +314,12 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/hold.ts` | Hold state and the accept or discard outcome from key events and the time; pure |
 | `src/main/platform.ts` | Platform flags and labels |
 | `src/main/recording.ts` | One utterance: recording commands, the mic audio, the transcript in hold order; discarded holds and late transcripts dropped |
-| `src/main/flux-turns.ts` | Flux turns bound to held utterances: sending order, `ForceEndTurn`, the final-transcript deadline and the Nova-3 batch fallback |
-| `src/main/flux-turns-model.ts` | The held utterance and its end: delivery once, the turn ended on the socket, the batch call |
+| `src/main/flux-turns.ts` | Flux turns bound to held utterances: sending order, `ForceEndTurn`, the final-transcript deadline and the Nova-3 batch fallback; the held utterance and its end: delivery once, the turn ended on the socket, the batch call |
 | `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, with a deadline on each playing line; a line streams clause by clause over the open Aura socket and uses the Aura-2 REST call, which also reports voice down, when the socket is not open or closes before any audio; a socket that closes after audio drops the rest of the line |
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
-| `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
-| `src/main/talker-timing.ts` | Logs each generation's front-call steps in ms after its release |
-| `src/main/voice-heard.ts` | What voice does with a held utterance's result: its words to main's state, or the line for words not caught |
-| `src/main/voice-phase.ts` | The voice phase the screen shows: listening, the pending turn (thinking) and the speaking line |
-| `src/main/talker.ts` | The front call: one Fable 5.1 streaming call per question or clarifying answer; its line streams into speech, then its `decide` input is handed to main; the two deadlines, attempts and cancel |
-| `src/main/talker-prompt.ts` | The front call's instructions, the `decide` tool and the messages it reads |
+| `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing; what voice does with a held utterance's result (its words to main's state, or the line for words not caught); the voice phase the screen shows: listening, the pending turn (thinking) and the speaking line |
+| `src/main/voice-timing.ts` | Dev-log timing of voice: each generation's front-call steps in ms after its release, and gaps where streamed speech ran dry |
+| `src/main/talker.ts` | The front call: one Fable 5.1 streaming call per question or clarifying answer; its line streams into speech, then its `decide` input is handed to main; the two deadlines, attempts and cancel; its instructions, the `decide` tool and the messages it reads |
 | `src/main/window.ts` | The Baymax window: the notch panel at the top centre, shown without focus, click-through outside its shape; its two window channels (`windowShape`, `setMouseCapture`) on its own webContents; navigation and pop-ups blocked |
 | `src/main/panel-geometry.ts` | Panel bounds on the chosen display and the notch size estimate; pure |
 | `src/main/keys.ts` | Reads the API keys once from an injected environment and removes them from it |
