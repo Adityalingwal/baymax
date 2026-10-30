@@ -453,9 +453,13 @@ function speakFed(ctx: SpeechContext, spoken: Spoken): LineFeed {
   };
 }
 
+// A result line not yet spoken stays: it plays after the release, with its own island.
 function startHold(ctx: SpeechContext): void {
   ctx.state.held = true;
-  clearSpeech(ctx, { matches: everyLine, why: "key pressed", sendStop: true });
+  const why = "key pressed";
+  dropPending(ctx, (line) => line.kind !== "answer", why);
+  dropSynthesis(ctx, everyLine, why);
+  stopPlaying(ctx, everyLine, true);
 }
 
 function endHold(ctx: SpeechContext): void {

@@ -83,14 +83,15 @@ describe("one result at a time", () => {
     expect(synthesized(w)).toBe("Hello there.");
   });
 
-  it("drops the waiting line on a key press, as any line not yet spoken", async () => {
+  it("keeps the waiting line through a key press, and plays it after the closing report", async () => {
     const w = wire();
     const lineId = await secondResultWaiting(w);
     w.wiring.voice.holdChanged("listening", null);
-    w.wiring.voice.holdChanged("idle", null);
-    await islandClosed(w, lineId);
+    w.wiring.voice.holdChanged("idle", "discard");
+    await flush();
     expect(synthesized(w)).toBe("Hermes is in.");
-    expect(w.card("t2")?.spokenLine).toBe("Laptops are in.");
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Laptops are in.");
   });
 });
 
