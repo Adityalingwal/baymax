@@ -1,16 +1,11 @@
 import type { SearchHit } from "../../../providers/exa";
 import type { Findings } from "../../../shared/cards";
 import type { ParentResult } from "../../../shared/engine";
+import { escapeText, taggedText } from "../../../providers/tagged-text";
 import type { ReadPage } from "./page-text";
-
-// Page text and snippets are untrusted: escaping keeps them from closing or opening a block.
 
 const snippetNote =
   "These are search snippets, not read pages, and cannot be cited; read a URL to cite it.";
-
-function escapeText(text: string): string {
-  return text.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
 
 function escapeAttribute(value: string): string {
   return escapeText(value).replaceAll('"', "&quot;");
@@ -37,11 +32,6 @@ export function searchHitsForModel(hits: SearchHit[]): string {
   return ["<search_results>", snippetNote, ...listed, "</search_results>"].join(
     "\n\n",
   );
-}
-
-// Escaped text in one tagged block, so user or model text cannot close or open a block either.
-export function taggedText(tag: string, text: string): string {
-  return `<${tag}>\n${escapeText(text)}\n</${tag}>`;
 }
 
 function findingsLines(findings: Findings | null): string[] {

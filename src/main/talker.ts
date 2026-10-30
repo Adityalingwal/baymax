@@ -5,6 +5,7 @@ import type {
   TextStream,
   ToolRound,
 } from "../providers/anthropic";
+import { taggedText } from "../providers/tagged-text";
 import type { TaskId } from "../shared/cards";
 import type { FailureKind } from "../shared/engine";
 import type { LineFeed } from "./speech";
@@ -121,7 +122,7 @@ function recentBlock(request: TalkRequest): string {
       ? line
       : `${line}\n  card: ${exchange.cardText}`;
   });
-  return `<recent>\n${list(lines)}\n</recent>`;
+  return taggedText("recent", list(lines));
 }
 
 function tasksBlock(request: TalkRequest): string {
@@ -129,12 +130,12 @@ function tasksBlock(request: TalkRequest): string {
     const topic = task.topic === null ? "" : ` | topic: ${task.topic}`;
     return `- task ${task.taskId} (${task.state}): ${task.words}${topic}`;
   });
-  return `<running_and_waiting_tasks>\n${list(lines)}\n</running_and_waiting_tasks>`;
+  return taggedText("running_and_waiting_tasks", list(lines));
 }
 
 function waitingBlock(request: TalkRequest): string {
   const { waiting } = request;
-  if (waiting === null) return "<waiting_question>\nnone\n</waiting_question>";
+  if (waiting === null) return taggedText("waiting_question", "none");
   const { question } = waiting;
   const choices = question.choices.map((choice) => `- ${choice}`);
   const body = [
@@ -144,12 +145,12 @@ function waitingBlock(request: TalkRequest): string {
     `question: ${question.text}`,
     `choices: ${choices.length > 0 ? `\n${choices.join("\n")}` : "none (open question)"}`,
   ].join("\n");
-  return `<waiting_question>\n${body}\n</waiting_question>`;
+  return taggedText("waiting_question", body);
 }
 
 function currentTurn(request: TalkRequest): string {
   return [
-    `<words>\n${request.words}\n</words>`,
+    taggedText("words", request.words),
     recentBlock(request),
     tasksBlock(request),
     waitingBlock(request),
