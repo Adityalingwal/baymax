@@ -248,31 +248,6 @@ describe("main and the engine joined: a clarifying answer", () => {
   const laptop = (answerTo: string | null) =>
     front("Checking office laptops.", newTask("office laptops", answerTo));
 
-  it("continues a clarifying task answered by a click, in one front call", async () => {
-    const flow = startFlow([clarifyFront, laptop(null)], [unreachable]);
-    flow.state.ask("find me a good laptop", null, null);
-    await flow.until(
-      "the question",
-      () => flow.state.waitingQuestion() !== null,
-    );
-    expect(flow.card("t1")?.question?.text).toBe("Which kind of laptop?");
-    const waiting = flow.state.waitingQuestion();
-    flow.state.answerQuestion({
-      taskId: "t1",
-      questionId: waiting?.question.questionId ?? "",
-      reply: { kind: "choice", index: 0 },
-    });
-    await flow.until("the worker", () => flow.workerAsked("office laptops"));
-    expect(flow.asked).toHaveLength(2);
-    expect(flow.asked[1]).toContain("<words>\nOffice\n</words>");
-    expect(sentOf(flow, "runTask", "t1")).toMatchObject({
-      ask: {
-        userWords:
-          'find me a good laptop\nAnswer to "Which kind of laptop?": Office',
-      },
-    });
-  });
-
   it("continues a clarifying task answered by typed words, removing the new card", async () => {
     const flow = startFlow(
       [clarifyFront, laptop("t1:question")],

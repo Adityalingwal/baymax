@@ -66,15 +66,6 @@ const silenceRows: SilenceRow[] = [
     silenced: ["t1"],
   },
   {
-    name: "closing a done card",
-    act: (h) => {
-      askNew(h, "hermes");
-      finish(h, "t1");
-      h.state.closeCard("t1");
-    },
-    silenced: ["t1"],
-  },
-  {
     name: "nothing when removing the thinking card of words that answer the question, whose talker reply still plays",
     act: (h) => {
       askClarify(h);

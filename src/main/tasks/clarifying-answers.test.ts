@@ -3,48 +3,23 @@ import {
   askClarify,
   askNew,
   chat,
-  clarify,
-  click,
-  counts,
   createHarness,
-  decision,
   newTask,
   outsideResearch,
   waitingOf,
 } from "./harness";
 
-describe("how a clicked answer is routed", () => {
-  it("admits the task with the words and the answer joined, whether or not the tool names the question", () => {
-    for (const answerTo of [null, "t1:question"]) {
-      const h = createHarness();
-      askClarify(h, ["Office", "Gaming"], "find me a laptop");
-      h.state.answerQuestion(click("t1", 0));
-      h.reply("t1", newTask("office laptops", answerTo), "Checking laptops.");
-      expect(h.card("t1")).toMatchObject({
-        state: "running",
-        reply: "Checking laptops.",
-        sayBack: null,
-        line: null,
-        question: null,
-      });
-      expect(h.sent.at(-1)).toMatchObject({
-        type: "runTask",
-        taskId: "t1",
-        ask: {
-          goal: "office laptops",
-          userWords: 'find me a laptop\nAnswer to "Which one for t1?": Office',
-        },
-      });
-    }
-  });
-});
-
-describe("how a clicked answer is routed when it is not a task", () => {
+describe("how a spoken answer is routed when it is not a task", () => {
   it("ends the waiting task done with the line when the answer is chat, starting no worker", () => {
     const h = createHarness();
     askClarify(h);
-    h.state.answerQuestion(click("t1"));
-    h.reply("t1", chat(), "That works.");
+    const waiting = waitingOf(h);
+    h.state.ask("the first one", null, waiting);
+    h.reply(
+      "t2",
+      { ...chat(), answerTo: waiting.question.questionId },
+      "That works.",
+    );
     expect(h.card("t1")).toMatchObject({
       state: "done",
       reply: "That works.",
@@ -58,8 +33,13 @@ describe("how a clicked answer is routed when it is not a task", () => {
   it("ends the waiting task as outside research, saying nothing more", () => {
     const h = createHarness();
     askClarify(h);
-    h.state.answerQuestion(click("t1"));
-    h.reply("t1", outsideResearch(), "I only research.");
+    const waiting = waitingOf(h);
+    h.state.ask("the first one", null, waiting);
+    h.reply(
+      "t2",
+      { ...outsideResearch(), answerTo: waiting.question.questionId },
+      "I only research.",
+    );
     expect(h.card("t1")).toMatchObject({
       state: "cancelled",
       reply: "I only research.",
@@ -67,26 +47,6 @@ describe("how a clicked answer is routed when it is not a task", () => {
     });
     expect(h.said).toEqual([]);
     expect(h.silenced).toEqual([]);
-  });
-
-  it.each([
-    ["another question's id", decision({ ...newTask("x"), answerTo: "q9" })],
-    [
-      "a second clarifying question",
-      decision({ ...clarify(), answerTo: null }),
-    ],
-  ])("fails with a retryable line for %s and starts nothing", (_name, raw) => {
-    const h = createHarness();
-    askClarify(h);
-    h.state.answerQuestion(click("t1"));
-    h.reply("t1", raw);
-    expect(h.card("t1")).toMatchObject({
-      state: "clarifying",
-      line: "That didn't go through. Ask again.",
-      canRetry: true,
-    });
-    expect(h.sent).toEqual([]);
-    expect(h.logs.at(-1)).toMatch(/^decision rejected for t1: /);
   });
 });
 
@@ -142,34 +102,7 @@ describe("spoken answers that compete", () => {
   });
 });
 
-describe("a click against a spoken answer", () => {
-  it("lets a click win over a spoken answer that arrives while its call is in flight", () => {
-    const h = createHarness();
-    askClarify(h, ["Office", "Gaming"]);
-    const waiting = waitingOf(h);
-    h.state.ask("the second one", null, waiting);
-    h.state.answerQuestion(click("t1", 0));
-    h.reply("t2", newTask("gaming", waiting.question.questionId));
-    expect(h.card("t2")).toBeUndefined();
-    expect(h.sent).toEqual([]);
-    expect(h.card("t1")).toMatchObject({ state: "clarifying" });
-    h.reply("t1", newTask("office"));
-    expect(h.sent.at(-1)).toMatchObject({ type: "runTask", taskId: "t1" });
-    expect(h.sent.filter((c) => c.type === "runTask")).toHaveLength(1);
-  });
-
-  it("lets the first spoken answer win and drops a click afterwards", () => {
-    const h = createHarness();
-    askClarify(h);
-    const waiting = waitingOf(h);
-    h.state.ask("the second one", null, waiting);
-    h.reply("t2", newTask("gaming", waiting.question.questionId));
-    const before = counts(h);
-    h.state.answerQuestion(click("t1", 0));
-    expect(counts(h)).toEqual(before);
-    expect(h.sent.filter((c) => c.type === "runTask")).toHaveLength(1);
-  });
-
+describe("a spoken answer cancelled during its call", () => {
   it("starts nothing and keeps the question unclaimed when the answer is cancelled during its call", () => {
     const h = createHarness();
     askClarify(h);

@@ -69,14 +69,10 @@ const rows: CancelRow[] = [
     starts: null,
   },
   {
-    name: "clarifying, answer's front call in flight",
+    name: "clarifying, a typed answer's front call in flight",
     prepare: async (w) => {
       await clarifying(w);
-      w.send(ipcChannels.answerQuestion, {
-        taskId: "t4",
-        questionId: "t4:question",
-        reply: { kind: "choice", index: 0 },
-      });
+      w.send(ipcChannels.submitQuestion, { text: "Office" });
     },
     taskId: "t4",
     ending: null,

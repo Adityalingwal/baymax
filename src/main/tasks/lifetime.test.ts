@@ -85,27 +85,6 @@ const droppedCancelRows: { name: string; setup: Setup; taskId: string }[] = [
   { name: "unknown", setup: running, taskId: "t9" },
 ];
 
-const closeRows: { name: string; setup: Setup; closes: boolean }[] = [
-  { name: "done", setup: done, closes: true },
-  { name: "incomplete", setup: incomplete, closes: true },
-  { name: "cancelled", setup: cancelled, closes: true },
-  { name: "running", setup: running, closes: false },
-  { name: "cancelling", setup: cancelling, closes: false },
-];
-
-const foldRows: {
-  name: string;
-  setup: Setup;
-  folded: boolean;
-  applies: boolean;
-}[] = [
-  { name: "done", setup: done, folded: true, applies: true },
-  { name: "incomplete", setup: incomplete, folded: true, applies: true },
-  { name: "done, same value", setup: done, folded: false, applies: false },
-  { name: "cancelled", setup: cancelled, folded: true, applies: false },
-  { name: "running", setup: running, folded: true, applies: false },
-];
-
 describe("cancel and the card", () => {
   it.each(cancelRows)(
     "cancel on $name",
@@ -171,25 +150,5 @@ describe("card lifetime", () => {
     expect(h.card("t1")?.state).toBe("cancelled");
     h.advance(1);
     expect(h.card("t1")).toBeUndefined();
-  });
-});
-
-describe("closing and folding", () => {
-  it.each(closeRows)("closeCard on $name", ({ setup, closes }) => {
-    const h = createHarness();
-    setup(h);
-    const published = h.published.length;
-    h.state.closeCard("t1");
-    expect(h.card("t1") === undefined).toBe(closes);
-    expect(h.published.length).toBe(published + (closes ? 1 : 0));
-  });
-
-  it.each(foldRows)("setCardFolded on $name", ({ setup, folded, applies }) => {
-    const h = createHarness();
-    setup(h);
-    const published = h.published.length;
-    h.state.setCardFolded({ taskId: "t1", folded });
-    expect(h.card("t1")?.folded).toBe(applies ? folded : false);
-    expect(h.published.length).toBe(published + (applies ? 1 : 0));
   });
 });

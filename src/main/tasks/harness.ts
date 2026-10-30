@@ -10,7 +10,6 @@ import type {
   FailureKind,
   TaskAsk,
 } from "../../shared/engine";
-import type { AnswerQuestion } from "../../shared/ipc";
 import type { TalkRequest, WaitingQuestion } from "./talk";
 import type { MainState, MainStateDeps, SaidLine, Timers } from "./state";
 import { createMainState } from "./state";
@@ -291,15 +290,6 @@ export function askClarify(
   const taskId = h.lastTaskId();
   h.reply(taskId, clarify(choices), `Which one for ${taskId}?`);
   return taskId;
-}
-
-// A click on a choice of the task's question card.
-export function click(
-  taskId: TaskId,
-  index = 0,
-  questionId = questionIdOf(taskId),
-): AnswerQuestion {
-  return { taskId, questionId, reply: { kind: "choice", index } };
 }
 
 export function waitingOf(h: Harness): WaitingQuestion {

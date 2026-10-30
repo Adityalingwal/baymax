@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ipcChannels } from "../shared/ipc";
-import { clarify } from "./tasks/harness";
 import {
   failFront,
   fakeSender,
   admitTask,
   runToDone,
   source,
-  streamFront,
   submit,
   wire,
 } from "./wiring.harness";
@@ -44,20 +42,6 @@ const actionRows: ActionRow[] = [
     },
   },
   {
-    name: "close removes the done card",
-    prepare: runToDone,
-    channel: ipcChannels.closeCard,
-    payload: { taskId: "t1" },
-    check: (w) => expect(w.card("t1")).toBeUndefined(),
-  },
-  {
-    name: "fold folds the done card",
-    prepare: runToDone,
-    channel: ipcChannels.setCardFolded,
-    payload: { taskId: "t1", folded: true },
-    check: (w) => expect(w.card("t1")?.folded).toBe(true),
-  },
-  {
     name: "open source opens a listed source",
     prepare: runToDone,
     channel: ipcChannels.openSource,
@@ -71,40 +55,14 @@ const actionRows: ActionRow[] = [
     payload: { muted: true },
     check: (w) => expect(w.published.at(-1)?.muted).toBe(true),
   },
-  {
-    name: "an answer to the shown question runs the front call with the choice as the words",
-    prepare: async (w) => {
-      submit(w);
-      await streamFront(w, clarify(["Office", "Gaming"]), "Which kind?");
-    },
-    channel: ipcChannels.answerQuestion,
-    payload: {
-      taskId: "t1",
-      questionId: "t1:question",
-      reply: { kind: "choice", index: 1 },
-    },
-    check: (w) => {
-      expect(w.talkerCalls).toHaveLength(2);
-      expect(JSON.stringify(w.talkerCalls[1].request.messages)).toContain(
-        "<words>\\nGaming\\n</words>",
-      );
-      expect(w.port.sent).toEqual([]);
-    },
-  },
 ];
 
 // Valid payloads that would change something, so a foreign sender is shown to be dropped.
 const validPayloads: [string, unknown][] = [
   [ipcChannels.getDisplayState, undefined],
   [ipcChannels.submitQuestion, { text: "what is new" }],
-  [
-    ipcChannels.answerQuestion,
-    { taskId: "t1", questionId: "q1", reply: { kind: "choice", index: 0 } },
-  ],
   [ipcChannels.cancelTask, { taskId: "t1" }],
   [ipcChannels.retryTask, { taskId: "t1" }],
-  [ipcChannels.closeCard, { taskId: "t1" }],
-  [ipcChannels.setCardFolded, { taskId: "t1", folded: true }],
   [ipcChannels.openSource, { taskId: "t1", url: source }],
   [ipcChannels.setMuted, { muted: true }],
   [
@@ -114,24 +72,12 @@ const validPayloads: [string, unknown][] = [
   [ipcChannels.playbackFinished, { lineId: "l1", outcome: "ended" }],
 ];
 
-const answer = (reply: unknown) => ({ taskId: "t1", questionId: "q1", reply });
-
 const malformedPayloads: [string, unknown][] = [
   [ipcChannels.submitQuestion, undefined],
   [ipcChannels.submitQuestion, "what is new"],
   [ipcChannels.submitQuestion, { text: 5 }],
-  [ipcChannels.answerQuestion, answer(null)],
-  [ipcChannels.answerQuestion, answer({ kind: "text" })],
-  [ipcChannels.answerQuestion, answer({ kind: "choice", index: 1.5 })],
-  [ipcChannels.answerQuestion, answer({ kind: "voice", text: "first" })],
-  [
-    ipcChannels.answerQuestion,
-    { taskId: "t1", reply: { kind: "text", text: "a" } },
-  ],
   [ipcChannels.cancelTask, { taskId: 1 }],
   [ipcChannels.retryTask, null],
-  [ipcChannels.closeCard, {}],
-  [ipcChannels.setCardFolded, { taskId: "t1", folded: "yes" }],
   [ipcChannels.openSource, { taskId: "t1" }],
   [ipcChannels.setMuted, { muted: "true" }],
   [ipcChannels.micAudio, { type: "failed", reason: "error" }],

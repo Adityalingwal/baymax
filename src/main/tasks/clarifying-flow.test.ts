@@ -16,18 +16,6 @@ type AnswerRow = {
 
 const rows: AnswerRow[] = [
   {
-    name: "a click",
-    words: "Second",
-    answer: (h) => {
-      h.state.answerQuestion({
-        taskId: "t1",
-        questionId: questionIdOf("t1"),
-        reply: { kind: "choice", index: 1 },
-      });
-      h.reply("t1", newTask("about it"), "Checking.");
-    },
-  },
-  {
     name: "typed words",
     words: "the cheaper one",
     answer: (h) => {

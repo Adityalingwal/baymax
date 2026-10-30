@@ -1,10 +1,4 @@
-import type {
-  ClarifyingQuestion,
-  QuestionId,
-  TaskCard,
-  TaskId,
-  TaskState,
-} from "../../shared/cards";
+import type { ClarifyingQuestion, TaskCard, TaskId } from "../../shared/cards";
 import type { EngineCommand, ParentResult, TaskAsk } from "../../shared/engine";
 import type { SpokenKind } from "../../shared/ipc";
 import type { Exchange } from "./history";
@@ -20,12 +14,11 @@ export type Admission = { ask: TaskAsk };
 // Everything a front call is asked except its id; a retry makes a fresh call from the same parts.
 export type FrontParts = Omit<TalkRequest, "kind" | "attemptId">;
 
-// One front call in flight or failed; submitted is the question a card answer claimed when it started.
+// One front call in flight or failed.
 export type Attempt = {
   id: string;
   order: number; // the exchange's place in the conversation, fixed when the call starts
   parts: FrontParts;
-  submitted: QuestionId | null;
 };
 
 export type TaskRecord = {
@@ -110,7 +103,6 @@ export function addRecord(
       answer: null,
       missing: null,
       canRetry: false,
-      folded: false,
     },
     shown: true,
     created: model.created,
@@ -178,10 +170,6 @@ export function setTimer(change: Change, ms: number, fire: Input): void {
 export function dropped(change: Change, reason: string): false {
   change.log(`dropped: ${reason}`);
   return false;
-}
-
-export function isEnded(state: TaskState): boolean {
-  return state === "done" || state === "incomplete" || state === "cancelled";
 }
 
 export function shownQuestion(model: Model): TaskRecord | null {

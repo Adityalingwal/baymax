@@ -123,7 +123,7 @@ describe("follow-up parents", () => {
   });
 });
 
-describe("invalid and closed parents", () => {
+describe("invalid parents", () => {
   it.each(invalidParentRows)(
     "runs a follow-up naming $name with parent null",
     ({ setup, parentId }) => {
@@ -138,15 +138,6 @@ describe("invalid and closed parents", () => {
       );
     },
   );
-
-  it("binds to a closed parent card", () => {
-    const h = createHarness();
-    askNew(h, "hermes");
-    finish(h, "t1");
-    h.state.closeCard("t1");
-    const child = askFollowUp(h, "t1", "more");
-    expect(parentOf(h, child)).toMatchObject({ taskId: "t1", outcome: "done" });
-  });
 
   it("refuses a fourth waiting follow-up like a new task", () => {
     const h = createHarness();
@@ -168,12 +159,8 @@ describe("follow-ups that wait for their parent", () => {
     const later = askNew(h, "rust");
     expect(h.card(child)?.state).toBe("queued");
     expect(h.card(later)?.state).toBe("running");
-    h.state.answerQuestion({
-      taskId: "t1",
-      questionId: questionIdOf("t1"),
-      reply: { kind: "choice", index: 0 },
-    });
-    h.reply("t1", newTask("about it"));
+    h.state.ask("the first one", null, h.state.waitingQuestion());
+    h.reply("t4", newTask("about it", questionIdOf("t1")));
     finish(h, later);
     expect(h.card("t1")?.state).toBe("running");
     expect(h.card(child)?.state).toBe("queued");
@@ -220,11 +207,10 @@ const exchange = (
 ) => ({ taskId, state, question, answer, cardText });
 
 describe("recent exchanges", () => {
-  it("carries the last 5 tasks, closed ones included, with the spoken line only for done ones", () => {
+  it("carries the last 5 tasks, with the spoken line only for done ones", () => {
     const h = createHarness();
     for (const name of ["a", "b"]) {
       finish(h, askNew(h, name));
-      h.state.closeCard(h.lastTaskId());
     }
     askNew(h, "c");
     h.state.receive({

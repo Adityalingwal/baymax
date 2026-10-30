@@ -1,11 +1,7 @@
 import type { DisplayState, TaskId, UtteranceId } from "../../shared/cards";
 import type { EngineCommand, EngineEvent } from "../../shared/engine";
-import type {
-  AnswerQuestion,
-  OpenSource,
-  SetCardFolded,
-} from "../../shared/ipc";
-import { ask, bindAnswer } from "./ask";
+import type { OpenSource } from "../../shared/ipc";
+import { ask } from "./ask";
 import { buildDisplay, waitingQuestion } from "./display";
 import { receiveFront, retryTask } from "./front";
 import type {
@@ -20,11 +16,9 @@ import type {
 import {
   createModel,
   dropped,
-  isEnded,
   setVoiceAvailable,
   showNextQuestion,
   showNotice,
-  silence,
 } from "./record";
 import type { TalkRequest, TalkerReply, WaitingQuestion } from "./talk";
 import {
@@ -62,11 +56,8 @@ export type MainState = {
     waiting: WaitingQuestion | null,
   ) => void;
   waitingQuestion: () => WaitingQuestion | null;
-  answerQuestion: (payload: AnswerQuestion) => void;
   cancelTask: (taskId: TaskId) => void;
   retryTask: (taskId: TaskId) => void;
-  closeCard: (taskId: TaskId) => void;
-  setCardFolded: (payload: SetCardFolded) => void;
   openSource: (payload: OpenSource) => void;
   setMuted: (muted: boolean) => void;
   setVoiceAvailable: (available: boolean) => void;
@@ -87,11 +78,8 @@ export function createMainState(deps: MainStateDeps): MainState {
     ask: (words, utteranceId, waiting) =>
       update((c) => ask(c, deps.newTaskId, { words, utteranceId, waiting })),
     waitingQuestion: () => waitingQuestion(model),
-    answerQuestion: (payload) => update((c) => bindAnswer(c, payload)),
     cancelTask: (taskId) => update((c) => cancelTask(c, taskId)),
     retryTask: (taskId) => update((c) => retryTask(c, taskId)),
-    closeCard: (taskId) => update((c) => closeCard(c, taskId)),
-    setCardFolded: (payload) => update((c) => setCardFolded(c, payload)),
     openSource: (payload) => update((c) => openSource(c, deps, payload)),
     setMuted: (muted) => update((c) => setMuted(c, muted)),
     setVoiceAvailable: (available) =>
@@ -179,33 +167,6 @@ function receiveEvent(change: Change, event: EngineEvent): boolean {
     default:
       return receiveRunEvent(change, record, event);
   }
-}
-
-function closeCard(change: Change, taskId: TaskId): boolean {
-  const record = change.model.records.get(taskId);
-  if (record === undefined || !record.shown || !isEnded(record.card.state)) {
-    return dropped(change, `close ${taskId}`);
-  }
-  record.shown = false;
-  silence(change, taskId);
-  return true;
-}
-
-function setCardFolded(change: Change, payload: SetCardFolded): boolean {
-  const record = change.model.records.get(payload.taskId);
-  const state = record?.card.state;
-  if (
-    record === undefined ||
-    !record.shown ||
-    state === undefined ||
-    !isEnded(state) ||
-    state === "cancelled" ||
-    record.card.folded === payload.folded
-  ) {
-    return dropped(change, `fold ${payload.taskId}`);
-  }
-  record.card.folded = payload.folded;
-  return true;
 }
 
 // Opening changes no state, so it always returns false and publishes nothing.

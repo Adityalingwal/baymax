@@ -1,80 +1,22 @@
 import { describe, expect, it } from "vitest";
-import type { AnswerQuestion } from "../../shared/ipc";
 import type { Harness } from "./harness";
-import {
-  askClarify,
-  askNew,
-  click,
-  counts,
-  createHarness,
-  finish,
-  newTask,
-  questionIdOf,
-} from "./harness";
-
-type DroppedRow = {
-  name: string;
-  setup: (h: Harness) => void;
-  payload: AnswerQuestion;
-};
-
-const droppedRows: DroppedRow[] = [
-  {
-    name: "a second click",
-    setup: (h) => h.state.answerQuestion(click("t1")),
-    payload: click("t1", 1),
-  },
-  {
-    name: "a second click after the answer failed",
-    setup: (h) => {
-      h.state.answerQuestion(click("t1"));
-      h.replyFailed("t1", "error");
-    },
-    payload: click("t1", 1),
-  },
-  {
-    name: "a late answer",
-    setup: (h) => h.state.cancelTask("t1"),
-    payload: click("t1"),
-  },
-  {
-    name: "a wrong question id",
-    setup: () => undefined,
-    payload: click("t1", 0, "q9"),
-  },
-  {
-    name: "an out-of-range choice",
-    setup: () => undefined,
-    payload: click("t1", 3),
-  },
-  {
-    name: "blank text",
-    setup: () => undefined,
-    payload: {
-      taskId: "t1",
-      questionId: questionIdOf("t1"),
-      reply: { kind: "text", text: "  " },
-    },
-  },
-  {
-    name: "an answer to a hidden question",
-    setup: (h) => askClarify(h),
-    payload: click("t2"),
-  },
-];
+import { askClarify, createHarness, newTask, questionIdOf } from "./harness";
 
 type ReleaseRow = { name: string; release: (h: Harness) => void };
 
+// Answers the first question by speech: the words' own card goes and the first task is admitted.
+const answerFirst = (h: Harness) => {
+  h.state.ask("the first one", null, h.state.waitingQuestion());
+  h.reply(h.lastTaskId(), newTask("about it", questionIdOf("t1")));
+};
+
 const releaseRows: ReleaseRow[] = [
-  {
-    name: "the first is answered",
-    release: (h) => h.state.answerQuestion(click("t1")),
-  },
+  { name: "the first is answered", release: answerFirst },
   { name: "the first is cancelled", release: (h) => h.state.cancelTask("t1") },
   {
     name: "the first is answered and then cancelled",
     release: (h) => {
-      h.state.answerQuestion(click("t1"));
+      answerFirst(h);
       h.state.cancelTask("t1");
     },
   },
@@ -104,7 +46,6 @@ describe("the shown question", () => {
       answer: null,
       missing: null,
       canRetry: false,
-      folded: false,
     });
     expect(h.said).toEqual([]);
     expect(h.talked).toHaveLength(1);
@@ -117,9 +58,6 @@ describe("the shown question", () => {
         choices: ["First", "Second", "Third"],
       },
     });
-    h.state.answerQuestion(click("t1"));
-    expect(h.state.waitingQuestion()).toBeNull();
-    expect(h.card("t1")?.question?.answered).toBe(true);
   });
 });
 
@@ -150,59 +88,6 @@ describe("the question's other forms", () => {
       tasks: [],
       waiting,
     });
-  });
-});
-
-describe("binding a click", () => {
-  it("runs the front call with the chosen text, the question as waiting, the history and the recent tasks", () => {
-    const h = createHarness();
-    finish(h, askNew(h, "hermes"));
-    askClarify(h, ["Office", "Gaming"]);
-    h.state.answerQuestion(click("t2", 1));
-    expect(h.talked.at(-1)).toEqual({
-      kind: "front",
-      attemptId: "t2#2",
-      taskId: "t2",
-      utteranceId: null,
-      words: "Gaming",
-      history: [
-        { role: "user", text: "tell me hermes" },
-        { role: "assistant", text: "Checking hermes.\nDone. spoken" },
-        { role: "user", text: "about it" },
-        { role: "assistant", text: "Which one for t2?" },
-      ],
-      recent: [
-        {
-          taskId: "t1",
-          state: "done",
-          question: "tell me hermes",
-          answer: "Done. spoken",
-          cardText: "Done.",
-        },
-      ],
-      tasks: [],
-      waiting: {
-        taskId: "t2",
-        words: "about it",
-        question: {
-          questionId: "t2:question",
-          text: "Which one for t2?",
-          choices: ["Office", "Gaming"],
-        },
-      },
-    });
-    expect(h.sent).toHaveLength(1);
-  });
-});
-
-describe("an answer that is dropped", () => {
-  it.each(droppedRows)("drops $name", ({ setup, payload }) => {
-    const h = createHarness();
-    askClarify(h);
-    setup(h);
-    const before = counts(h);
-    h.state.answerQuestion(payload);
-    expect(counts(h)).toEqual(before);
   });
 });
 
@@ -246,15 +131,5 @@ describe("cancelling a clarifying task", () => {
       questionId: "t2:question",
       answered: false,
     });
-  });
-
-  it("aborts the front call at once, with no engine message, when an answer is in flight", () => {
-    const h = createHarness();
-    askClarify(h);
-    h.state.answerQuestion(click("t1"));
-    h.state.cancelTask("t1");
-    expect(h.card("t1")?.state).toBe("cancelled");
-    expect(h.cancelled).toEqual(["t1#2"]);
-    expect(h.sent).toEqual([]);
   });
 });

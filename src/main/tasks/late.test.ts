@@ -154,14 +154,6 @@ const droppedRows: Row[] = [
     act: (h) => h.advance(1500),
   },
   {
-    name: "the 3 s timer after closeCard",
-    setup: (h) => {
-      cancelled(h);
-      h.state.closeCard("t1");
-    },
-    act: (h) => h.advance(3000),
-  },
-  {
     name: "a no-op setMuted",
     setup: () => undefined,
     act: (h) => h.state.setMuted(false),

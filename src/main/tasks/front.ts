@@ -1,4 +1,4 @@
-import type { QuestionId, TaskId } from "../../shared/cards";
+import type { TaskId } from "../../shared/cards";
 import type { FailureKind } from "../../shared/engine";
 import { checkDecision } from "./decision";
 import type { Decision } from "./decision";
@@ -16,13 +16,12 @@ export function openAttempt(
   change: Change,
   record: TaskRecord,
   parts: FrontParts,
-  submitted: QuestionId | null,
 ): void {
   record.attempts += 1;
   change.model.exchangeOrder += 1;
   const id = `${record.card.taskId}#${record.attempts}`;
   const order = change.model.exchangeOrder;
-  record.attempt = { id, order, parts, submitted };
+  record.attempt = { id, order, parts };
   talk(change, { kind: "front", attemptId: id, ...parts });
 }
 
@@ -33,14 +32,6 @@ function earlierThan(model: Model, taskId: TaskId): ReadonlySet<TaskId> {
     .filter((record) => record.created < created)
     .map((record) => record.card.taskId);
   return new Set(ids);
-}
-
-// A card answer names the question it answers even when the tool call leaves it out.
-function withSubmitted(raw: unknown, submitted: QuestionId | null): unknown {
-  if (submitted === null) return raw;
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return raw;
-  const given = "answerTo" in raw ? raw.answerTo : null;
-  return { ...raw, answerTo: given ?? submitted };
 }
 
 function failFront(
@@ -75,10 +66,6 @@ function claimTarget(
     question.questionId !== answerTo
   ) {
     return null;
-  }
-  // A card answer claimed its question when it started; a spoken one claims it here.
-  if (attempt.submitted !== null) {
-    return target === record && question.answered ? target : null;
   }
   if (question.answered) return null;
   question.answered = true;
@@ -122,9 +109,7 @@ function resolveTarget(
   if (claimed === null) {
     change.log(`answer ${decision.answerTo} for ${record.card.taskId} lost`);
     // A spoken answer's temporary card goes; a stale answer starts nothing.
-    if (attempt.submitted === null) {
-      change.model.records.delete(record.card.taskId);
-    }
+    change.model.records.delete(record.card.taskId);
     return null;
   }
   // Words that answer the waiting question are not a task, so their thinking card goes at once.
@@ -192,8 +177,7 @@ export function receiveFront(
     taskId,
     earlier: (id: TaskId) => earlierThan(change.model, id),
   };
-  const raw = withSubmitted(reply.decision, attempt.submitted);
-  const check = checkDecision(raw, context);
+  const check = checkDecision(reply.decision, context);
   if (!check.ok) {
     change.log(`decision rejected for ${taskId}: ${check.reason}`);
     return failFront(change, record, attempt, { kind: "error", spoke: true });
@@ -218,6 +202,6 @@ export function retryTask(change: Change, taskId: TaskId): boolean {
   record.card.canRetry = false;
   record.card.line = null;
   record.failedAttempt = null;
-  openAttempt(change, record, failed.parts, failed.submitted);
+  openAttempt(change, record, failed.parts);
   return true;
 }

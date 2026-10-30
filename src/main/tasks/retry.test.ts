@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Harness } from "./harness";
-import {
-  askClarify,
-  chat,
-  counts,
-  createHarness,
-  newTask,
-  questionIdOf,
-} from "./harness";
+import { chat, counts, createHarness } from "./harness";
 
 type Row = {
   name: string;
@@ -15,16 +8,6 @@ type Row = {
   fail: (h: Harness) => void;
   line: string;
   state: string;
-};
-
-const answerInFlight = (h: Harness): string => {
-  askClarify(h);
-  h.state.answerQuestion({
-    taskId: "t1",
-    questionId: questionIdOf("t1"),
-    reply: { kind: "text", text: "the docs" },
-  });
-  return "t1";
 };
 
 const rows: Row[] = [
@@ -37,13 +20,6 @@ const rows: Row[] = [
     fail: (h) => h.replyFailed("t1", "modelsUnreachable"),
     line: "Sorry, I missed that. Ask again.",
     state: "thinking",
-  },
-  {
-    name: "a question-card answer's failed call",
-    setup: answerInFlight,
-    fail: (h) => h.replyFailed("t1", "error", "Checking the docs."),
-    line: "That didn't go through. Ask again.",
-    state: "clarifying",
   },
   {
     name: "a decision that fails its check",
@@ -117,16 +93,6 @@ describe("the result of a retried front call", () => {
       line: null,
       canRetry: false,
     });
-  });
-
-  it("succeeds after a failed question-card answer and starts the worker", () => {
-    const h = createHarness();
-    answerInFlight(h);
-    h.replyFailed("t1", "error");
-    h.state.retryTask("t1");
-    h.reply("t1", newTask("the docs"), "Checking.");
-    expect(h.card("t1")).toMatchObject({ state: "running", canRetry: false });
-    expect(h.sent.at(-1)).toMatchObject({ type: "runTask", taskId: "t1" });
   });
 
   it("drops a retry after the card was cancelled, and a retry of a call that is still in flight", () => {

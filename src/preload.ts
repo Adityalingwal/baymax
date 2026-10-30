@@ -21,7 +21,6 @@ function subscribe<C extends keyof MainToRenderer>(
 function subscribeWithReplay<C extends keyof MainToRenderer>(
   channel: C,
   replayChannel:
-    | typeof ipcChannels.getHoldState
     | typeof ipcChannels.getDisplayState
     | typeof ipcChannels.getWindowShape
     | typeof ipcChannels.getVoicePhase,
@@ -41,12 +40,6 @@ function send<C extends keyof RendererToMain>(
 
 // Only the typed BaymaxApi crosses the bridge: no raw IPC, no shell or URL access.
 const api: BaymaxApi = {
-  onHoldState: (callback) =>
-    subscribeWithReplay(
-      ipcChannels.holdState,
-      ipcChannels.getHoldState,
-      callback,
-    ),
   getStartupInfo: () => ipcRenderer.invoke(ipcChannels.getStartupInfo),
   openAccessibilitySettings: () => {
     ipcRenderer.send(ipcChannels.openAccessibilitySettings);
@@ -58,11 +51,8 @@ const api: BaymaxApi = {
       callback,
     ),
   submitQuestion: (payload) => send(ipcChannels.submitQuestion, payload),
-  answerQuestion: (payload) => send(ipcChannels.answerQuestion, payload),
   cancelTask: (payload) => send(ipcChannels.cancelTask, payload),
   retryTask: (payload) => send(ipcChannels.retryTask, payload),
-  closeCard: (payload) => send(ipcChannels.closeCard, payload),
-  setCardFolded: (payload) => send(ipcChannels.setCardFolded, payload),
   openSource: (payload) => send(ipcChannels.openSource, payload),
   setMuted: (payload) => send(ipcChannels.setMuted, payload),
   onRecording: (callback) => subscribe(ipcChannels.recording, callback),

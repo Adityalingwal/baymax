@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  askClarify,
-  askNew,
-  createHarness,
-  outsideResearch,
-  questionIdOf,
-} from "./harness";
+import { askClarify, askNew, createHarness, outsideResearch } from "./harness";
 
 describe("card fields per transition", () => {
   it("ends an outside-research request cancelled with the spoken line on it and says nothing more", () => {
@@ -57,12 +51,8 @@ describe("card fields on cancel", () => {
 
   it("clears the card's fields when a cancelled task ends", () => {
     const h = createHarness();
-    const taskId = askClarify(h);
-    h.state.answerQuestion({
-      taskId,
-      questionId: questionIdOf(taskId),
-      reply: { kind: "choice", index: 0 },
-    });
+    askClarify(h);
+    h.state.ask("the first one", null, h.state.waitingQuestion());
     h.state.cancelTask("t1");
     expect(h.card("t1")).toMatchObject({
       state: "cancelled",

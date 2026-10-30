@@ -3,7 +3,7 @@ import type { Source, TaskCard, TaskState } from "../../shared/cards";
 export type CardForm = "pill" | "question" | "open";
 
 // Results stay open in the panel; folding into the notch is gone with the reopen dot.
-export function cardForm(card: Pick<TaskCard, "state" | "folded">): CardForm {
+export function cardForm(card: Pick<TaskCard, "state">): CardForm {
   switch (card.state) {
     case "clarifying":
       return "question";

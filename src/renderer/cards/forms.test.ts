@@ -2,28 +2,20 @@ import { describe, expect, it } from "vitest";
 import type { Source, TaskState } from "../../shared/cards";
 import { canCancel, cardForm, sourceGroups, stateLabel } from "./forms";
 
-const formCases: [TaskState, boolean, string][] = [
-  ["thinking", false, "pill"],
-  ["thinking", true, "pill"],
-  ["clarifying", false, "question"],
-  ["clarifying", true, "question"],
-  ["queued", false, "pill"],
-  ["queued", true, "pill"],
-  ["running", false, "pill"],
-  ["running", true, "pill"],
-  ["cancelling", false, "pill"],
-  ["cancelling", true, "pill"],
-  ["cancelled", false, "pill"],
-  ["cancelled", true, "pill"],
-  ["done", false, "open"],
-  ["done", true, "open"],
-  ["incomplete", false, "open"],
-  ["incomplete", true, "open"],
+const formCases: [TaskState, string][] = [
+  ["thinking", "pill"],
+  ["clarifying", "question"],
+  ["queued", "pill"],
+  ["running", "pill"],
+  ["cancelling", "pill"],
+  ["cancelled", "pill"],
+  ["done", "open"],
+  ["incomplete", "open"],
 ];
 
 describe("cardForm", () => {
-  it.each(formCases)("%s with folded %s is %s", (state, folded, form) => {
-    expect(cardForm({ state, folded })).toBe(form);
+  it.each(formCases)("%s is %s", (state, form) => {
+    expect(cardForm({ state })).toBe(form);
   });
 });
 
