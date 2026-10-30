@@ -1,6 +1,6 @@
 import type { TaskId, UtteranceId } from "../shared/cards";
 import type { LineId, SpeakingLine, VoicePhase } from "../shared/ipc";
-import type { Spoken } from "./speech-model";
+import type { Spoken } from "./speech";
 
 // An accepted hold whose turn has not spoken yet; taskId is known once its front call's line is queued.
 type Pending = { key: UtteranceId; taskId: TaskId | null };

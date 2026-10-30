@@ -16,9 +16,8 @@ import type {
 import type { HoldOutcome } from "./hold";
 import { createRecording } from "./recording";
 import { createSpeech } from "./speech";
-import type { LineFeed } from "./speech";
+import type { LineFeed, Spoken } from "./speech";
 import { createGapWatch } from "./speech-gaps";
-import type { Spoken } from "./speech-model";
 import { createTalkerTiming } from "./talker-timing";
 import { receiveHeard } from "./voice-heard";
 import { createPhaseTracker } from "./voice-phase";

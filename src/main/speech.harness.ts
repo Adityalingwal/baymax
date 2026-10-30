@@ -10,7 +10,7 @@ import type {
   StopPlayback,
 } from "../shared/ipc";
 import { createSpeech } from "./speech";
-import type { VoiceDownCause } from "./speech-model";
+import type { VoiceDownCause } from "./speech";
 import type { SaidKind, SaidLine } from "./tasks/state";
 
 type Call = {

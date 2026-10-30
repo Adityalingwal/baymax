@@ -316,10 +316,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/recording.ts` | One utterance: recording commands, the mic audio, the transcript in hold order; discarded holds and late transcripts dropped |
 | `src/main/flux-turns.ts` | Flux turns bound to held utterances: sending order, `ForceEndTurn`, the final-transcript deadline and the Nova-3 batch fallback |
 | `src/main/flux-turns-model.ts` | The held utterance and its end: delivery once, the turn ended on the socket, the batch call |
-| `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel; a line streams over the open Aura socket, else goes to REST |
-| `src/main/speech-model.ts` | The speech state and the playback slot with its deadline, shared by the two paths |
-| `src/main/speech-stream.ts` | A line on the Aura socket: clauses and flushes out, chunks and the end to the renderer, the REST backup when the socket drops |
-| `src/main/speech-rest.ts` | A line through the Aura-2 REST call, and voice-down reported from its failures |
+| `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, with a deadline on each playing line; a line streams clause by clause over the open Aura socket and uses the Aura-2 REST call, which also reports voice down, when the socket is not open or closes before any audio; a socket that closes after audio drops the rest of the line |
 | `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing |
 | `src/main/talker-timing.ts` | Logs each generation's front-call steps in ms after its release |

@@ -1,5 +1,4 @@
-import type { LineFeed } from "./speech";
-import type { Spoken } from "./speech-model";
+import type { LineFeed, Spoken } from "./speech";
 
 type TalkerTiming = {
   released: (key: string, now: number) => void; // an accepted release or a typed submit
