@@ -46,22 +46,24 @@ async function islandClosed(w: Wired, lineId: string): Promise<void> {
 
 const synthesized = (w: Wired) => w.syntheses.map((job) => job.input).at(-1);
 
-describe("a result with no audio", () => {
-  const phases = (w: Wired) => w.voicePhases.map(({ phase }) => phase);
+const phases = (w: Wired) => w.voicePhases.map(({ phase }) => phase);
 
+const noAudioRows = [
+  {
+    name: "muted",
+    options: {},
+    setUp: (w: Wired) => w.send(ipcChannels.setMuted, { muted: true }),
+  },
+  {
+    name: "with the voice provider down",
+    options: { voiceFails: true },
+    setUp: () => undefined,
+  },
+];
+
+describe("a result with no audio", () => {
   // The first result's phases, then the wait: a later result still waits for its closing report.
-  it.each([
-    {
-      name: "muted",
-      options: {},
-      setUp: (w: Wired) => w.send(ipcChannels.setMuted, { muted: true }),
-    },
-    {
-      name: "with the voice provider down",
-      options: { voiceFails: true },
-      setUp: () => undefined,
-    },
-  ])(
+  it.each(noAudioRows)(
     "$name still gets its turn and its closing report",
     async ({ options, setUp }) => {
       const w = wire(options);
