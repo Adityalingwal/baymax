@@ -8,7 +8,10 @@ export type TaskAsk = { goal: string; userWords: string };
 
 export type ParentResult = {
   taskId: TaskId;
-  outcome: "done" | "incomplete" | "cancelled";
+  outcome: "done" | "failed" | "cancelled";
+  goal: string | null; // null for a record that never had an ask, such as a chat result
+  words: string; // the ask's words, or the card's when there was no ask
+  spokenLine: string | null; // a done result's line, kept even when its report is empty
   findings: Findings | null; // null when nothing usable was found
 };
 
@@ -30,17 +33,16 @@ export type ProgressStep =
   { tool: "search"; query: string } | { tool: "read"; url: string };
 
 export type FailureKind =
-  "modelsUnreachable" | "keyRejected" | "noCredit" | "searchDown" | "error";
+  | "modelsUnreachable"
+  | "keyRejected"
+  | "noCredit"
+  | "searchDown"
+  | "searchKeyRejected"
+  | "searchQuota"
+  | "error";
 
 // Why a task ended failed: a failure above, nothing found, or a limit.
 export type FailureCause = FailureKind | "nothingFound" | "limitHit";
-
-export type Incomplete =
-  | { kind: "limitHit"; findings: Findings | null; spokenLine?: string } // spokenLine is set, possibly empty, when findings are the worker's latest answer
-  | { kind: "sourcesThin"; findings: Findings | null }
-  | { kind: "error"; cause: FailureKind; findings: Findings | null }
-  | { kind: "needsUser"; nextQuestion: string; findings: Findings | null }
-  | { kind: "unchecked"; uncheckedPart: string; findings: Findings }; // a failed done check after the last retry round
 
 // Events carry kinds and model-written text, never fixed user-facing lines: main owns those.
 export type EngineEvent =
@@ -51,7 +53,6 @@ export type EngineEvent =
       sourcesRead: number;
     }
   | { type: "result"; taskId: TaskId; spokenLine: string; findings: Findings }
-  | { type: "incomplete"; taskId: TaskId; incomplete: Incomplete }
   | {
       type: "failed";
       taskId: TaskId;

@@ -66,18 +66,7 @@ export function RetryButton({ card, actions }: ControlProps) {
   );
 }
 
-// The fixed status or failure line main wrote, and the incomplete card's missing part.
+// The fixed status or failure line main wrote.
 export function StatusLines({ card }: { card: TaskCard }) {
-  const missing =
-    card.missing === null
-      ? null
-      : card.line === null
-        ? card.missing
-        : `Not checked: ${card.missing}`;
-  return (
-    <>
-      {card.line !== null && <p className="type-body">{card.line}</p>}
-      {missing !== null && <p className="type-body">{missing}</p>}
-    </>
-  );
+  return card.line === null ? null : <p className="type-body">{card.line}</p>;
 }

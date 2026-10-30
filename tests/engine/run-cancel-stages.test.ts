@@ -26,7 +26,6 @@ const rejected = () => workerAnswer({ line: " " });
 const listOne: Findings = {
   cardText: "- Page one",
   sources: [one],
-  openPoints: [],
 };
 
 type Sent = {

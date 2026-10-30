@@ -28,12 +28,10 @@ const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
 const listOne: Findings = {
   cardText: "- Page one",
   sources: [one],
-  openPoints: [],
 };
 const listTwo: Findings = {
   cardText: `${listOne.cardText}\n- Page two`,
   sources: [one, two],
-  openPoints: [],
 };
 
 const limitHit = (findings: Findings | null): EngineEvent =>
@@ -156,7 +154,6 @@ describe("runTask full prompt", () => {
       limitHit({
         cardText: "- Long page",
         sources: [{ id: "s1", url: pageUrl("long"), title: "Long page" }],
-        openPoints: [],
       }),
     );
     expect(run.requests).toHaveLength(1);
@@ -201,7 +198,6 @@ describe("runTask a valid answer that uses up the budget", () => {
         findings: {
           cardText: goodAnswer.report,
           sources: [one],
-          openPoints: [],
         },
       },
     ]);

@@ -21,7 +21,6 @@ function demoCard(taskId: TaskId, fields: Partial<TaskCard>): TaskCard {
     sourcesRead: 0,
     question: null,
     answer: null,
-    missing: null,
     canRetry: false,
     ...fields,
   };
@@ -72,7 +71,7 @@ const demoCards: TaskCard[] = [
     words: "How does Hermes agent work inside?",
     sayBack: "how Hermes agent works inside",
     sourcesRead: 4,
-    answer: { cardText: hermesAnswer, sources: hermesSources, openPoints: [] },
+    answer: { cardText: hermesAnswer, sources: hermesSources },
   }),
   // A chat reply: main ends small talk as a done card whose answer is the spoken line itself.
   demoCard("demo-2", {
@@ -82,21 +81,18 @@ const demoCards: TaskCard[] = [
     answer: {
       cardText: "Glad it helped. Ask me anything else.",
       sources: [],
-      openPoints: [],
     },
   }),
   demoCard("demo-3", {
-    state: "incomplete",
+    state: "failed",
     words: "Compare the pricing of three search APIs",
     sayBack: "the pricing of three search APIs",
-    line: "The pricing of three search APIs is finished, but I couldn't check all of it; the unchecked part is marked.",
-    missing: "the enterprise tier of the third API",
+    line: "I ran out of time on that one before I had an answer.",
     sourcesRead: 3,
     answer: {
       cardText:
         "Two of the three APIs charge per request; see the table on each site.",
       sources: hermesSources.slice(0, 2),
-      openPoints: [],
     },
   }),
   demoCard("demo-4", {

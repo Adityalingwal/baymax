@@ -106,13 +106,15 @@ const rows: CancelRow[] = [
     aborts: false,
   },
   {
-    name: "running, an incomplete arrives instead",
+    name: "running, a failure arrives instead",
     prepare: () => undefined,
     taskId: "t1",
     ending: {
-      type: "incomplete",
+      type: "failed",
       taskId: "t1",
-      incomplete: { kind: "limitHit", findings: findings("Part.") },
+      cause: "limitHit",
+      reason: null,
+      findings: findings("Part."),
     },
     starts: "t2",
     aborts: false,
@@ -159,7 +161,6 @@ describe("cancel by the renderer action, nothing in flight", () => {
       step: null,
       question: null,
       answer: null,
-      missing: null,
       canRetry: false,
     });
     expect(w.talkerCalls.filter((call) => call.aborted)).toHaveLength(
@@ -339,13 +340,15 @@ const endedRows: { name: string; taskId: TaskId; end: (w: Wired) => void }[] = [
   },
   { name: "a done task", taskId: "t1", end: (w) => w.port.emit(done("t1")) },
   {
-    name: "an incomplete task",
+    name: "a failed task",
     taskId: "t1",
     end: (w) =>
       w.port.emit({
-        type: "incomplete",
+        type: "failed",
         taskId: "t1",
-        incomplete: { kind: "limitHit", findings: findings("Part.") },
+        cause: "limitHit",
+        reason: null,
+        findings: findings("Part."),
       }),
   },
   {

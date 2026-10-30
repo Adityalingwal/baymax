@@ -14,7 +14,6 @@ const findings = (cardText: string, sources = 0): Findings => ({
     url: `https://example.com/${index}`,
     title: `Page ${index}`,
   })),
-  openPoints: [],
 });
 
 const card = (id: string, state: TaskState, fields: Partial<Card> = {}) => ({
@@ -48,8 +47,8 @@ describe("isChatReply", () => {
       chat: false,
     },
     {
-      name: "an incomplete card",
-      card: { ...chat, state: "incomplete" as const },
+      name: "a failed card",
+      card: { ...chat, state: "failed" as const },
       chat: false,
     },
   ])("$name: $chat", ({ card: given, chat: expected }) => {
@@ -113,7 +112,7 @@ describe("statusLine", () => {
     },
     {
       name: "results only, chat not counted",
-      tasks: [result, { ...result, id: "r2" }, card("i", "incomplete"), chat],
+      tasks: [result, { ...result, id: "r2" }, card("i", "failed"), chat],
       line: "3 done",
     },
   ])("$name: $line", ({ tasks, line }) => {

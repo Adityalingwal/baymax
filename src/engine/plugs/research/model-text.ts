@@ -49,17 +49,19 @@ function findingsLines(findings: Findings | null): string[] {
   const sources = findings.sources.map(
     (source) => `- ${source.id} ${source.url} | ${source.title}`,
   );
-  const open = findings.openPoints.map((point) => `- ${point}`);
   return [
     taggedText("card_text", findings.cardText),
     taggedText("sources", sources.join("\n") || "none"),
-    taggedText("open_points", open.join("\n") || "none"),
   ];
 }
 
 export function parentResultBlock(parent: ParentResult): string {
+  const { goal, spokenLine } = parent;
   const lines = [
     `outcome: ${parent.outcome}`,
+    ...(goal === null ? [] : [taggedText("goal", goal)]),
+    taggedText("words", parent.words),
+    ...(spokenLine === null ? [] : [taggedText("line", spokenLine)]),
     ...findingsLines(parent.findings),
   ];
   return `<parent_result>\n${lines.join("\n")}\n</parent_result>`;

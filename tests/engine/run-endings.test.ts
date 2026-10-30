@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelOutcome, ModelRequest } from "../../src/providers/anthropic";
 import type { SearchOutcome } from "../../src/providers/exa";
+import type { EngineEvent } from "../../src/shared/engine";
+import { startEngine } from "../../src/engine/index";
 import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
@@ -12,6 +14,7 @@ import {
   runTask,
   startRun,
   toolUseReply,
+  until,
 } from "./run.harness";
 import type { FakeSearchStep } from "./run.harness";
 
@@ -19,6 +22,7 @@ afterEach(closeRuns);
 
 const errorEnd = failed("error");
 const searchDown = failed("searchDown");
+const keyRejected = failed("searchKeyRejected");
 const modelError: ModelOutcome = { ok: false, failure: "error", detail: "x" };
 
 async function runOf(steps: FakeStep[], searches: FakeSearchStep[] = []) {
@@ -37,17 +41,17 @@ const searchFailed = (cause: string): SearchOutcome =>
   ({ ok: false, cause }) as SearchOutcome;
 
 describe("runTask search endings", () => {
-  it.each(["keyRejected", "quota"])(
-    "ends searchDown at once on %s",
-    async (cause) => {
-      const { run, last } = await runOf(
-        [toolUseReply([{ search: "hermes" }])],
-        [searchFailed(cause)],
-      );
-      expect(last).toEqual([searchDown]);
-      expect(run.requests).toHaveLength(1);
-    },
-  );
+  it.each([
+    { cause: "keyRejected", ending: "searchKeyRejected" },
+    { cause: "quota", ending: "searchQuota" },
+  ] as const)("ends $ending at once on $cause", async ({ cause, ending }) => {
+    const { run, last } = await runOf(
+      [toolUseReply([{ search: "hermes" }])],
+      [searchFailed(cause)],
+    );
+    expect(last).toEqual([failed(ending)]);
+    expect(run.requests).toHaveLength(1);
+  });
 
   it("tells the worker about one failed search and goes on", async () => {
     const { run, last } = await runOf(
@@ -61,6 +65,39 @@ describe("runTask search endings", () => {
         content: expect.stringContaining("Search failed (timeout)"),
       }),
     ]);
+  });
+});
+
+const searchKey = "secret-search-key";
+
+// The real search call with only the network faked: the reply echoes the key, as a provider's error text may.
+describe("a search provider's refusal", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    { status: 401, cause: "searchKeyRejected" },
+    { status: 429, cause: "searchQuota" },
+  ] as const)("$status names $cause and carries no key text", async (row) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(`bad key ${searchKey}`, { status: row.status }),
+    );
+    const events: EngineEvent[] = [];
+    const port = startEngine(
+      { anthropicKey: "test-key", searchKey },
+      {
+        model: async () => toolUseReply([{ search: "hermes" }]),
+        log: () => undefined,
+      },
+    );
+    port.onMessage((event) => events.push(event));
+    port.send(runTask());
+    await until(() => events.some((event) => event.type === "failed"));
+    port.close();
+    expect(events.at(-1)).toEqual(failed(row.cause));
+    expect(JSON.stringify(events)).not.toContain(searchKey);
+    expect(JSON.stringify(events)).not.toContain("bad key");
   });
 });
 
@@ -196,7 +233,7 @@ describe("runTask tool batches", () => {
     );
     run.port.send(runTask());
     const events = await run.ended();
-    expect(events[events.length - 1]).toEqual(searchDown);
+    expect(events[events.length - 1]).toEqual(keyRejected);
     const tools = run.entries.filter((entry) => entry.event === "toolCall");
     expect(tools.map((entry) => [entry.tool, entry.outcome])).toEqual([
       ["search", "keyRejected"],

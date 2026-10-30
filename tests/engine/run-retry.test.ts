@@ -23,7 +23,6 @@ const goodFindings: Findings = {
     { id: "s1", url: pageUrl("one"), title: "Page one" },
     { id: "s2", url: pageUrl("two"), title: "Page two" },
   ],
-  openPoints: [],
 };
 
 const reading: FakeStep[] = [
@@ -163,7 +162,6 @@ describe("runTask after a bad answer", () => {
       failed("error", {
         cardText: "- Page one\n- Page two",
         sources: goodFindings.sources,
-        openPoints: [],
       }),
     ]);
     expect(run.requests).toHaveLength(5);

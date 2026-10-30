@@ -37,7 +37,6 @@ type FoundRow = {
 const listOne: Findings = {
   cardText: "- Page one",
   sources: [one],
-  openPoints: [],
 };
 
 const foundRows: FoundRow[] = [
@@ -55,7 +54,6 @@ const foundRows: FoundRow[] = [
     found: {
       cardText: "- Page one\n- Page two",
       sources: [one, two],
-      openPoints: [],
     },
   },
   {
@@ -127,9 +125,9 @@ const endRows: EndRow[] = [
     ending: failed("error", listOne),
   },
   {
-    name: "a search that is down after a read",
+    name: "a rejected search key after a read",
     steps: () => [readOne(), toolUseReply([{ search: "hermes" }])],
-    ending: failed("searchDown", listOne),
+    ending: failed("searchKeyRejected", listOne),
   },
 ];
 

@@ -39,7 +39,6 @@ export function findings(text: string, urls: string[] = []): Findings {
       url,
       title: url,
     })),
-    openPoints: [],
   };
 }
 

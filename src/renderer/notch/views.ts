@@ -24,7 +24,7 @@ export function runningCount(tasks: readonly Pick<TaskCard, "state">[]) {
   return tasks.filter((card) => isRunning(card.state)).length;
 }
 
-// Only a done task's own result line grows into the island; a chat reply, an incomplete or failed line, a question or a notice uses the pill.
+// Only a done task's own result line grows into the island; a chat reply, a failed line, a question or a notice uses the pill.
 export function isAnswerLine(
   phase: VoicePhase,
   tasks: readonly Pick<TaskCard, "taskId" | "state" | "reply" | "answer">[],

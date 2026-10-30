@@ -6,7 +6,7 @@ type ListCard = Pick<TaskCard, "state" | "reply" | "answer">;
 // One list for the demo (tabs come later): cards that need you, then work in flight, then results.
 function rank(state: TaskState): number {
   if (state === "clarifying") return 0;
-  if (state === "done" || state === "incomplete" || state === "cancelled") {
+  if (state === "done" || state === "failed" || state === "cancelled") {
     return 2;
   }
   return 1;
@@ -33,8 +33,7 @@ export function statusLine(tasks: readonly ListCard[]): string {
   const running = tasks.filter((card) => isRunning(card.state)).length;
   const done = tasks.filter(
     (card) =>
-      (card.state === "done" || card.state === "incomplete") &&
-      !isChatReply(card),
+      (card.state === "done" || card.state === "failed") && !isChatReply(card),
   ).length;
   const parts = [
     needsYou > 0 ? `${needsYou} needs you` : null,

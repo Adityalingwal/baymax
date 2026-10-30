@@ -21,7 +21,6 @@ const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
 const goodFindings: Findings = {
   cardText: "## How it works\n\nHermes runs a loop with tools.",
   sources: [one, two],
-  openPoints: [],
 };
 
 const readBoth: FakeStep[] = [

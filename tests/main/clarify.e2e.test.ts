@@ -62,7 +62,6 @@ describe("the shown question", () => {
         answered: false,
       },
       answer: null,
-      missing: null,
       canRetry: false,
     });
     await flush();

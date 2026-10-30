@@ -3,6 +3,7 @@ import type { Source, TaskState } from "../../../src/shared/cards";
 import {
   canCancel,
   cardForm,
+  shownReport,
   sourceGroups,
   stateLabel,
 } from "../../../src/renderer/cards/forms";
@@ -15,7 +16,7 @@ const formCases: [TaskState, string][] = [
   ["cancelling", "pill"],
   ["cancelled", "pill"],
   ["done", "open"],
-  ["incomplete", "open"],
+  ["failed", "open"],
 ];
 
 describe("cardForm", () => {
@@ -31,9 +32,27 @@ const stateCases: [TaskState, boolean, string][] = [
   ["running", true, "Running"],
   ["cancelling", false, "Cancelling"],
   ["done", false, "Done"],
-  ["incomplete", false, "Incomplete"],
+  ["failed", false, "Failed"],
   ["cancelled", false, "Cancelled"],
 ];
+
+describe("shownReport", () => {
+  it.each([
+    { name: "no answer", answer: null, report: null },
+    {
+      name: "an empty report",
+      answer: { cardText: "", sources: [] },
+      report: null,
+    },
+    {
+      name: "a report",
+      answer: { cardText: "A loop.", sources: [] },
+      report: "A loop.",
+    },
+  ])("$name: $report", ({ answer, report }) => {
+    expect(shownReport({ answer })).toBe(report);
+  });
+});
 
 describe("canCancel and stateLabel", () => {
   it.each(stateCases)("%s: cancel %s, label %s", (state, cancel, label) => {

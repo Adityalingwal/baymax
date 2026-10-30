@@ -29,7 +29,6 @@ async function spokenAll(w: Wired): Promise<string[]> {
 const answerOf = (text: string) => ({
   cardText: text,
   sources: [],
-  openPoints: [],
 });
 
 describe("the routes of a front decision", () => {

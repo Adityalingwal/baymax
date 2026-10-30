@@ -60,7 +60,6 @@ describe("runTask happy path", () => {
             { id: "s1", url: pageUrl("one"), title: "Page one" },
             { id: "s2", url: pageUrl("two"), title: "Page two" },
           ],
-          openPoints: [],
         },
       },
     ]);
@@ -103,10 +102,12 @@ describe("runTask worker requests", () => {
 const parent: ParentResult = {
   taskId: "task-0",
   outcome: "done",
+  goal: "What the Hermes agent is",
+  words: "what is hermes?",
+  spokenLine: "Hermes is an agent.",
   findings: {
     cardText: "Hermes is an agent.",
     sources: [{ id: "s1", url: "https://hermes.example/docs", title: "Docs" }],
-    openPoints: ["its memory"],
   },
 };
 
@@ -125,15 +126,28 @@ type FirstMessageRow = {
 const firstMessageRows: FirstMessageRow[] = [
   { name: "no parent", parent: null, sentence: null },
   { name: "a done parent", parent, sentence: null },
-  ...(["incomplete", "cancelled"] as const).flatMap((outcome) => [
+  {
+    name: "a done parent with an empty report and a line",
+    parent: {
+      ...parent,
+      findings: { cardText: "", sources: parent.findings?.sources ?? [] },
+    },
+    sentence: null,
+  },
+  {
+    name: "a parent that never had an ask",
+    parent: { ...parent, goal: null },
+    sentence: null,
+  },
+  ...(["failed", "cancelled"] as const).flatMap((outcome) => [
     {
-      name: `an ${outcome} parent with findings`,
-      parent: { ...parent, outcome },
+      name: `a ${outcome} parent with findings`,
+      parent: { ...parent, outcome, spokenLine: null },
       sentence: partialSentence,
     },
     {
-      name: `an ${outcome} parent without findings`,
-      parent: { ...parent, outcome, findings: null },
+      name: `a ${outcome} parent without findings`,
+      parent: { ...parent, outcome, spokenLine: null, findings: null },
       sentence: emptySentence,
     },
   ]),
@@ -158,7 +172,9 @@ describe("runTask first message", () => {
       ].join("\n\n"),
     );
   });
+});
 
+describe("runTask first message with a parent", () => {
   it.each(firstMessageRows)(
     "shows the parent block and its note for $name",
     async (row) => {
@@ -170,6 +186,15 @@ describe("runTask first message", () => {
       const text = firstText(run.requests[0]);
       expect(text.includes("<parent_result>")).toBe(row.parent !== null);
       if (row.parent === null) return;
+      const { goal, spokenLine } = row.parent;
+      const block = /<parent_result>[\s\S]*<\/parent_result>/.exec(text)?.[0];
+      expect(block).toContain("<words>\nwhat is hermes?\n</words>");
+      expect(block?.includes("<goal>")).toBe(goal !== null);
+      if (goal !== null) expect(block).toContain(`<goal>\n${goal}\n</goal>`);
+      expect(block?.includes("<line>")).toBe(spokenLine !== null);
+      if (spokenLine !== null) {
+        expect(block).toContain(`<line>\n${spokenLine}\n</line>`);
+      }
       if (row.sentence === null) {
         expect(text).not.toContain(partialSentence);
         expect(text).not.toContain(emptySentence);
@@ -181,7 +206,6 @@ describe("runTask first message", () => {
         return;
       }
       expect(text).toContain("https://hermes.example/docs");
-      expect(text).toContain("its memory");
       expect(text).toContain("read a page again before you cite it");
     },
   );

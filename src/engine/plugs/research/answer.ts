@@ -102,7 +102,6 @@ export function checkAnswer(answer: Answer, pages: ReadPage[]): AnswerCheck {
   const findings = {
     cardText: rewriteCard(answer.report),
     sources: read.map(({ id, url, title }) => ({ id, url, title })),
-    openPoints: [],
   };
   return { kind: "valid", spokenLine, findings };
 }
@@ -126,7 +125,6 @@ function pageList(pages: ReadPage[]): Findings {
   return {
     cardText: pages.map(pageLine).join("\n"),
     sources: pages.map(({ id, url, title }) => ({ id, url, title })),
-    openPoints: [],
   };
 }
 

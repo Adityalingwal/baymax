@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { TaskId } from "../../src/shared/cards";
 import type { EngineEvent, ParentResult } from "../../src/shared/engine";
 import { ipcChannels } from "../../src/shared/ipc";
-import { clarify, findings, followUp, newTask } from "./tasks/harness";
+import { chat, clarify, findings, followUp, newTask } from "./tasks/harness";
 import type { ModelRequest } from "./tasks/flow.harness";
 import {
   closePorts,
@@ -14,8 +14,6 @@ import { admitAs, streamFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
 afterEach(closePorts);
-
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 const ask = (w: Wired, text: string) =>
   w.send(ipcChannels.submitQuestion, { text });
@@ -55,10 +53,12 @@ const result = (taskId: TaskId, text = "Done."): EngineEvent => ({
   findings: findings(text),
 });
 
-const incomplete = (found: boolean): EngineEvent => ({
-  type: "incomplete",
+const failed = (found: boolean): EngineEvent => ({
+  type: "failed",
   taskId: "t1",
-  incomplete: { kind: "limitHit", findings: found ? findings("Part.") : null },
+  cause: "limitHit",
+  reason: null,
+  findings: found ? findings("Part.") : null,
 });
 
 function cancelled(w: Wired, found: boolean): void {
@@ -70,37 +70,64 @@ function cancelled(w: Wired, found: boolean): void {
   });
 }
 
+// What admitAs(w, "hermes") saves for t1, however it ends.
+const asked = {
+  taskId: "t1",
+  goal: "hermes",
+  words: "tell me hermes",
+  spokenLine: null,
+};
+
 type EndRow = { name: string; end: (w: Wired) => void; parent: ParentResult };
 
 const endRows: EndRow[] = [
   {
     name: "done",
     end: (w) => w.port.emit(result("t1")),
-    parent: { taskId: "t1", outcome: "done", findings: findings("Done.") },
-  },
-  {
-    name: "incomplete with partial findings",
-    end: (w) => w.port.emit(incomplete(true)),
     parent: {
-      taskId: "t1",
-      outcome: "incomplete",
-      findings: findings("Part."),
+      ...asked,
+      outcome: "done",
+      spokenLine: "Done. spoken",
+      findings: findings("Done."),
     },
   },
   {
-    name: "incomplete with no findings",
+    name: "done with an empty report",
     end: (w) =>
       w.port.emit({
-        type: "incomplete",
+        type: "result",
         taskId: "t1",
-        incomplete: { kind: "sourcesThin", findings: null },
+        spokenLine: "It is 31 degrees.",
+        findings: findings(""),
       }),
-    parent: { taskId: "t1", outcome: "incomplete", findings: null },
+    parent: {
+      ...asked,
+      outcome: "done",
+      spokenLine: "It is 31 degrees.",
+      findings: findings(""),
+    },
+  },
+  {
+    name: "failed with pages",
+    end: (w) => w.port.emit(failed(true)),
+    parent: { ...asked, outcome: "failed", findings: findings("Part.") },
+  },
+  {
+    name: "failed with nothing found",
+    end: (w) =>
+      w.port.emit({
+        type: "failed",
+        taskId: "t1",
+        cause: "nothingFound",
+        reason: "Nothing helped.",
+        findings: null,
+      }),
+    parent: { ...asked, outcome: "failed", findings: null },
   },
   {
     name: "cancelled with the cancelled event's findings",
     end: (w) => cancelled(w, true),
-    parent: { taskId: "t1", outcome: "cancelled", findings: findings("Cut.") },
+    parent: { ...asked, outcome: "cancelled", findings: findings("Cut.") },
   },
   {
     name: "cancelled with a racing result's findings",
@@ -108,23 +135,15 @@ const endRows: EndRow[] = [
       w.send(ipcChannels.cancelTask, { taskId: "t1" });
       w.port.emit(result("t1", "Raced."));
     },
-    parent: {
-      taskId: "t1",
-      outcome: "cancelled",
-      findings: findings("Raced."),
-    },
+    parent: { ...asked, outcome: "cancelled", findings: findings("Raced.") },
   },
   {
-    name: "cancelled with a racing incomplete's findings",
+    name: "cancelled with a racing failure's findings",
     end: (w) => {
       w.send(ipcChannels.cancelTask, { taskId: "t1" });
-      w.port.emit(incomplete(true));
+      w.port.emit(failed(true));
     },
-    parent: {
-      taskId: "t1",
-      outcome: "cancelled",
-      findings: findings("Part."),
-    },
+    parent: { ...asked, outcome: "cancelled", findings: findings("Part.") },
   },
 ];
 
@@ -137,7 +156,7 @@ describe("follow-up parents", () => {
       end(w);
       const child = await askFollowUp(w, "t1", "more");
       expect(parentOf(w, child)).toEqual(parent);
-      expect(w.card(child)?.parentTaskId).toBe("t1");
+      expect(w.card(child)).toMatchObject({ parentTaskId: "t1", line: null });
     },
   );
 
@@ -148,9 +167,26 @@ describe("follow-up parents", () => {
     expect(w.card(child)?.state).toBe("queued");
     w.port.emit(result("t1", "Final."));
     expect(parentOf(w, child)).toEqual({
+      ...asked,
+      outcome: "done",
+      spokenLine: "Final. spoken",
+      findings: findings("Final."),
+    });
+    expect(w.card(child)?.line).toBeNull();
+  });
+
+  it("saves a chat result with no goal and the card's words", async () => {
+    const w = wire();
+    ask(w, "hello there");
+    await streamFront(w, chat(), "Hello.");
+    const child = await askFollowUp(w, "t1", "more");
+    expect(parentOf(w, child)).toEqual({
       taskId: "t1",
       outcome: "done",
-      findings: findings("Final."),
+      goal: null,
+      words: "hello there",
+      spokenLine: "Hello.",
+      findings: findings("Hello."),
     });
   });
 });
@@ -224,6 +260,9 @@ describe("follow-ups that wait for their parent", () => {
     expect(parentOf(w, child)).toEqual({
       taskId: "t1",
       outcome: "cancelled",
+      goal: null,
+      words: "about it",
+      spokenLine: null,
       findings: null,
     });
   });
@@ -244,112 +283,13 @@ describe("follow-ups that wait for their parent", () => {
   });
 });
 
-const label = "Built on the partial findings of an earlier question.";
-
-type ParentEnd = {
-  name: string;
-  end: (w: Wired) => void;
-  line: string | null; // the partial-parent line; null for a done parent, which shows no line
-  labelled: boolean;
-};
-
-const parentEnds: ParentEnd[] = [
-  {
-    name: "incomplete with findings",
-    end: (w) => w.port.emit(incomplete(true)),
-    line: "Hermes ended without a full answer, so I'll build on what it found.",
-    labelled: true,
-  },
-  {
-    name: "incomplete without findings",
-    end: (w) => w.port.emit(incomplete(false)),
-    line: "Hermes ended before it found anything.",
-    labelled: false,
-  },
-  {
-    name: "cancelled with findings",
-    end: (w) => cancelled(w, true),
-    line: "Hermes was cancelled, so I'll build on what it found.",
-    labelled: true,
-  },
-  {
-    name: "cancelled without findings",
-    end: (w) => cancelled(w, false),
-    line: "Hermes was cancelled before it found anything.",
-    labelled: false,
-  },
-  {
-    name: "cancelled, ended by an incomplete",
-    end: (w) => {
-      w.send(ipcChannels.cancelTask, { taskId: "t1" });
-      w.port.emit(incomplete(true));
-    },
-    line: "Hermes was cancelled, so I'll build on what it found.",
-    labelled: true,
-  },
-  {
-    name: "done",
-    end: (w) => w.port.emit(result("t1")),
-    line: null,
-    labelled: false,
-  },
-];
-
-const afterEnded = "asked after the parent ended";
-const queued = "queued while the parent ran";
-
-const rows = parentEnds.flatMap((parentEnd) =>
-  [afterEnded, queued].map((start) => ({ ...parentEnd, start })),
-);
-
-// The partial-parent line and the queued line show on the card only; main says neither.
-describe("a follow-up of a parent that did not end done", () => {
-  it.each(rows)(
-    "parent $name, $start: card line, said lines and done label",
-    async ({ end, line, labelled, start }) => {
-      const w = wire();
-      await admitAs(w, "hermes");
-      let child: TaskId;
-      if (start === afterEnded) {
-        end(w);
-        child = await askFollowUp(w, "t1", "more");
-      } else {
-        child = await askFollowUp(w, "t1", "more");
-        expect(w.card(child)?.state).toBe("queued");
-        end(w);
-      }
-      expect(w.card(child)).toMatchObject({ state: "running", line });
-      await flush();
-      await w.playAll();
-      if (line !== null) expect(w.spoken()).not.toContain(line);
-      w.port.emit(result(child));
-      expect(w.card(child)).toMatchObject({
-        state: "done",
-        line: labelled ? label : null,
-      });
-    },
-  );
-
-  it("names the parent 'The earlier question' when it was cancelled before it had a topic", async () => {
-    const w = wire();
-    ask(w, "first");
-    w.send(ipcChannels.cancelTask, { taskId: "t1" });
-    const child = await askFollowUp(w, "t1", "more");
-    const line = "The earlier question was cancelled before it found anything.";
-    expect(w.card(child)).toMatchObject({ state: "running", line });
-    await flush();
-    await w.playAll();
-    expect(w.spoken()).not.toContain(line);
-  });
-});
-
 const firstText = (request: ModelRequest): string => {
   const content = request.messages[0]?.content;
   return typeof content === "string" ? content : "";
 };
 
 describe("a follow-up with the real engine", () => {
-  it("runs the typed demo pair over an incomplete parent", async () => {
+  it("gives the worker a failed parent's goal and words", async () => {
     const engine = startFakeEngine([unreachable, unreachable]);
     const w = wire({ port: engine.port });
     ask(w, "How does Hermes agent work inside?");
@@ -358,7 +298,7 @@ describe("a follow-up with the real engine", () => {
       newTask("how Hermes agent works inside"),
       "I'll look at how Hermes works.",
     );
-    await until("card 1 to end", () => w.card("t1")?.state === "incomplete");
+    await until("card 1 to end", () => w.card("t1")?.state === "failed");
     ask(w, "How is it different from Claude Code?");
     await streamFront(
       w,
@@ -367,23 +307,24 @@ describe("a follow-up with the real engine", () => {
       1,
     );
     await until("card 2's run", () => lastRun(w, "t2") !== undefined);
-    const line =
-      "How Hermes agent works inside ended before it found anything.";
     const shown = w.published
       .map((display) => display.tasks.find((task) => task.taskId === "t2"))
       .find((task) => task?.state === "running");
     expect(shown).toMatchObject({
       parentTaskId: "t1",
-      line,
+      line: null,
       reply: "I'll compare them.",
     });
     expect(lastRun(w, "t2")).toMatchObject({
-      parent: { taskId: "t1", outcome: "incomplete", findings: null },
+      parent: { taskId: "t1", outcome: "failed", findings: null },
     });
     await until("card 2's worker request", () => engine.requests.length >= 2);
-    expect(firstText(engine.requests[1])).toContain("<parent_result>");
-    await flush();
-    await w.playAll();
-    expect(w.spoken()).not.toContain(line);
+    const text = firstText(engine.requests[1]);
+    expect(text).toContain(
+      "<parent_result>\noutcome: failed\n<goal>\nhow Hermes agent works inside\n</goal>\n<words>\nHow does Hermes agent work inside?\n</words>",
+    );
+    expect(text).toContain(
+      "The earlier task found nothing, so there is no earlier result to build on. Work from the request you have.",
+    );
   });
 });

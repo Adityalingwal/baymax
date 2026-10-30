@@ -29,7 +29,6 @@ export type TaskRecord = {
   topic: string | null; // the front call's short name for the request; never on the card
   spokenLine: string | null;
   hiddenQuestion: ClarifyingQuestion | null;
-  builtOnPartial: boolean;
   attempt: Attempt | null;
   failedAttempt: Attempt | null;
   attempts: number;
@@ -101,7 +100,6 @@ export function addRecord(
       sourcesRead: 0,
       question: null,
       answer: null,
-      missing: null,
       canRetry: false,
     },
     shown: true,
@@ -110,7 +108,6 @@ export function addRecord(
     topic: null,
     spokenLine: null,
     hiddenQuestion: null,
-    builtOnPartial: false,
     attempt: null,
     failedAttempt: null,
     attempts: 0,
