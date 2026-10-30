@@ -36,6 +36,10 @@ const update = (transcript: string): FluxEvent => ({
   transcript,
 });
 
+const pcmOf = (h: ReturnType<typeof createHarness>, call: number) => [
+  ...new Uint8Array(h.pending[call].audio, 44),
+];
+
 function openHarness() {
   const flux = createFakeFlux();
   const h = createHarness(flux);
@@ -126,6 +130,7 @@ describe.each(nothingHeard)("nothing heard: $name", ({ event }) => {
     flux.emit(event);
     expect(h.heard).toEqual([missed(id, "silent")]);
     expect(h.transcribe).not.toHaveBeenCalled();
+    expect(flux.sent).not.toContain("restart");
   });
 
   it("at the speech level gets its words from the held audio", async () => {
@@ -170,6 +175,48 @@ describe.each(nothingHeard)("speech lost: $name", ({ event }) => {
       expect(h.heard).toEqual([missed(id, cause)]);
     },
   );
+});
+
+describe("a speech-level no-turn hold leaves nothing for the next hold", () => {
+  it("restarts the socket, so a hold right after it has only its own words", async () => {
+    const { flux, h } = openHarness();
+    const a = hold(h, "accept");
+    sendAudio(h, a, [1]);
+    flux.emit({ kind: "noActiveTurn" });
+    h.flow.holdStarted();
+    const b = h.last();
+    frame(h, b, 2);
+    flux.open();
+    h.flow.holdEnded("accept");
+    end(h, b);
+    expect(flux.sent).toEqual([
+      "audio 1",
+      "endTurn",
+      "restart",
+      "connectNow",
+      "audio 2",
+      "endTurn",
+    ]);
+    await resolveCall(h, 0, { kind: "words", words: "the whisper" });
+    flux.emit(manual("Hi"));
+    expect(h.heard).toEqual([words(a, "the whisper"), words(b, "Hi")]);
+  });
+
+  it("sends a hold already on that socket to batch whole", async () => {
+    const { flux, h } = openHarness();
+    const a = hold(h, "accept");
+    sendAudio(h, a, [1]);
+    h.flow.holdStarted();
+    const b = h.last();
+    frame(h, b, 2);
+    flux.emit({ kind: "noActiveTurn" });
+    frame(h, b, 3);
+    h.flow.holdEnded("accept");
+    end(h, b);
+    expect(pcmOf(h, 1)).toEqual([2, 0, 0, 16, 3, 0, 0, 16]);
+    await resolveCall(h, 1, { kind: "words", words: "Hi" });
+    expect(h.heard).toEqual([words(b, "Hi")]);
+  });
 });
 
 type BatchAloneRow = {
@@ -468,10 +515,6 @@ describe("the deadline of an utterance bound for batch", () => {
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
-
-const pcmOf = (h: ReturnType<typeof createHarness>, call: number) => [
-  ...new Uint8Array(h.pending[call].audio, 44),
-];
 
 describe("a final that may never come", () => {
   it("restarts the socket when the earlier deadline passes after the later hold's audio already went out, and sends that hold to batch whole", async () => {

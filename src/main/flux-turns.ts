@@ -296,6 +296,10 @@ function heard(state: State, event: FluxEvent): void {
     return;
   }
   state.awaiting.shift();
+  // An ignored ForceEndTurn leaves this audio in Flux's open turn, where it would join the next hold's words.
+  if (event.kind === "noActiveTurn" && head.peak >= speechPeak) {
+    restartSocket(state, "a no-turn hold left its audio in the turn");
+  }
   if (head.done) return state.deps.log(`late flux ${event.kind} dropped`);
   turnEnded(state, head, event.kind === "endOfTurn" ? event.transcript : "");
 }
