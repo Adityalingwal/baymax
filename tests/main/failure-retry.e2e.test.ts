@@ -540,6 +540,21 @@ describe("a failure call that fails", () => {
     );
     expect(lastTurn(w)).not.toContain("open retry offer");
   });
+
+  it("after it spoke: its words and then the cause are spoken and in Chat, in that order", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await w.playAll();
+    failTask(w);
+    const call = w.talkerCalls[1];
+    call.onText(offerLine);
+    call.resolve({ ok: false, failure: "error", detail: "x" });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await w.playAll();
+    const cause = "I hit an error on that question. Try again.";
+    expect(w.spoken()).toEqual(["Checking hermes.", offerLine, cause]);
+    expect(w.chat()).toEqual([offerLine, cause]);
+  });
 });
 
 const newResult = {

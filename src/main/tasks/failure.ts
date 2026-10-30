@@ -77,14 +77,17 @@ export function receiveFailureTurn(
   model.failureCall = null;
   const record = model.records.get(taskId);
   if (record === undefined) return true;
-  appendLine(model, record.card, reply.text ?? "");
+  const said = reply.text ?? "";
+  appendLine(model, record.card, said);
   if (reply.kind === "failed") {
     appendLine(model, record.card, cause);
+    // What was spoken stays on the screen, even from a call that then failed.
+    if (said !== "") addChat(change, "baymax", said);
     addChat(change, "baymax", cause);
     say(change, taskId, cause, "failure");
     return true;
   }
-  addChat(change, "baymax", reply.text);
+  addChat(change, "baymax", said);
   if (!record.retried) openOffer(model, record);
   return true;
 }
