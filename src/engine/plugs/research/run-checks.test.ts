@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Findings } from "../../../shared/cards";
-import { checkRound, readTurn } from "./run-checks";
-import type { CheckRun } from "./run-checks";
+import { checkRound, readTurn } from "./rounds";
+import type { CheckRun } from "./rounds";
 
 const url = "http://example.test/one";
 const page = { id: "s1", url, title: "Page one", text: "Plain words." };

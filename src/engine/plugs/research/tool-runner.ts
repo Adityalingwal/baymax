@@ -5,10 +5,8 @@ import type { DispatchDeps, DispatchJob } from "../../core/dispatch";
 import { taskLimits } from "../../core/limits";
 import { runToolBatch } from "../../core/tool-batch";
 import type { ToolStep, ToolTurn } from "../../core/tool-batch";
-import { hostOf } from "./url-host";
+import { hostOf } from "./url-rules";
 import { pageForModel, searchHitsForModel } from "./model-text";
-import { parseCalls } from "./research-tools";
-import type { ResearchCall } from "./research-tools";
 import type { ReadOutcome, WebTool } from "./web-tool";
 
 type ToolRunner = {
@@ -24,10 +22,74 @@ type Counts = {
   searchesFound: number;
 };
 
+type ResearchCall =
+  | { id: string; tool: "search"; query: string }
+  | { id: string; tool: "read"; url: string };
+
 const searchDown: ToolStep = {
   kind: "end",
   ending: { kind: "error", cause: "searchDown" },
 };
+
+// The worker's only tools, both from the one web tool; the list never changes, so the prompt start stays cached.
+export const researchTools: Anthropic.Tool[] = [
+  {
+    name: "search",
+    description:
+      "Search the web. Returns titles, URLs and snippets; snippets cannot be cited, so read a page to cite it.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The search query." },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "read",
+    description:
+      "Read one web page by its URL. Returns its text with a source id you can cite.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The http or https URL to read." },
+      },
+      required: ["url"],
+      additionalProperties: false,
+    },
+  },
+];
+
+function onlyString(input: unknown, key: string): string | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return null;
+  }
+  const keys = Object.keys(input);
+  if (keys.length !== 1 || keys[0] !== key) return null;
+  const value: unknown = Reflect.get(input, key);
+  return typeof value === "string" ? value : null;
+}
+
+function callFrom(block: Anthropic.ToolUseBlock): ResearchCall | null {
+  if (block.name === "search") {
+    const query = onlyString(block.input, "query");
+    return query === null ? null : { id: block.id, tool: "search", query };
+  }
+  if (block.name === "read") {
+    const url = onlyString(block.input, "url");
+    return url === null ? null : { id: block.id, tool: "read", url };
+  }
+  return null;
+}
+
+// Tool input is unchecked model output: one unknown tool or malformed argument rejects the whole turn.
+function parseCalls(blocks: Anthropic.ToolUseBlock[]): ResearchCall[] | null {
+  const calls = blocks.map(callFrom);
+  return calls.every((call) => call !== null) ? calls : null;
+}
 
 function counterLine(runner: ToolRunner, counts: Counts): string {
   const searches = taskLimits.searches - counts.searches;

@@ -331,9 +331,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the worker loop, the dispatch function and limits |
 | `src/engine/plugs/research/` | The research plug: the web tool (safe page reads, pages kept by source id), its prompts and its done condition |
-| `src/engine/plugs/research/brief-writer.ts` | The brief writer: one structured-output call that turns the ask into the worker's brief, with the Opus retry and the default brief |
-| `src/engine/plugs/research/brief-prompt.ts` | The brief writer's fixed instructions, its output schema and its user message |
-| `src/engine/plugs/research/brief.ts` | The worker's brief type |
+| `src/engine/plugs/research/brief-writer.ts` | The brief writer: one structured-output call that turns the ask into the worker's brief, with the Opus retry and the default brief; its fixed instructions, output schema and user message, and the worker's brief type |
 | `src/engine/plugs/index.ts` | The one list of plugs, as explicit re-exports |
 | `src/shared/ipc.ts` | Renderer <-> main channel names and payload types |
 | `src/shared/engine.ts` | Main <-> engine port message types |

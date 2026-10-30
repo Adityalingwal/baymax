@@ -7,23 +7,20 @@ import type {
   EngineEvent,
   ProgressStep,
 } from "../../../shared/engine";
+import type { DevLogEntry } from "../../core/dev-log";
 import type { DispatchDeps } from "../../core/dispatch";
 import type { FoundSoFar } from "../../core/holds";
 import type { TaskBudget } from "../../core/limits";
 import type { LoopEnding, ToolTurn } from "../../core/tool-batch";
 import { runWorkerLoop } from "../../core/worker-loop";
-import { answerSchema } from "./answer";
-import type { WorkerBrief } from "./brief";
+import { answerSchema, foundFindings } from "./answer";
 import { writeBrief } from "./brief-writer";
+import type { WorkerBrief } from "./brief-writer";
 import type { Connect, LookupAll } from "./connection";
-import { foundFindings } from "./found";
-import { cardSourcesEntry } from "./log-hosts";
-import { researchTools } from "./research-tools";
-import { runRounds } from "./retry-rounds";
-import type { Rounds, WorkTurn } from "./retry-rounds";
-import { incomplete } from "./run-checks";
-import type { CheckRun } from "./run-checks";
-import { createToolRunner } from "./tool-runner";
+import { incomplete, runRounds } from "./rounds";
+import type { CheckRun, Rounds, WorkTurn } from "./rounds";
+import { createToolRunner, researchTools } from "./tool-runner";
+import { hostOf } from "./url-rules";
 import { createWebTool } from "./web-tool";
 import {
   firstWorkerMessage,
@@ -146,6 +143,27 @@ function startRounds(run: ResearchRun, brief: WorkerBrief): Rounds {
     history,
     work: () => work(worker),
     researchMark: tools.researchMark,
+  };
+}
+
+function findingsOf(event: EngineEvent): Findings | null {
+  if (event.type === "result") return event.findings;
+  return event.type === "incomplete" ? event.incomplete.findings : null;
+}
+
+// Hostnames only: a URL's path or query can carry the user's words.
+// One entry for a terminal event that carries findings: its source ids and their hosts, in sources order.
+function cardSourcesEntry(
+  taskId: string,
+  event: EngineEvent | null,
+): DevLogEntry | null {
+  const findings = event === null ? null : findingsOf(event);
+  if (findings === null) return null;
+  return {
+    event: "cardSources",
+    taskId,
+    sourceIds: findings.sources.map(({ id }) => id).join(","),
+    hosts: findings.sources.map(({ url }) => hostOf(url) ?? "").join(","),
   };
 }
 

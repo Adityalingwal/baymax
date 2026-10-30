@@ -3,7 +3,7 @@ import type { ClientRequestArgs } from "node:http";
 import { connect as netConnect, isIP } from "node:net";
 import { connect as tlsConnect } from "node:tls";
 import type { Duplex } from "node:stream";
-import { isPublicAddress } from "./address";
+import { isPublicAddress } from "./url-rules";
 import type { CheckedUrl, RefusalRule } from "./url-rules";
 
 export type LookupAll = (hostname: string) => Promise<string[]>;

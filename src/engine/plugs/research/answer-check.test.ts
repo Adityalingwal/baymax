@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Answer } from "./answer";
-import { answerFindings, checkAnswer } from "./answer-check";
+import { answerFindings, checkAnswer } from "./answer";
 
 const pages = [
   { id: "s1", url: "https://a.example/1", title: "One", text: "Words." },

@@ -8,7 +8,7 @@ import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import { runResearch } from "./plugs";
 import type { RunTaskCommand } from "./plugs";
-import { briefInstructions } from "./plugs/research/brief-prompt";
+import { briefInstructions } from "./plugs/research/brief-writer";
 import {
   ask,
   closeRuns,

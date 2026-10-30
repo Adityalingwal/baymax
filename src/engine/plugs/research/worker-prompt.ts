@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ParentResult } from "../../../shared/engine";
-import type { WorkerBrief } from "./brief";
-import { briefForModel, parentResultBlock, taggedText } from "./model-text";
+import type { WorkerBrief } from "./brief-writer";
+import { parentResultBlock, taggedText } from "./model-text";
 
 export type ThinkingMode = "off" | "low";
 
@@ -66,6 +66,17 @@ function parentBlock(parent: ParentResult): string {
     "This task follows up on the result above. Its pages are not read in this task: read a page again before you cite it.",
     ...partialNote(parent),
   ].join("\n");
+}
+
+function briefForModel(brief: WorkerBrief): string {
+  const parts = [
+    taggedText("goal", brief.goal),
+    taggedText("result_shape", brief.resultShape),
+    taggedText("sources", brief.sources),
+    taggedText("limits", brief.limits),
+    taggedText("user_words", brief.userWords),
+  ];
+  return `<brief>\n${parts.join("\n")}\n</brief>`;
 }
 
 // The only per-task text; it comes after the fixed prompt start, so the start stays the same for every task.
