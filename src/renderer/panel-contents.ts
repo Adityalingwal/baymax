@@ -36,6 +36,13 @@ export function viewReducer(view: PanelView, event: PanelViewEvent): PanelView {
   }
 }
 
+// holdKeyLabel: main's label for the hold key; empty when main has none.
+export function fieldPlaceholder(holdKeyLabel: string): string {
+  return holdKeyLabel === ""
+    ? "Ask Baymax"
+    : `Ask, or hold ${holdKeyLabel} to talk to Baymax`;
+}
+
 export type ChatRow = {
   id: string;
   side: "left" | "right"; // your words on the left, Baymax's on the right

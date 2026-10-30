@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TaskCard } from "../../src/shared/cards";
 import {
+  fieldPlaceholder,
   initialView,
   panelContent,
   viewReducer,
@@ -64,6 +65,15 @@ const display = {
     { id: "c2", from: "baymax" as const, text: "hello", at: atFivePast },
   ],
 };
+
+describe("the field's placeholder", () => {
+  it.each([
+    { label: "⌥", placeholder: "Ask, or hold ⌥ to talk to Baymax" },
+    { label: "", placeholder: "Ask Baymax" },
+  ])("with the label '$label': $placeholder", ({ label, placeholder }) => {
+    expect(fieldPlaceholder(label)).toBe(placeholder);
+  });
+});
 
 describe("the Chat tab", () => {
   it("lists only the conversation, oldest first, each side with its time", () => {
