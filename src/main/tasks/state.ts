@@ -8,12 +8,11 @@ import type {
 import { ask, bindAnswer } from "./ask";
 import { buildDisplay, waitingQuestion } from "./display";
 import { receiveFront, retryTask } from "./front";
-import { setVoiceAvailable, showNotice } from "./lines";
-import type { Notice } from "./lines";
 import type {
   Change,
   Input,
   Model,
+  Notice,
   Output,
   SaidKind as RecordSaidKind,
   SaidLine as RecordSaidLine,
@@ -22,7 +21,9 @@ import {
   createModel,
   dropped,
   isEnded,
+  setVoiceAvailable,
   showNextQuestion,
+  showNotice,
   silence,
 } from "./record";
 import type { TalkRequest, TalkerReply, WaitingQuestion } from "./talk";

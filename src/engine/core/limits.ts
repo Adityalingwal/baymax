@@ -19,7 +19,7 @@ export const roles = {
 
 export type Role = keyof typeof roles;
 
-export type RoleModel = (typeof roles)[Role]["model"];
+type RoleModel = (typeof roles)[Role]["model"];
 
 // What this task has used so far.
 export type TaskBudget = {
