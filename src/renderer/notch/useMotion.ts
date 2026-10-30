@@ -4,7 +4,7 @@ import { planClosed } from "./closed-plans";
 import { motionEnd, sample } from "./motion";
 import type { Frame, Motion } from "./motion";
 import { silhouettePath } from "./outline";
-import { panelTiming, planPanel, restingFrame } from "./plans";
+import { panelTiming, planPanel, planResize, restingFrame } from "./plans";
 import type { PanelKeys } from "./plans";
 import type { VoiceLayers } from "./VoicePill";
 
@@ -76,9 +76,12 @@ function draw(runner: Runner, windowWidth: number, layers: Layers): void {
 function plan(runner: Runner, input: MotionInput): Motion {
   const { open, keys } = input;
   const how = { reduced: prefersReducedMotion(), now: performance.now() };
-  const panel = open || runner.open !== open;
+  const wasOpen = runner.open;
   runner.open = open;
-  if (panel) return planPanel(runner.frame, keys, { ...how, open });
+  if (open && wasOpen && !how.reduced) {
+    return planResize(runner.frame, keys, how.now);
+  }
+  if (open || wasOpen) return planPanel(runner.frame, keys, { ...how, open });
   const target = { view: keys.view, shape: keys.collapsed };
   return planClosed(runner.frame, target, how);
 }

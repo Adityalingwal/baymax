@@ -12,6 +12,9 @@ export const smootherstep: Ease = (progress) => {
   return t * t * t * (t * (t * 6 - 15) + 10);
 };
 
+export const easeOutCubic: Ease = (progress) =>
+  1 - (1 - clamp01(progress)) ** 3;
+
 // CSS cubic-bezier(x1, y1, x2, y2): finds the curve's t for the time, then returns its value.
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
   const at = (a: number, b: number, t: number) =>

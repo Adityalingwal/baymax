@@ -4,8 +4,8 @@ type DisplayBounds = Pick<Electron.Display, "bounds">;
 
 export type NotchSizes = ReadonlyMap<number, { width: number; height: number }>;
 
-// The open panel's width; the window never resizes, only the black shape inside it moves.
-const panelSize = { width: 640, height: 720 } as const;
+// Fits the widest panel (640 pt) with its 24 pt ears and its tallest (560 pt); the window never resizes, only the black shape inside it moves.
+const panelWindow = { width: 688, height: 560, screenGap: 16 } as const;
 
 // The small pill at rest when no notch was measured, sized as on the demo Mac (139 x 25 points on a 1280-point-wide display).
 const restPill = { width: 139, height: 25, displayWidth: 1280 } as const;
@@ -17,13 +17,16 @@ export function pickDisplay<D extends Pick<Electron.Display, "internal">>(
   return displays.find((display) => display.internal) ?? primary;
 }
 
-export function panelBounds(display: DisplayBounds): Electron.Rectangle {
-  const { bounds } = display;
+export function panelBounds(
+  display: Pick<Electron.Display, "bounds" | "workArea">,
+): Electron.Rectangle {
+  const { bounds, workArea } = display;
+  const { width, height, screenGap } = panelWindow;
   return {
-    x: bounds.x + Math.round((bounds.width - panelSize.width) / 2),
+    x: bounds.x + Math.round((bounds.width - width) / 2),
     y: bounds.y,
-    width: panelSize.width,
-    height: Math.min(panelSize.height, bounds.height),
+    width,
+    height: Math.min(height, workArea.height - screenGap),
   };
 }
 

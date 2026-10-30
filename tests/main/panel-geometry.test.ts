@@ -40,20 +40,24 @@ describe("panelBounds", () => {
     {
       name: "centred at the top of a display at the origin",
       bounds: { x: 0, y: 0, width: 1280, height: 828 },
-      expected: { x: 320, y: 0, width: 640, height: 720 },
+      workHeight: 723,
+      expected: { x: 296, y: 0, width: 688, height: 560 },
     },
     {
       name: "centred at the top of a display with a non-zero origin",
       bounds: { x: -1920, y: -300, width: 1920, height: 1080 },
-      expected: { x: -1280, y: -300, width: 640, height: 720 },
+      workHeight: 1000,
+      expected: { x: -1304, y: -300, width: 688, height: 560 },
     },
     {
-      name: "as tall as a display shorter than 720",
+      name: "on a short screen, 16 points less than the work area",
       bounds: { x: 0, y: 0, width: 1024, height: 600 },
-      expected: { x: 192, y: 0, width: 640, height: 600 },
+      workHeight: 500,
+      expected: { x: 168, y: 0, width: 688, height: 484 },
     },
-  ])("$name", ({ bounds, expected }) => {
-    expect(panelBounds({ bounds })).toEqual(expected);
+  ])("$name", ({ bounds, workHeight, expected }) => {
+    const workArea = { ...bounds, height: workHeight };
+    expect(panelBounds({ bounds, workArea })).toEqual(expected);
   });
 });
 

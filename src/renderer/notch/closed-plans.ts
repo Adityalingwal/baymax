@@ -1,5 +1,5 @@
-import { clamp01, instant, makeMotion, smootherstep } from "./motion";
-import type { Ease, Frame, Motion, Timing } from "./motion";
+import { easeOutCubic, instant, makeMotion, smootherstep } from "./motion";
+import type { Frame, Motion, Timing } from "./motion";
 import type { Silhouette } from "./outline";
 import { fade, restingFrame } from "./plans";
 import type { ClosedView } from "./views";
@@ -19,9 +19,6 @@ export const closedTiming = {
     cardMs: 270,
   },
 } as const;
-
-export const easeOutCubic: Ease = (progress) =>
-  1 - (1 - clamp01(progress)) ** 3;
 
 const soft = (duration: number, from: number, to: number, delay = 0) => ({
   ...fade(duration, from, to, delay),

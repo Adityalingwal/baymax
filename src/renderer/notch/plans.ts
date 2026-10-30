@@ -1,6 +1,7 @@
 import {
   clamp01,
   cubicBezier,
+  easeOutCubic,
   instant,
   linear,
   makeMotion,
@@ -38,6 +39,7 @@ export const panelTiming = {
   closeContentMs: 80,
   closeMs: 220,
   closeEase: cubicBezier(0.4, 0, 1, 1),
+  resizeMs: 260,
   reducedInMs: 120,
   reducedOutMs: 100,
   slide: 4,
@@ -82,6 +84,30 @@ function planOpen(current: Frame, keys: PanelKeys, now: number): Motion {
     {
       shape: { delay: 0, duration: t.openMs, skip, ease: t.openEase },
       content: fade(t.contentMs, current.content, 1, contentDelay),
+      shade: instant,
+      pill: out(current.pill),
+      rim: out(current.rim),
+      card: out(current.card),
+      ring: out(current.ring),
+    },
+    { now },
+  );
+}
+
+// The open panel's size following its content.
+export function planResize(
+  current: Frame,
+  keys: PanelKeys,
+  now: number,
+): Motion {
+  const t = panelTiming;
+  const out = (from: number) => fade(t.closeContentMs, from, 0);
+  return makeMotion(
+    current,
+    restingFrame(keys.opened, "open"),
+    {
+      shape: { delay: 0, duration: t.resizeMs, skip: 0, ease: easeOutCubic },
+      content: fade(t.contentMs, current.content, 1),
       shade: instant,
       pill: out(current.pill),
       rim: out(current.rim),

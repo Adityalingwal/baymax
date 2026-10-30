@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   closedTiming,
-  easeOutCubic,
   planClosed,
 } from "../../../src/renderer/notch/closed-plans";
-import { motionEnd, sample } from "../../../src/renderer/notch/motion";
+import {
+  easeOutCubic,
+  motionEnd,
+  sample,
+} from "../../../src/renderer/notch/motion";
 import type { Frame } from "../../../src/renderer/notch/motion";
 import type { Silhouette } from "../../../src/renderer/notch/outline";
 import { restingFrame } from "../../../src/renderer/notch/plans";

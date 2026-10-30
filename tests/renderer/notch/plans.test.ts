@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  easeOutCubic,
   motionEnd,
   sample,
   smootherstep,
@@ -8,7 +9,11 @@ import {
   closedTiming,
   planClosed,
 } from "../../../src/renderer/notch/closed-plans";
-import { planPanel, restingFrame } from "../../../src/renderer/notch/plans";
+import {
+  planPanel,
+  planResize,
+  restingFrame,
+} from "../../../src/renderer/notch/plans";
 
 const notch = { width: 139, height: 25, ear: 0, rx: 0, ry: 0 };
 const pill = { width: 360, height: 32, ear: 6, rx: 24, ry: 26 };
@@ -96,6 +101,19 @@ describe("planPanel with the pill", () => {
     const end = motionEnd(motion);
     expect(sample(motion, end - 1).shade).toBe(1);
     expect(sample(motion, end)).toEqual(restingFrame(hidden, "notch"));
+  });
+
+  it("resizes an open panel over 260 ms, easing out from where it is", () => {
+    const wider = { ...opened, width: 500, height: 340 };
+    const from = restingFrame(opened, "open");
+    const keys = { ...panelKeys, opened: wider };
+    const motion = planResize(from, keys, 0);
+    expect(sample(motion, 0).width).toBe(opened.width);
+    expect(sample(motion, 130).width).toBeCloseTo(
+      opened.width + (wider.width - opened.width) * easeOutCubic(0.5),
+    );
+    expect(motionEnd(motion)).toBe(260);
+    expect(sample(motion, 260)).toEqual(restingFrame(wider, "open"));
   });
 
   it("lands back on the pill with its word", () => {

@@ -6,8 +6,9 @@ import type { CardActions } from "../actions";
 import { Island } from "./Island";
 import {
   notchZone,
-  openBodyWidth,
   openSilhouette,
+  panelBox,
+  panelLimits,
   panelShape,
   silhouettePath,
 } from "./outline";
@@ -30,6 +31,7 @@ type NotchShellProps = {
   phase: VoicePhase;
   tasks: TaskCard[];
   setMuted: CardActions["setMuted"];
+  fullReportOpen?: boolean; // the panel takes its full-report size
   children: ReactNode;
 };
 
@@ -42,19 +44,33 @@ function isTextField(target: EventTarget): target is HTMLElement {
   );
 }
 
-// The content's full height from y = 0, its top padding included.
-function useContentHeight(element: HTMLElement | null) {
-  const [height, setHeight] = useState(0);
+type ContentSize = { width: number; height: number };
+
+// The content's natural width within the panel's limits, and its full height from y = 0, its top padding included.
+function useContentSize(element: HTMLElement | null): ContentSize {
+  const [size, setSize] = useState<ContentSize>({ width: 0, height: 0 });
   useEffect(() => {
     if (element === null) return;
-    const observer = new ResizeObserver(() => setHeight(element.offsetHeight));
+    const measure = () => {
+      const width = element.offsetWidth;
+      const height = element.offsetHeight;
+      setSize((now) =>
+        now.width === width && now.height === height ? now : { width, height },
+      );
+    };
+    const observer = new ResizeObserver(measure);
     observer.observe(element, { box: "border-box" });
     return () => observer.disconnect();
   }, [element]);
-  return height;
+  return size;
 }
 
-function useShapes(frame: WindowGeometry, height: number, closed: ClosedShape) {
+function useShapes(
+  frame: WindowGeometry,
+  content: ContentSize,
+  closed: ClosedShape,
+  fullReport: boolean,
+) {
   const { width, shape } = frame;
   const { view, shape: collapsed } = closed;
   return useMemo(() => {
@@ -62,7 +78,9 @@ function useShapes(frame: WindowGeometry, height: number, closed: ClosedShape) {
       width,
       height: frame.height,
       shape,
-      contentHeight: height,
+      contentWidth: content.width,
+      contentHeight: content.height,
+      fullReport,
     };
     const opened = openSilhouette(geometry);
     const keys = { collapsed, opened, view };
@@ -72,18 +90,30 @@ function useShapes(frame: WindowGeometry, height: number, closed: ClosedShape) {
       opened: { kind: "path" as const, path: silhouettePath(width, opened) },
     };
     return { keys, zones };
-  }, [width, frame.height, shape, height, collapsed, view]);
+  }, [
+    width,
+    frame.height,
+    shape,
+    content.width,
+    content.height,
+    fullReport,
+    collapsed,
+    view,
+  ]);
 }
 
 type PanelInput = Pick<NotchShellProps, "needsAccess" | "draft"> & {
   frame: WindowGeometry;
   closed: ClosedShape;
+  fullReport: boolean;
 };
 
 // Joins the pointer rules to the motion: the pointer decides open or closed, the motion draws it and reports back.
-function usePanel({ needsAccess, draft, frame, closed }: PanelInput) {
+function usePanel(input: PanelInput) {
+  const { needsAccess, draft, frame, closed, fullReport } = input;
   const [content, setContent] = useState<HTMLElement | null>(null);
-  const shapes = useShapes(frame, useContentHeight(content), closed);
+  const size = useContentSize(content);
+  const shapes = useShapes(frame, size, closed, fullReport);
   const visible = useRef<() => string>(() => "");
   const zones = useMemo(
     () => ({ ...shapes.zones, visible: () => visible.current() }),
@@ -186,13 +216,13 @@ function ClosedLayers(props: ClosedLayersProps) {
 
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const { frame, children, phase, tasks, setMuted } = props;
+  const fullReport = props.fullReportOpen ?? false;
   const voice = usePill(phase, isAnswerLine(phase, tasks));
-  const wide = frame.width - 2 * panelShape.ear;
   const closed = useClosedShape(voice.pill, tasks, {
     shape: frame.shape,
-    wide,
+    wide: panelLimits.reportWidth,
   });
-  const panel = usePanel({ ...props, closed });
+  const panel = usePanel({ ...props, closed, fullReport });
   const { open, layers } = panel;
   const scrollTo = useScrollTo(open);
   const onMute = () => {
@@ -205,7 +235,6 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
     panel.dispatch({ kind: "open-result" });
     scrollTo(taskId);
   };
-  const bodyWidth = openBodyWidth({ ...frame, contentHeight: 0 });
   return (
     <div
       ref={layers.shape}
@@ -217,10 +246,9 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
       />
       <main
         ref={panel.contentElement}
-        className="panel-type absolute top-0 flex max-h-screen flex-col"
+        className="panel-type absolute inset-x-0 top-0 mx-auto flex w-fit flex-col"
         style={{
-          left: (frame.width - bodyWidth) / 2,
-          width: bodyWidth,
+          ...panelBox(frame.height, fullReport),
           gap: rowGap,
           padding: `${panelShape.strip + rowGap}px ${sidePadding}px ${sidePadding}px`,
         }}

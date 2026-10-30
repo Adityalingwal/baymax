@@ -1,11 +1,13 @@
 import type { WindowShape } from "../../shared/ipc";
 
-// Window size and content height in CSS pixels; the content height counts from y = 0, its top padding included.
+// Window size and content size in CSS pixels; the content height counts from y = 0, its top padding included.
 export type OutlineGeometry = {
   width: number;
   height: number;
   shape: WindowShape;
+  contentWidth: number;
   contentHeight: number;
+  fullReport: boolean;
 };
 
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -50,9 +52,24 @@ export function ringSilhouette(shape: WindowShape): Silhouette {
   };
 }
 
-// Ears count inside the window, so the open panel's top edge spans the whole window and its body is two ears narrower.
-export function openBodyWidth(geometry: OutlineGeometry): number {
-  return geometry.width - 2 * panelShape.ear;
+// The panel fits its content between these: design-lock-shape.md, "Panel size". The window fits the widest with its ears.
+export const panelLimits = {
+  minWidth: 420,
+  maxWidth: 520,
+  reportWidth: 640,
+  maxHeight: 420,
+  reportHeight: 560,
+} as const;
+
+// The window's height is already capped for a short screen, so the panel never runs past it.
+export function panelBox(windowHeight: number, fullReport: boolean) {
+  const { minWidth, maxWidth, reportWidth, maxHeight, reportHeight } =
+    panelLimits;
+  return {
+    minWidth: fullReport ? reportWidth : minWidth,
+    maxWidth: fullReport ? reportWidth : maxWidth,
+    maxHeight: Math.min(fullReport ? reportHeight : maxHeight, windowHeight),
+  };
 }
 
 // macOS reports no notch radius; about 9 pt was estimated, so a shape closing onto this one never peeks past the real corners.
@@ -74,9 +91,13 @@ export function notchSilhouette(shape: WindowShape): Silhouette {
 // Never shorter than its strip and corners, so the path is valid before the content is measured.
 export function openSilhouette(geometry: OutlineGeometry): Silhouette {
   const { ear, rx, ry, strip } = panelShape;
-  const content = Math.min(geometry.contentHeight, geometry.height);
+  const box = panelBox(geometry.height, geometry.fullReport);
+  const content = Math.min(geometry.contentHeight, box.maxHeight);
   return {
-    width: openBodyWidth(geometry),
+    width: Math.min(
+      box.maxWidth,
+      Math.max(box.minWidth, geometry.contentWidth),
+    ),
     height: Math.max(content, strip + ry),
     ear,
     rx,
