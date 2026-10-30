@@ -153,12 +153,11 @@ describe("silhouettePath segments", () => {
     expect(path).toContain(`H${left + rx} C`);
   });
 
-  it("rounds the notch's bottom corners only without a notch", () => {
-    const corner = "377,25";
-    expect(silhouettePath(640, notchSilhouette(plain.shape))).toContain(corner);
-    expect(silhouettePath(640, notchSilhouette(notched.shape))).not.toContain(
-      corner,
-    );
+  it.each([
+    { name: "a pill's half-height", shape: plain.shape, corner: "377,25" },
+    { name: "8 points", shape: notched.shape, corner: "381.5,25" },
+  ])("rounds the rest shape's bottom corners by $name", ({ shape, corner }) => {
+    expect(silhouettePath(640, notchSilhouette(shape))).toContain(corner);
   });
 });
 
