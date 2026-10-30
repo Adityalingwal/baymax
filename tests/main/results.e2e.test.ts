@@ -46,6 +46,59 @@ async function islandClosed(w: Wired, lineId: string): Promise<void> {
 
 const synthesized = (w: Wired) => w.syntheses.map((job) => job.input).at(-1);
 
+describe("a result with no audio", () => {
+  const phases = (w: Wired) => w.voicePhases.map(({ phase }) => phase);
+
+  // The first result's phases, then the wait: a later result still waits for its closing report.
+  it.each([
+    {
+      name: "muted",
+      options: {},
+      setUp: (w: Wired) => w.send(ipcChannels.setMuted, { muted: true }),
+    },
+    {
+      name: "with the voice provider down",
+      options: { voiceFails: true },
+      setUp: () => undefined,
+    },
+  ])(
+    "$name still gets its turn and its closing report",
+    async ({ options, setUp }) => {
+      const w = wire(options);
+      await admitAs(w, "hermes");
+      await admitAs(w, "laptops");
+      await flush();
+      setUp(w);
+      await w.playAll();
+      w.voicePhases.length = 0;
+      w.port.emit(result("t1", "Hermes is in."));
+      await flush();
+      expect(phases(w).slice(-2)).toEqual(["speaking", "idle"]);
+      const first = w.voicePhases.find((voice) => voice.phase === "speaking");
+      if (first?.phase !== "speaking") throw new Error("no silent turn");
+      expect(first.line).toMatchObject({ taskId: "t1", kind: "answer" });
+      w.voicePhases.length = 0;
+      w.port.emit(result("t2", "Laptops are in."));
+      await flush();
+      expect(phases(w)).toEqual([]);
+      await islandClosed(w, first.line.lineId);
+      expect(phases(w).slice(-2)).toEqual(["speaking", "idle"]);
+    },
+  );
+
+  it("keeps a waiting result as a silent turn when mute comes on", async () => {
+    const w = wire();
+    const lineId = await secondResultWaiting(w);
+    w.send(ipcChannels.setMuted, { muted: true });
+    await islandClosed(w, lineId);
+    expect(synthesized(w)).toBe("Hermes is in.");
+    expect(w.voicePhases.at(-2)).toMatchObject({
+      phase: "speaking",
+      line: { taskId: "t2", kind: "answer" },
+    });
+  });
+});
+
 describe("one result at a time", () => {
   it("holds the second result's line until the first island's closing report", async () => {
     const w = wire();

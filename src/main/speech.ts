@@ -45,6 +45,7 @@ type Line = {
   kind: SaidKind;
   key: string | null;
   feed: LineText;
+  silent?: boolean; // a result with no audio to play: it still gets its turn and its island
 };
 
 // A distinct object per synthesis, so a settled job can tell whether it still owns the slot.
@@ -216,6 +217,14 @@ function startPlaying(ctx: SpeechContext, line: Line, result: Audio) {
   audioStarted(ctx, playing);
 }
 
+// One turn through the usual phases in the same tick, so the renderer shows the island and later reports it closed; no word shows.
+function silentTurn(ctx: SpeechContext, line: Line): void {
+  const lineId = randomUUID();
+  ctx.state.island = lineId;
+  guarded("onAudioStarted", () => ctx.deps.onAudioStarted(line, lineId));
+  lineGone(ctx, line, lineId);
+}
+
 function synthesisFailed(ctx: SpeechContext, failure: Failed): void {
   if (failure.cause === "error") {
     log(`line dropped: synthesis error ${failure.detail}`);
@@ -239,7 +248,8 @@ function synthesisSettled(
   log(`synthesis in ${Math.round(performance.now() - startedAt)} ms`);
   if (result.kind === "failed") {
     synthesisFailed(ctx, result);
-    lineGone(ctx, job.line, null);
+    if (job.line.kind === "answer") silentTurn(ctx, job.line);
+    else lineGone(ctx, job.line, null);
     pump(ctx);
     return;
   }
@@ -388,7 +398,7 @@ function takeLine(state: SpeechState, line: Line): void {
 // The open Aura socket streams the line; without it the line goes to the REST call.
 function pump(ctx: SpeechContext): void {
   const { state, aura } = ctx;
-  if (state.held || state.muted) return;
+  if (state.held) return;
   if (state.synthesizing !== null || state.playing !== null) return;
   let line = nextLine(state);
   // A talker line that ended with no words has nothing to say.
@@ -404,6 +414,12 @@ function pump(ctx: SpeechContext): void {
   }
   // A talker line waits at the head of the queue until its first words arrive.
   if (line === undefined || line.feed.text === "") return;
+  if (line.silent === true) {
+    takeLine(state, line);
+    silentTurn(ctx, line);
+    return pump(ctx);
+  }
+  if (state.muted) return;
   takeLine(state, line);
   if (aura !== null && aura.isOpen()) startStream(ctx, aura, line);
   else startRest(ctx, line);
@@ -412,15 +428,17 @@ function pump(ctx: SpeechContext): void {
 function queueLine(ctx: SpeechContext, line: Line): void {
   const { state } = ctx;
   const taskId = line.taskId;
-  const why = state.muted
-    ? "muted"
-    : taskId !== null && state.cancelled.has(taskId)
-      ? "task cancelled"
-      : null;
+  const why =
+    state.muted && line.kind !== "answer"
+      ? "muted"
+      : taskId !== null && state.cancelled.has(taskId)
+        ? "task cancelled"
+        : null;
   if (why !== null) {
     log(`line dropped: ${why} (${line.kind})`);
     return lineGone(ctx, line, null);
   }
+  line.silent = state.muted;
   state.pending.push(line);
   pump(ctx);
 }
@@ -468,12 +486,23 @@ function endHold(ctx: SpeechContext): void {
   pump(ctx);
 }
 
+// Everything stops; a result not yet heard stays as a silent turn.
+function muteSpeech(ctx: SpeechContext): void {
+  const { synthesizing, playing, pending } = ctx.state;
+  const unplayed = playing?.started === false ? playing.line : undefined;
+  const unheard = [synthesizing?.line, unplayed, ...pending].filter(
+    (line) => line?.kind === "answer",
+  );
+  clearSpeech(ctx, { matches: everyLine, why: "muted", sendStop: true });
+  ctx.state.pending = unheard.flatMap((line) =>
+    line === undefined ? [] : [{ ...line, silent: true }],
+  );
+}
+
 function changeMuted(ctx: SpeechContext, muted: boolean): void {
   if (ctx.state.muted === muted) return;
   ctx.state.muted = muted;
-  if (muted) {
-    clearSpeech(ctx, { matches: everyLine, why: "muted", sendStop: true });
-  }
+  if (muted) muteSpeech(ctx);
   pump(ctx);
 }
 

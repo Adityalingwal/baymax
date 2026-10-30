@@ -239,12 +239,12 @@ describe("a line's life on the REST path", () => {
 describe("a REST line that never plays", () => {
   it("is not speaking while it is synthesized, and a mute then drops it unplayed", async () => {
     const h = createHarness();
-    h.speech.speak(said("Hello.", "t1", "answer"));
+    h.speech.speak(said("Hello."));
     expect(h.started).toEqual([]);
     h.speech.setMuted(true);
     await resolveCall(h, 0);
     expect(h.started).toEqual([]);
-    expect(h.gone).toEqual([{ kind: "answer", lineId: null }]);
+    expect(h.gone).toEqual([{ kind: "talk", lineId: null }]);
   });
 
   it.each([
@@ -261,9 +261,9 @@ describe("a REST line that never plays", () => {
 
   it("leaves unplayed when its synthesis fails", async () => {
     const h = createHarness();
-    h.speech.speak(said("Hello.", "t1", "answer"));
+    h.speech.speak(said("Hello."));
     await resolveCall(h, 0, failure("unreachable"));
-    expect(h.gone).toEqual([{ kind: "answer", lineId: null }]);
+    expect(h.gone).toEqual([{ kind: "talk", lineId: null }]);
   });
 
   it("drops a waiting line unplayed while an earlier one plays", async () => {
