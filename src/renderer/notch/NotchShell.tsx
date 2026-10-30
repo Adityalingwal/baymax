@@ -232,20 +232,20 @@ function ClosedLayers(props: ClosedLayersProps) {
 
 type PanelLayerProps = {
   panel: ReturnType<typeof usePanel>;
-  windowHeight: number;
+  frame: WindowGeometry;
   fullReport: boolean;
   children: NotchShellProps["children"];
 };
 
 // The panel's content inside the shape; it hands its children the close control's action.
 function PanelLayer(props: PanelLayerProps) {
-  const { panel, windowHeight, fullReport, children } = props;
+  const { panel, frame, fullReport, children } = props;
   return (
     <main
       ref={panel.contentElement}
       className="panel-type absolute inset-x-0 top-0 mx-auto flex w-fit flex-col"
       style={{
-        ...panelBox(windowHeight, fullReport),
+        ...panelBox(frame.height, fullReport, frame.shape.notchWidth),
         gap: rowGap,
         padding: `${panelShape.strip + rowGap}px ${sidePadding}px ${sidePadding}px`,
       }}
@@ -297,11 +297,7 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
         openSource={props.openSource}
         onToggleReport={() => dispatch({ kind: "toggle-report" })}
       />
-      <PanelLayer
-        panel={panel}
-        windowHeight={frame.height}
-        fullReport={fullReport}
-      >
+      <PanelLayer panel={panel} frame={frame} fullReport={fullReport}>
         {props.children}
       </PanelLayer>
     </div>

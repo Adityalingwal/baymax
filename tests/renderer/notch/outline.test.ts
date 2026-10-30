@@ -170,6 +170,24 @@ type SizeRow = {
 
 const sizeRows: SizeRow[] = [
   {
+    name: "on a wide notch the minimum follows it, keeping the wings",
+    change: {
+      contentWidth: 200,
+      shape: { notched: true, notchWidth: 185, notchHeight: 25 },
+    },
+    width: 437,
+    height: 300,
+  },
+  {
+    name: "on a very wide notch the maximum gives way too",
+    change: {
+      contentWidth: 900,
+      shape: { notched: true, notchWidth: 300, notchHeight: 25 },
+    },
+    width: 552,
+    height: 300,
+  },
+  {
     name: "short content takes the minimum width",
     change: { contentWidth: 200 },
     width: 420,
