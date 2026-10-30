@@ -24,8 +24,8 @@ import { usePointer } from "./usePointer";
 import { useWindowShape } from "./useWindowShape";
 import type { WindowGeometry } from "./useWindowShape";
 import { islandSpeaks } from "./answer-island";
+import type { IslandState } from "./answer-island";
 import { useIsland, useIslandFollows } from "./useIsland";
-import { isAnswerLine } from "./views";
 import { VoicePill } from "./VoicePill";
 
 type NotchShellProps = {
@@ -35,6 +35,7 @@ type NotchShellProps = {
   tasks: TaskCard[];
   muted: boolean; // main's mute
   setMuted: CardActions["setMuted"];
+  openSource: CardActions["openSource"];
   fullReportOpen?: boolean; // the panel takes its full-report size
   onOpenResult: () => void; // a click on the answer island's card
   children: (closePanel: () => void) => ReactNode;
@@ -91,7 +92,8 @@ function useShapes(
     const keys = { collapsed, opened, view };
     // Hovering the answer island never opens the panel; only a click on its card does.
     const zones = {
-      notch: view === "island" ? null : notchZone(geometry),
+      notch:
+        view === "island" || view === "report" ? null : notchZone(geometry),
       opened: { kind: "path" as const, path: silhouettePath(width, opened) },
     };
     return { keys, zones };
@@ -183,14 +185,19 @@ type ClosedLayersProps = {
   closed: ClosedShape;
   voice: ReturnType<typeof usePill>;
   layers: Layers;
+  island: IslandState;
+  openSource: CardActions["openSource"];
   onMute: () => void;
   onOpenResult: (taskId: TaskId) => void;
+  onToggleReport: () => void;
 };
 
 // What the closed notch draws inside the shape: the running ring, the voice pill's strip and the island's card.
 function ClosedLayers(props: ClosedLayersProps) {
   const { frame, open, closed, voice, layers } = props;
   const showing = (view: ClosedShape["view"]) => !open && closed.view === view;
+  const onIsland = showing("island") || showing("report");
+  const islandView = closed.view === "island" || closed.view === "report";
   return (
     <>
       <RunningRing
@@ -202,8 +209,8 @@ function ClosedLayers(props: ClosedLayersProps) {
       <VoicePill
         pill={voice.pill}
         windowWidth={frame.width}
-        interactive={showing("pill") || showing("island")}
-        quiet={closed.view === "island" && !voice.pill.shown}
+        interactive={showing("pill") || onIsland}
+        quiet={islandView && !voice.pill.shown}
         layers={layers}
         onMute={props.onMute}
       />
@@ -211,9 +218,13 @@ function ClosedLayers(props: ClosedLayersProps) {
         card={closed.island.card}
         width={closed.island.width}
         windowWidth={frame.width}
-        interactive={showing("island")}
+        windowHeight={frame.height}
+        interactive={onIsland}
+        reportOpen={props.island.reportOpen}
         cardRef={layers.card}
         onOpen={props.onOpenResult}
+        onToggleReport={props.onToggleReport}
+        openSource={props.openSource}
         onSize={closed.onIslandSize}
       />
     </>
@@ -223,7 +234,7 @@ function ClosedLayers(props: ClosedLayersProps) {
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const { frame, children, phase, tasks, setMuted } = props;
   const fullReport = props.fullReportOpen ?? false;
-  const { island, dispatch } = useIsland(phase, isAnswerLine(phase, tasks));
+  const { island, dispatch } = useIsland(tasks);
   const voice = usePill(phase, islandSpeaks(island, phase), props.muted);
   const closed = useClosedShape(voice.pill, island, tasks, {
     shape: frame.shape,
@@ -248,7 +259,18 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
       onKeyDown={panel.onKeyDown}
     >
       <ClosedLayers
-        {...{ frame, open, closed, voice, layers, onMute, onOpenResult }}
+        {...{
+          frame,
+          open,
+          closed,
+          voice,
+          layers,
+          island,
+          onMute,
+          onOpenResult,
+        }}
+        openSource={props.openSource}
+        onToggleReport={() => dispatch({ kind: "toggle-report" })}
       />
       <main
         ref={panel.contentElement}

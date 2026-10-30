@@ -17,6 +17,7 @@ export type IslandState = {
   speaking: boolean; // that line still plays
   pointerOn: boolean;
   panelOpen: boolean;
+  reportOpen: boolean; // the full report is open in the island: it stays until folded
   wait: { kind: "close" | "closing"; token: number } | null;
   tokens: number;
   closed: LineId | null; // the last result line whose island has finished closing
@@ -26,6 +27,8 @@ export type IslandEvent =
   | { kind: "phase"; phase: VoicePhase; eligible: boolean }
   | { kind: "pointer"; on: boolean }
   | { kind: "panel"; open: boolean }
+  | { kind: "toggle-report" }
+  | { kind: "fold" }
   | { kind: "close-elapsed"; token: number }
   | { kind: "closing-elapsed"; token: number };
 
@@ -36,6 +39,7 @@ export const initialIsland: IslandState = {
   speaking: false,
   pointerOn: false,
   panelOpen: false,
+  reportOpen: false,
   wait: null,
   tokens: 0,
   closed: null,
@@ -59,8 +63,10 @@ function receivePhase(
     };
   }
   const ended = { ...state, speaking: false };
-  // The key silences the line and closes the island at once.
-  return voice.phase === "listening" ? { ...ended, shown: false } : ended;
+  // The key silences the line and closes a plain island at once; over an open report its voice states show in the strip.
+  return voice.phase === "listening" && !state.reportOpen
+    ? { ...ended, shown: false }
+    : ended;
 }
 
 function applyEvent(state: IslandState, event: IslandEvent): IslandState {
@@ -76,6 +82,10 @@ function applyEvent(state: IslandState, event: IslandEvent): IslandState {
         panelOpen: event.open,
         shown: event.open ? false : state.shown,
       };
+    case "toggle-report":
+      return { ...state, reportOpen: !state.reportOpen };
+    case "fold":
+      return { ...state, reportOpen: false };
     case "close-elapsed":
       return event.token === state.wait?.token
         ? { ...state, shown: false }
@@ -88,11 +98,13 @@ function applyEvent(state: IslandState, event: IslandEvent): IslandState {
 }
 
 // Which timer the facts ask for; a timer already running keeps running.
-function settle(state: IslandState): IslandState {
-  const { shown, speaking, pointerOn, line } = state;
+function settle(before: IslandState): IslandState {
+  const { shown, speaking, pointerOn, line } = before;
+  const reportOpen = shown && before.reportOpen;
+  const state = { ...before, reportOpen };
+  const waiting = shown && !speaking && !pointerOn && !reportOpen;
   const closing = line !== null && !shown && !speaking;
-  const kind =
-    shown && !speaking && !pointerOn ? "close" : closing ? "closing" : null;
+  const kind = waiting ? "close" : closing ? "closing" : null;
   if (kind === null) return { ...state, wait: null };
   if (state.wait?.kind === kind) return state;
   const token = state.tokens + 1;

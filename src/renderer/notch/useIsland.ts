@@ -1,19 +1,43 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import type { Dispatch } from "react";
-import type { VoicePhase } from "../../shared/ipc";
+import type { TaskCard } from "../../shared/cards";
 import { initialIsland, islandDelays, islandReducer } from "./answer-island";
 import type { IslandEvent, IslandState } from "./answer-island";
+import { isAnswerLine } from "./views";
 
-// The island's state from main's voice phase; eligible: the speaking line is a done task's result.
-// Its timers are keyed by token, so a render never restarts them.
-export function useIsland(
-  phase: VoicePhase,
-  eligible: boolean,
-): { island: IslandState; dispatch: Dispatch<IslandEvent> } {
+function useFoldOnEscape(
+  reportOpen: boolean,
+  dispatch: Dispatch<IslandEvent>,
+): void {
+  useEffect(() => {
+    if (!reportOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dispatch({ kind: "fold" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [reportOpen, dispatch]);
+}
+
+// The island's state and its report to main. Its timers are keyed by token, so a render never restarts them.
+export function useIsland(tasks: readonly TaskCard[]): {
+  island: IslandState;
+  dispatch: Dispatch<IslandEvent>;
+} {
   const [island, dispatch] = useReducer(islandReducer, initialIsland);
+  const latestTasks = useRef(tasks);
+  latestTasks.current = tasks;
+  // Every phase reaches the reducer, not only the last before a render: a result line missed here would leave main waiting for its report for good.
   useEffect(
-    () => dispatch({ kind: "phase", phase, eligible }),
-    [phase, eligible],
+    () =>
+      window.baymax.onVoicePhase((phase) =>
+        dispatch({
+          kind: "phase",
+          phase,
+          eligible: isAnswerLine(phase, latestTasks.current),
+        }),
+      ),
+    [],
   );
   const token = island.wait?.token ?? null;
   const kind = island.wait?.kind ?? null;
@@ -24,10 +48,11 @@ export function useIsland(
     const timer = setTimeout(() => dispatch(event), ms);
     return () => clearTimeout(timer);
   }, [token, kind]);
-  const { closed } = island;
+  const { closed, reportOpen } = island;
   useEffect(() => {
     if (closed !== null) window.baymax.reportIslandClosed({ lineId: closed });
   }, [closed]);
+  useFoldOnEscape(reportOpen, dispatch);
   return { island, dispatch };
 }
 

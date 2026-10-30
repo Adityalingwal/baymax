@@ -17,12 +17,13 @@ type Runner = {
   raf: number | null;
   open: boolean; // the open state the last motion was planned for
   view: ClosedView; // the closed view the last motion was planned for
+  folding: boolean; // the report's fold is moving; the card's new height re-plans it, on the same path
 };
 
 export type Layers = VoiceLayers & {
   shape: RefObject<HTMLDivElement | null>;
   content: RefObject<HTMLElement | null>;
-  card: RefObject<HTMLButtonElement | null>;
+  card: RefObject<HTMLDivElement | null>;
   ring: RefObject<HTMLDivElement | null>;
 };
 
@@ -83,13 +84,19 @@ function plan(runner: Runner, input: MotionInput): Motion {
   const wasOpen = runner.open;
   // The pill's close applies only to the pill: the state keeps it after it is used.
   const close = runner.view === "pill" ? input.pillClose : "soft";
+  const folding =
+    !open &&
+    !wasOpen &&
+    keys.view === "island" &&
+    (runner.view === "report" || runner.folding);
   runner.open = open;
   runner.view = keys.view;
+  runner.folding = folding;
   if (open && wasOpen && !how.reduced) {
     return planResize(runner.frame, keys, how.now);
   }
   if (open || wasOpen) return planPanel(runner.frame, keys, { ...how, open });
-  const target = { view: keys.view, shape: keys.collapsed, close };
+  const target = { view: keys.view, shape: keys.collapsed, close, folding };
   return planClosed(runner.frame, target, how);
 }
 
@@ -100,7 +107,7 @@ function createLayers(): Layers {
     voice: createRef<HTMLDivElement>(),
     word: createRef<HTMLDivElement>(),
     rim: createRef<HTMLDivElement>(),
-    card: createRef<HTMLButtonElement>(),
+    card: createRef<HTMLDivElement>(),
     ring: createRef<HTMLDivElement>(),
   };
 }
@@ -120,6 +127,7 @@ export function useShellMotion(input: MotionInput): ShellMotion {
     raf: null,
     open: false,
     view: keys.view,
+    folding: false,
   }));
 
   useLayoutEffect(() => {
@@ -139,6 +147,7 @@ export function useShellMotion(input: MotionInput): ShellMotion {
       }
       runner.motion = null;
       runner.raf = null;
+      runner.folding = false;
       latest.current.onSettled(open);
     };
     runner.motion = plan(runner, latest.current);

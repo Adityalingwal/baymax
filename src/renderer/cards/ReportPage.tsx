@@ -12,7 +12,7 @@ type ReportBodyProps = {
 };
 
 // The full report and its sources, on the report page and in the island. No height of its own; only a wide line scrolls sideways here.
-function ReportBody({ card, report, openSource }: ReportBodyProps) {
+export function ReportBody({ card, report, openSource }: ReportBodyProps) {
   const sources = card.answer?.sources ?? [];
   return (
     <>

@@ -1,20 +1,23 @@
 import type { TaskCard } from "../../shared/cards";
 import type { VoicePhase } from "../../shared/ipc";
 import { isRunning } from "../cards/list";
+import { panelLimits } from "./outline";
 
 // What the notch shows with the panel closed. Sizes and rules: notch-design-locked.md,
 // "Running task: spinning ring", "Voice pill", "Task finish" and "Answer island grow".
-export type ClosedView = "notch" | "ring" | "pill" | "island";
+export type ClosedView = "notch" | "ring" | "pill" | "island" | "report";
 
 type ViewInput = {
   island: boolean; // the answer island is up, from its line's first audio until it closes
+  report?: boolean; // with its full report open
   pill: boolean; // the voice pill is shown
   running: number; // tasks running or waiting their turn
 };
 
 // The answer island wins over the pill, the pill over the running ring.
-export function closedView({ island, pill, running }: ViewInput): ClosedView {
-  if (island) return "island";
+export function closedView(input: ViewInput): ClosedView {
+  const { island, report = false, pill, running } = input;
+  if (island) return report ? "report" : "island";
   if (pill) return "pill";
   return running > 0 ? "ring" : "notch";
 }
@@ -44,6 +47,13 @@ export const islandLayout = {
   bottom: 10,
   lineHeight: 19, // the spoken line's line height
 } as const;
+
+// The island with its report open is at most the panel's full-report height, and never past the window.
+export function islandCardMaxHeight(windowHeight: number): number {
+  const { strip, gap, bottom } = islandLayout;
+  const height = Math.min(panelLimits.reportHeight, windowHeight);
+  return height - strip - gap - bottom;
+}
 
 // Up to three lines at 480 pt; a fourth widens the island to the panel's width instead of cutting the text.
 export function islandWidth(linesAt480: number, wide: number): number {

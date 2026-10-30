@@ -37,6 +37,34 @@ describe("smootherstep", () => {
   });
 });
 
+describe("the report opening and folding in the island", () => {
+  const plain = { width: 480, height: 90, ear: 24, rx: 26, ry: 28 };
+  const open = { width: 640, height: 560, ear: 24, rx: 26, ry: 28 };
+  const expand = planClosed(
+    restingFrame(plain, "island"),
+    { view: "report", shape: open },
+    { reduced: false, now: 0 },
+  );
+  const fold = planClosed(
+    restingFrame(open, "report"),
+    { view: "island", shape: plain, folding: true },
+    { reduced: false, now: 0 },
+  );
+
+  it("takes the locked 720 ms both ways, with no bounce", () => {
+    expect(motionEnd(expand)).toBeCloseTo(720);
+    expect(motionEnd(fold)).toBeCloseTo(720);
+    expect(expand.tracks.height.ease).toBe(smootherstep);
+  });
+
+  it("widens first when opening, and narrows last when folding", () => {
+    expect(sample(expand, 396).width).toBe(640);
+    expect(sample(expand, 115).height).toBe(90);
+    expect(sample(fold, 324).width).toBe(640);
+    expect(sample(fold, 605).height).toBeCloseTo(90);
+  });
+});
+
 describe("planClosed between the notch and the pill", () => {
   it("grows the pill out of the notch in 200 ms, the word fading in over the last 140 ms", () => {
     const motion = grow();

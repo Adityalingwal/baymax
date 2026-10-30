@@ -6,7 +6,7 @@ import { fade, panelTiming, restingFrame, whileMoving } from "./plans";
 import type { ClosedView } from "./views";
 
 // Timings from the locked design: "Voice pill", "Closed-panel voice pill: Soft close", "Running task: spinning ring",
-// "Answer island grow", and design-lock-timing.md. The island's close is not locked; it uses the "Two results together" close (140 ms content, 420 ms shape).
+// "Answer island grow", "Report expand/fold", and design-lock-timing.md. The island's close is not locked; it uses the "Two results together" close (140 ms content, 420 ms shape).
 export const closedTiming = {
   shapeMs: 420,
   pillGrowMs: 200,
@@ -20,6 +20,12 @@ export const closedTiming = {
     heightMs: 495,
     cardDelayMs: 360,
     cardMs: 270,
+  },
+  report: {
+    totalMs: 720,
+    widthMs: 396,
+    heightDelayMs: 115.2,
+    heightMs: 604.8,
   },
 } as const;
 
@@ -48,6 +54,33 @@ function planIsland(current: Frame, target: Frame, now: number): Motion {
     rim: height,
     card: at(t.island.cardDelayMs, t.island.cardMs),
     ring: soft(t.ringMs, current.ring, 0),
+  };
+  return makeMotion(current, target, timings, { now });
+}
+
+// Only the shape moves: width first when opening, and the same path in reverse when folding.
+function planReport(
+  current: Frame,
+  target: Frame,
+  how: { folding: boolean; now: number },
+): Motion {
+  const { totalMs, widthMs, heightDelayMs, heightMs } = closedTiming.report;
+  const at = (delay: number, duration: number): Timing => ({
+    delay,
+    duration,
+    skip: 0,
+    ease: smootherstep,
+  });
+  const { folding, now } = how;
+  const timings = {
+    shape: folding ? at(0, heightMs) : at(heightDelayMs, heightMs),
+    width: folding ? at(totalMs - widthMs, widthMs) : at(0, widthMs),
+    content: instant,
+    shade: instant,
+    pill: instant,
+    rim: instant,
+    card: instant,
+    ring: instant,
   };
   return makeMotion(current, target, timings, { now });
 }
@@ -88,16 +121,24 @@ function planSoft(
 // The closed shape moving between the notch, the ring, the pill and the island; it always starts from the frame drawn now.
 export function planClosed(
   current: Frame,
-  target: { view: ClosedView; shape: Silhouette; close?: PillClose },
+  target: {
+    view: ClosedView;
+    shape: Silhouette;
+    close?: PillClose;
+    folding?: boolean; // the report is folding back to the plain island
+  },
   how: { reduced: boolean; now: number },
 ): Motion {
-  const { view, shape, close = "soft" } = target;
+  const { view, shape, close = "soft", folding = false } = target;
   const rest = restingFrame(shape, view);
   if (how.reduced) {
     const swaps = { content: instant, shade: instant, pill: instant };
     const layers = { rim: instant, card: instant, ring: instant };
     const timings = { ...swaps, ...layers, shape: instant };
     return makeMotion(current, rest, timings, { now: how.now });
+  }
+  if (view === "report" || folding) {
+    return planReport(current, rest, { folding, now: how.now });
   }
   return view === "island"
     ? planIsland(current, rest, how.now)

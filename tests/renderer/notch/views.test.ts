@@ -4,6 +4,7 @@ import type { SpokenKind, VoicePhase } from "../../../src/shared/ipc";
 import {
   closedView,
   isAnswerLine,
+  islandCardMaxHeight,
   islandWidth,
   runningCount,
 } from "../../../src/renderer/notch/views";
@@ -12,6 +13,7 @@ import type { ClosedView } from "../../../src/renderer/notch/views";
 describe("closedView", () => {
   it.each<{
     island: boolean;
+    report?: boolean;
     pill: boolean;
     running: number;
     view: ClosedView;
@@ -22,10 +24,11 @@ describe("closedView", () => {
     { island: false, pill: true, running: 2, view: "pill" },
     { island: true, pill: true, running: 0, view: "island" },
     { island: true, pill: true, running: 3, view: "island" },
+    { island: true, report: true, pill: false, running: 1, view: "report" },
   ])(
     "island $island, pill $pill, $running running: $view",
-    ({ island, pill, running, view }) => {
-      expect(closedView({ island, pill, running })).toBe(view);
+    ({ island, report, pill, running, view }) => {
+      expect(closedView({ island, report, pill, running })).toBe(view);
     },
   );
 });
@@ -41,6 +44,15 @@ describe("runningCount", () => {
       "done",
     ];
     expect(runningCount(states.map((state) => ({ state })))).toBe(2);
+  });
+});
+
+describe("islandCardMaxHeight", () => {
+  it.each([
+    { name: "a 560 pt island", window: 800, height: 514 },
+    { name: "never past a short window", window: 400, height: 354 },
+  ])("$name: $height", ({ window, height }) => {
+    expect(islandCardMaxHeight(window)).toBe(height);
   });
 });
 

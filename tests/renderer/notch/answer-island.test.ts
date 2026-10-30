@@ -27,6 +27,8 @@ const idle = phase({ phase: "idle" });
 const listening = phase({ phase: "listening" });
 const pointer = (on: boolean): IslandEvent => ({ kind: "pointer", on });
 const panel = (open: boolean): IslandEvent => ({ kind: "panel", open });
+const toggleReport: IslandEvent = { kind: "toggle-report" };
+const fold: IslandEvent = { kind: "fold" };
 // The running timer fires.
 const closeTimer: Step = (state) => ({
   kind: "close-elapsed",
@@ -146,6 +148,30 @@ const rows: Row[] = [
     wait: null,
   },
   {
+    name: "an open report holds it past the line's end, with the pointer off",
+    steps: [result, toggleReport, idle],
+    shown: true,
+    wait: null,
+  },
+  {
+    name: "folding by the button counts the 2 s again",
+    steps: [result, toggleReport, idle, toggleReport],
+    shown: true,
+    wait: "close",
+  },
+  {
+    name: "folding by Esc counts the 2 s again",
+    steps: [result, toggleReport, idle, fold],
+    shown: true,
+    wait: "close",
+  },
+  {
+    name: "the key leaves an open report up",
+    steps: [result, toggleReport, listening],
+    shown: true,
+    wait: null,
+  },
+  {
     name: "the next result gets its own island after the first has closed",
     steps: [
       result,
@@ -165,6 +191,13 @@ describe("the answer island", () => {
     expect(state.shown).toBe(shown);
     if (wait !== undefined) expect(state.wait?.kind ?? null).toBe(wait);
     if (closed !== undefined) expect(state.closed).toBe(closed);
+  });
+
+  it("opens the next island with its report folded", () => {
+    const steps: Step[] = [result, toggleReport, idle, fold, closeTimer];
+    const closed = run([...steps, closingTimer]);
+    const next = islandReducer(closed, phase(speaking("a2", "answer"), true));
+    expect(next.reportOpen).toBe(false);
   });
 
   it("holds the locked 2 s", () => {

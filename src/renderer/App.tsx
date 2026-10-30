@@ -109,6 +109,7 @@ export function App() {
       tasks={display.tasks}
       muted={display.muted}
       setMuted={actions.setMuted}
+      openSource={actions.openSource}
       fullReportOpen={content.kind === "report"}
       onOpenResult={() => changeView({ kind: "open-result" })}
     >
