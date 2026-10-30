@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ipcChannels } from "../shared/ipc";
+import { findings } from "./tasks/harness";
 import {
+  admitAs,
   failFront,
   fakeSender,
   admitTask,
@@ -134,4 +136,79 @@ describe("renderer actions", () => {
       expect(w.logs.at(-1)).toBe(`${channel} dropped: ${reason}`);
     },
   );
+});
+
+const finishWith = (w: Wired, taskId: string, urls: string[]) =>
+  w.port.emit({
+    type: "result",
+    taskId,
+    spokenLine: "Done.",
+    findings: findings("Done.", urls),
+  });
+
+async function threeTasks(): Promise<Wired> {
+  const w = wire();
+  await admitAs(w, "hermes");
+  finishWith(w, "t1", ["https://a.com/x", "javascript:alert(1)", "not a url"]);
+  await admitAs(w, "rust");
+  finishWith(w, "t2", ["https://b.com/y"]);
+  await admitAs(w, "zig");
+  return w;
+}
+
+const refusedRows = [
+  { name: "another URL", taskId: "t1", url: "https://a.com/other" },
+  { name: "another task's source", taskId: "t1", url: "https://b.com/y" },
+  {
+    name: "a listed javascript: URL",
+    taskId: "t1",
+    url: "javascript:alert(1)",
+  },
+  {
+    name: "a listed string that does not parse",
+    taskId: "t1",
+    url: "not a url",
+  },
+  { name: "an unknown task", taskId: "t9", url: "https://a.com/x" },
+  { name: "a task with no answer", taskId: "t3", url: "https://a.com/x" },
+];
+
+const counts = (w: Wired) => [
+  w.published.length,
+  w.port.sent.length,
+  w.syntheses.length,
+];
+
+describe("opening a source", () => {
+  it("opens an exact read-source URL of the task and publishes nothing", async () => {
+    const w = await threeTasks();
+    const before = counts(w);
+    w.send(ipcChannels.openSource, { taskId: "t1", url: "https://a.com/x" });
+    expect(w.opened).toEqual(["https://a.com/x"]);
+    expect(counts(w)).toEqual(before);
+  });
+
+  it.each(refusedRows)("refuses $name and logs it", async ({ taskId, url }) => {
+    const w = await threeTasks();
+    const before = counts(w);
+    const logs = w.logs.length;
+    w.send(ipcChannels.openSource, { taskId, url });
+    expect(w.opened).toEqual([]);
+    expect(counts(w)).toEqual(before);
+    expect(w.logs.length).toBe(logs + 1);
+  });
+
+  it("keeps the allowlist when a published card is changed", async () => {
+    const w = await threeTasks();
+    w.published.at(-1)?.tasks[0].answer?.sources.push({
+      id: "s9",
+      url: "https://unread.example",
+      title: "unread",
+    });
+    w.send(ipcChannels.openSource, {
+      taskId: "t1",
+      url: "https://unread.example",
+    });
+    expect(w.opened).toEqual([]);
+  });
 });

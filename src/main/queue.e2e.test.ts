@@ -67,10 +67,13 @@ describe("five typed questions through the wiring", () => {
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("speech for five typed questions", () => {
-  it("says each front line and the queue-full line; the queued lines show on the cards only", async () => {
+  it("says each front line and the queue-full line, even after the refused card left; the queued lines show on the cards only", async () => {
     const w = await fiveAsked();
+    // The refused card leaves at 3000 ms; its line is still said.
+    w.advance(3000);
     await flush();
     await w.playAll();
+    expect(w.stops).toEqual([]);
     expect(w.spoken()).toEqual([
       ...names.map((name) => `Checking ${name}.`),
       fixedLines.queueFull,

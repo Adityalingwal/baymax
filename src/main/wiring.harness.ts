@@ -28,6 +28,7 @@ type TalkerCall = {
   onToolStart: () => void;
   resolve: (outcome: TextOutcome) => void;
   settled: boolean;
+  aborted: boolean;
 };
 
 // The front call's model faked: each call waits until a test streams its text and settles it.
@@ -44,11 +45,13 @@ function fakeTalker() {
           resolve(outcome);
         },
         settled: false,
+        aborted: false,
       };
       calls.push(call);
-      options.signal.addEventListener("abort", () =>
-        resolve({ ok: false, failure: "aborted", detail: "aborted" }),
-      );
+      options.signal.addEventListener("abort", () => {
+        call.aborted = true;
+        resolve({ ok: false, failure: "aborted", detail: "aborted" });
+      });
     });
   return { calls, stream };
 }

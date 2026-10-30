@@ -1,31 +1,21 @@
 import { describe, expect, it } from "vitest";
-import type { Findings } from "../../shared/cards";
-import type { FailureKind, Incomplete } from "../../shared/engine";
-import { fixedLines, incompleteLines, stepText } from "./lines";
+import type { Findings } from "../shared/cards";
+import type { FailureKind, Incomplete } from "../shared/engine";
+import { admitAs, wire } from "./wiring.harness";
+import type { Wired } from "./wiring.harness";
+
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+async function spokenAll(w: Wired): Promise<string[]> {
+  await flush();
+  await w.playAll();
+  return w.spoken();
+}
 
 const found: Findings = { cardText: "Partial.", sources: [], openPoints: [] };
 
-const fixedRows: { name: keyof typeof fixedLines; line: string }[] = [
-  { name: "queued", line: "Okay, I'll look at that after the current one." },
-  {
-    name: "queueFull",
-    line: "I already have three waiting. Cancel one or ask again later.",
-  },
-  { name: "wordsNotCaught", line: "I didn't catch that, say it again." },
-  {
-    name: "micBlocked",
-    line: "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question.",
-  },
-  {
-    name: "noMicrophone",
-    line: "I can't find a microphone. Connect one, or type your question.",
-  },
-  {
-    name: "voiceUnavailable",
-    line: "Voice isn't working right now. You can type your question instead.",
-  },
-  { name: "restarting", line: "Baymax hit a problem and is restarting." },
-];
+// The topic the front call gave the task; its first part names the task in the lines.
+const topic = "how Hermes works, from its docs";
 
 const failureRows: { kind: FailureKind; line: string }[] = [
   {
@@ -45,24 +35,6 @@ const failureRows: { kind: FailureKind; line: string }[] = [
     line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
   },
 ];
-
-const shortFormRows: { sayBack: string | null; short: string }[] = [
-  {
-    sayBack: "how Hermes works inside, from its docs",
-    short: "How Hermes works inside",
-  },
-  { sayBack: "  rust async runtimes  ", short: "Rust async runtimes" },
-  { sayBack: null, short: "This task" },
-  { sayBack: "", short: "This task" },
-];
-
-const sayBack = "how Hermes works, from its docs";
-
-const unchecked: Incomplete = {
-  kind: "unchecked",
-  uncheckedPart: "The dates.",
-  findings: found,
-};
 
 type IncompleteRow = {
   name: string;
@@ -184,6 +156,14 @@ const incompleteRows: IncompleteRow[] = [
 
 const stepRows = [
   {
+    step: { tool: "search", query: "hermes docs" },
+    text: "searching: hermes docs",
+  },
+  {
+    step: { tool: "read", url: "https://github.com/x/y" },
+    text: "reading github.com",
+  },
+  {
     step: { tool: "search", query: "how Hermes works" },
     text: "searching: how Hermes works",
   },
@@ -194,30 +174,39 @@ const stepRows = [
   { step: { tool: "read", url: "not a url" }, text: "reading not a url" },
 ] as const;
 
-describe("fixed lines", () => {
-  it.each(fixedRows)("$name", ({ name, line }) => {
-    expect(fixedLines[name]).toBe(line);
-  });
-
-  it.each(shortFormRows)("short form of $sayBack", ({ sayBack, short }) => {
-    const { line } = incompleteLines(unchecked, sayBack);
-    expect(line).toBe(
-      `${short} is finished, but I couldn't check all of it; the unchecked part is marked.`,
-    );
-  });
-
+describe("an incomplete task through the wiring", () => {
   it.each(incompleteRows)(
-    "incomplete $name",
-    ({ incomplete, line, missing, spoken }) => {
-      expect(incompleteLines(incomplete, sayBack)).toEqual({
+    "$name shows and says its line",
+    async ({ incomplete, line, missing, spoken }) => {
+      const w = wire();
+      await admitAs(w, topic);
+      w.port.emit({
+        type: "progress",
+        taskId: "t1",
+        step: { tool: "search", query: "hermes" },
+        sourcesRead: 2,
+      });
+      w.port.emit({ type: "incomplete", taskId: "t1", incomplete });
+      expect(w.card("t1")).toMatchObject({
+        state: "incomplete",
+        answer: incomplete.findings,
         line,
         missing,
-        spoken,
+        step: null,
+        sourcesRead: 2,
       });
+      // The worker's own text (its question or its answer) is said as given; fixed lines are said as written.
+      expect((await spokenAll(w)).at(-1)).toBe(spoken);
+      expect(w.talkerCalls).toHaveLength(1);
     },
   );
+});
 
-  it.each(stepRows)("step $text", ({ step, text }) => {
-    expect(stepText(step)).toBe(text);
+describe("a running task's step", () => {
+  it.each(stepRows)("shows $text", async ({ step, text }) => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    w.port.emit({ type: "progress", taskId: "t1", step, sourcesRead: 1 });
+    expect(w.card("t1")).toMatchObject({ step: text, sourcesRead: 1 });
   });
 });
