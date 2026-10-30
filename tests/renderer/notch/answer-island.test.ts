@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { SpokenKind, VoicePhase } from "../../../src/shared/ipc";
 import {
   initialIsland,
-  islandDelays,
   islandReducer,
   islandSpeaks,
 } from "../../../src/renderer/notch/answer-island";
@@ -194,14 +193,16 @@ describe("the answer island", () => {
   });
 
   it("opens the next island with its report folded", () => {
-    const steps: Step[] = [result, toggleReport, idle, fold, closeTimer];
-    const closed = run([...steps, closingTimer]);
+    const closed = run([
+      result,
+      toggleReport,
+      panel(true),
+      panel(false),
+      idle,
+      closingTimer,
+    ]);
     const next = islandReducer(closed, phase(speaking("a2", "answer"), true));
     expect(next.reportOpen).toBe(false);
-  });
-
-  it("holds the locked 2 s", () => {
-    expect(islandDelays.closeMs).toBe(2000);
   });
 
   it.each<{ name: string; steps: Step[]; voice: VoicePhase; speaks: boolean }>([
