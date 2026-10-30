@@ -12,7 +12,7 @@ const chunk = () => new Uint8Array([0x00, 0x40, 0x00, 0xc0]).buffer;
 
 const buffer = speechStartBufferMs / 1000;
 
-// 40 ms of 1 kHz audio: at speech level, or the silence Aura opens a line with.
+// 40 ms of 1 kHz audio: at speech level, or the silence Aura opens most lines with.
 const speech = () => new Int16Array(40).fill(0x4000).buffer;
 const silence = () => new Int16Array(40).buffer;
 
@@ -89,6 +89,16 @@ describe("the Web Audio player's start buffer", () => {
     });
   });
 
+  it("keeps all the audio, including the silence a line opens with", () => {
+    const stub = createStubOutput("running");
+    const player = createWebAudioPlayer(stub.createOutput);
+    player.queue(silence(), 1000);
+    player.queue(speech(), 1000);
+    expect(startOf(stub, 0)).toBeCloseTo(buffer);
+    expect(startOf(stub, 1)).toBeCloseTo(buffer + 0.04);
+    expect(stub.buffers.map((samples) => samples.length)).toEqual([40, 40]);
+  });
+
   it("plays a chunk at once after running dry, with no second buffer", () => {
     const stub = createStubOutput("running");
     const player = createWebAudioPlayer(stub.createOutput);
@@ -107,43 +117,5 @@ describe("the Web Audio player's start buffer", () => {
     stub.output.currentTime = 5;
     player.queue(speech(), 1000);
     expect(startOf(stub, 1)).toBeCloseTo(5 + buffer);
-  });
-});
-
-describe("the Web Audio player's lead silence", () => {
-  it("drops it across chunks and keeps the buffer's start for the first speech", () => {
-    const stub = createStubOutput("running");
-    const player = createWebAudioPlayer(stub.createOutput);
-    player.queue(silence(), 1000);
-    player.queue(silence(), 1000);
-    player.queue(speech(), 1000);
-    expect(stub.sources).toHaveLength(1);
-    expect(startOf(stub, 0)).toBeCloseTo(buffer);
-  });
-
-  it("keeps silence once speech has started", () => {
-    const stub = createStubOutput("running");
-    const player = createWebAudioPlayer(stub.createOutput);
-    player.queue(speech(), 1000);
-    player.queue(silence(), 1000);
-    expect(stub.sources).toHaveLength(2);
-  });
-
-  it("drops no more than its limit of a long silence", () => {
-    const stub = createStubOutput("running");
-    const player = createWebAudioPlayer(stub.createOutput);
-    for (let chunks = 0; chunks < 25; chunks += 1) {
-      player.queue(silence(), 1000);
-    }
-    expect(stub.sources.length).toBeGreaterThan(0);
-  });
-
-  it("drains at once when a line was all lead silence", () => {
-    const stub = createStubOutput("running");
-    const player = createWebAudioPlayer(stub.createOutput);
-    player.queue(silence(), 1000);
-    const onDrained = vi.fn();
-    player.whenDrained(onDrained);
-    expect(onDrained).toHaveBeenCalledTimes(1);
   });
 });

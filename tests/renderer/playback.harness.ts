@@ -95,7 +95,7 @@ export function createHarness(realPlayer?: Player) {
     holder.onChunk?.({
       lineId,
       seq,
-      pcm: bytesOf([mark, 0x40]),
+      pcm: bytesOf([mark, 0]),
       sampleRate: 24_000,
     });
   const end = (lineId: string) => holder.onEnd?.({ lineId });

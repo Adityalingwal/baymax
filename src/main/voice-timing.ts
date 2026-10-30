@@ -61,7 +61,6 @@ const dryLimitMs = 100;
 type Watched = { lineId: LineId; startedAt: number; audioMs: number };
 
 // Logs when a streamed line's audio ran out before its next chunk arrived, which the listener hears as a gap.
-// The renderer's dropped lead silence is not counted, so a line that lost some can run dry without a log.
 export function createGapWatch(
   now: () => number,
   log: (message: string) => void,
