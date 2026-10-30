@@ -117,13 +117,12 @@ describe("the island's close and the ring", () => {
     expect(motionEnd(motion)).toBe(420);
   });
 
-  it("fades the ring out before the pill grows", () => {
+  it("fades the ring out while the pill grows, so the word still arrives within 200 ms", () => {
     const motion = to(restingFrame(ring, "ring"), "pill", pill);
-    expect(sample(motion, closedTiming.ringMs)).toMatchObject({
-      width: 175,
-      ring: 0,
-    });
-    expect(motionEnd(motion)).toBe(closedTiming.ringMs + 200);
+    expect(sample(motion, 100).width).toBeGreaterThan(175);
+    expect(sample(motion, closedTiming.ringMs).ring).toBe(0);
+    expect(motionEnd(motion)).toBe(200);
+    expect(sample(motion, 200)).toEqual(restingFrame(pill, "pill"));
   });
 
   it("with reduced motion swaps at once", () => {

@@ -58,7 +58,7 @@ function softMs(view: ClosedView, close: PillClose): number {
   return close === "silent" ? t.silentCloseMs : t.shapeMs;
 }
 
-// Arriving layers come in over the last 140 ms of the shape; leaving ones fade first (the word in 140 ms, the lines in 180 ms).
+// Arriving layers come in over the last 140 ms of the shape; leaving ones fade from its start (the word and the ring in 140 ms, the lines in 180 ms).
 function planSoft(
   current: Frame,
   target: Frame,
@@ -67,17 +67,15 @@ function planSoft(
   const t = closedTiming;
   const { view, now } = how;
   const shapeMs = softMs(view, how.close);
-  // The ring fades out before the shape grows into the pill.
-  const lead = view === "pill" ? current.ring * t.ringMs : 0;
-  const late = lead + shapeMs - t.wordMs;
+  const late = shapeMs - t.wordMs;
   const layer = (from: number, to: number, outMs: number, inDelay: number) =>
     to > from ? soft(t.wordMs, from, to, inDelay) : soft(outMs, from, to);
   const timings = {
-    shape: { delay: lead, duration: shapeMs, skip: 0, ease: smootherstep },
+    shape: { delay: 0, duration: shapeMs, skip: 0, ease: smootherstep },
     content: instant,
     shade: instant,
     pill: layer(current.pill, target.pill, t.wordMs, late),
-    rim: layer(current.rim, target.rim, t.rimMs, lead),
+    rim: layer(current.rim, target.rim, t.rimMs, 0),
     card: layer(current.card, target.card, t.wordMs, late),
     ring: layer(current.ring, target.ring, t.ringMs, late),
   };
