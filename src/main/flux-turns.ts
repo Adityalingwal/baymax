@@ -86,6 +86,10 @@ function resultOfNothingHeard(utterance: Utterance): TurnResult | null {
 }
 
 function finish(state: State, utterance: Utterance): void {
+  if (utterance.done) return;
+  const peak = Math.round(utterance.peak * 100);
+  const audioMs = Math.round((utterance.bytes / 2 / sampleRate) * 1000);
+  state.deps.log(`hold level: peak ${peak}%, ${audioMs} ms of audio`);
   utterance.done = true;
   utterance.cancelDeadline();
   utterance.frames = [];
@@ -97,9 +101,6 @@ function deliver(state: State, utterance: Utterance, result: TurnResult) {
     state.deps.log("transcript dropped: its hold already ended");
     return;
   }
-  const peak = Math.round(utterance.peak * 100);
-  const audioMs = Math.round((utterance.bytes / 2 / sampleRate) * 1000);
-  state.deps.log(`hold level: peak ${peak}%, ${audioMs} ms of audio`);
   finish(state, utterance);
   state.deps.onResult(utterance.id, result);
 }
