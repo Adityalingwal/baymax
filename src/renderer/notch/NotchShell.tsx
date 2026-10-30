@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import type { TaskCard, TaskId } from "../../shared/cards";
 import type { VoicePhase } from "../../shared/ipc";
 import type { CardActions } from "../actions";
@@ -38,6 +38,11 @@ type NotchShellProps = {
 
 const rowGap = 12;
 const sidePadding = 14;
+
+// For the panel's children, which main's shape does not reach: the top strip keeps to the wings beside the notch.
+function notchWidthVariable(notchWidth: number): CSSProperties {
+  return { "--notch-width": `${notchWidth}px` } as CSSProperties;
+}
 
 function isTextField(target: EventTarget): target is HTMLElement {
   return (
@@ -253,6 +258,7 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
           ...panelBox(frame.height, fullReport),
           gap: rowGap,
           padding: `${panelShape.strip + rowGap}px ${sidePadding}px ${sidePadding}px`,
+          ...notchWidthVariable(frame.shape.notchWidth),
         }}
         aria-hidden={!open}
         inert={!open}
