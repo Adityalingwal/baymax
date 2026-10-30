@@ -5,12 +5,15 @@ import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
+  endTurnWith,
   failed,
   goodAnswer,
   hits,
   pageUrl,
   runTask,
   startRun,
+  textBlock,
+  thinkingBlock,
   toolUseReply,
   workerAnswer,
 } from "./run.harness";
@@ -49,6 +52,7 @@ type RewriteRow = {
   name: string;
   bad: ModelOutcome; // the first answer turn
   fault: string; // what the check_result block says
+  notResent?: boolean; // the turn has nothing the API would take back
 };
 
 const nothingFoundFault =
@@ -56,6 +60,8 @@ const nothingFoundFault =
 
 const noSourcesFault =
   "sourceIds named no page you read. Name the read pages that back your answer, and read one first if you have read none.";
+
+const malformedFault = "The answer was not valid JSON for the schema.";
 
 const rewriteRows: RewriteRow[] = [
   {
@@ -91,7 +97,27 @@ const rewriteRows: RewriteRow[] = [
   {
     name: "malformed answer JSON",
     bad: answerText("{ not json"),
-    fault: "The answer was not valid JSON for the schema.",
+    fault: malformedFault,
+  },
+  {
+    name: "an answer turn with no text block",
+    bad: endTurnWith([]),
+    fault: malformedFault,
+    notResent: true,
+  },
+  {
+    name: "an answer turn with only a thinking block",
+    bad: endTurnWith([thinkingBlock]),
+    fault: malformedFault,
+    notResent: true,
+  },
+  {
+    name: "an answer turn with two text blocks",
+    bad: endTurnWith([
+      textBlock(JSON.stringify(goodAnswer)),
+      textBlock(JSON.stringify(goodAnswer)),
+    ]),
+    fault: malformedFault,
   },
   {
     name: "an answer cut at max_tokens",
@@ -125,7 +151,9 @@ describe("runTask one rewrite", () => {
       const rewrite = run.requests[4];
       expect(rewrite.messages).toEqual([
         ...asked.messages,
-        { role: "assistant", content: contentOf(row.bad) },
+        ...(row.notResent === true
+          ? []
+          : [{ role: "assistant", content: contentOf(row.bad) }]),
         {
           role: "user",
           content: `<check_result>\n${row.fault}\n</check_result>\n\n${rewriteLine}`,

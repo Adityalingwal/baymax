@@ -190,7 +190,7 @@ It checks the answer's form and its source ids, not whether the pages back the r
 - The web tool keeps every page it read in code: source id, URL and capped text. The worker's `sourceIds` name those ids; the report itself carries no ids or links.
 - **Code check:** ids of pages that were not read are dropped silently; an id from a search snippet only never counts. A non-empty `nothingFound` with an empty line and an empty report means nothing found. Otherwise the answer is invalid when its line is empty, when no read id is left, or when `nothingFound` is not null. Everything else is valid, an empty report included: the card text is the report with links and source markers stripped, and the card's sources are the pages with those ids. A valid answer ends the task at once, with no further model call.
 - **What is kept.** An answer is kept only after its check passes, including with an empty report. A rejected answer's text is never promoted to the card, and its line is never spoken.
-- **One rewrite.** A cut-off, malformed or invalid answer gets exactly one rewrite in the same conversation, with its fault named. There are no research rounds. A second bad answer ends the task failed, cause `error`.
+- **One rewrite.** A cut-off, malformed or invalid answer gets exactly one rewrite in the same conversation, with its fault named. An answer turn with no text or with several text blocks counts as malformed. There are no research rounds. A second bad answer ends the task failed, cause `error`.
 - Baymax closes a task itself once the check passes and the result is shown.
 
 ### Web tool

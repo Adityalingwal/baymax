@@ -98,6 +98,16 @@ function reply(
   return { ok: true, message: { ...message, content } };
 }
 
+// An answer turn that ends normally with exactly these blocks.
+export const endTurnWith = (content: Anthropic.ContentBlock[]): ModelOutcome =>
+  reply(content, "end_turn");
+
+export const textBlock = (text: string): Anthropic.TextBlock => ({
+  type: "text",
+  text,
+  citations: null,
+});
+
 export const thinkingBlock: Anthropic.ThinkingBlock = {
   type: "thinking",
   thinking: "I should search first.",

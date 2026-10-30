@@ -12,7 +12,10 @@ export type KeptAnswer = { findings: Findings; spokenLine: string };
 export type WorkTurn =
   | {
       kind: "turn";
-      turn: { kind: "answer"; text: string } | { kind: "cutOff" };
+      turn:
+        | { kind: "answer"; text: string }
+        | { kind: "cutOff" }
+        | { kind: "malformed" };
     }
   | { kind: "event"; event: EngineEvent }
   | { kind: "aborted" };
@@ -42,13 +45,15 @@ function logCheck(rounds: Rounds, failed: string | null): void {
   });
 }
 
+function malformedTurn(rounds: Rounds): RoundEnd {
+  rounds.deps.log({ event: "answerMalformed", taskId: rounds.taskId });
+  return { kind: "fault", fault: "malformed" };
+}
+
 function checkedTurn(rounds: Rounds, json: string): RoundEnd {
   const { taskId } = rounds;
   const answer = parseAnswer(json);
-  if (answer === null) {
-    rounds.deps.log({ event: "answerMalformed", taskId });
-    return { kind: "fault", fault: "malformed" };
-  }
+  if (answer === null) return malformedTurn(rounds);
   const check = checkAnswer(answer, rounds.pages());
   logCheck(rounds, check.kind === "invalid" ? check.fault : null);
   if (check.kind === "invalid") return { kind: "fault", fault: check.fault };
@@ -73,6 +78,7 @@ async function answerRound(rounds: Rounds): Promise<RoundEnd> {
   const work = await rounds.work();
   if (work.kind !== "turn") return work;
   if (work.turn.kind === "cutOff") return { kind: "fault", fault: "cutOff" };
+  if (work.turn.kind === "malformed") return malformedTurn(rounds);
   return checkedTurn(rounds, work.turn.text);
 }
 

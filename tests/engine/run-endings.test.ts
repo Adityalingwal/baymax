@@ -7,12 +7,15 @@ import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
+  endTurnWith,
   failed,
   goodAnswer,
   hits,
   pageUrl,
   runTask,
   startRun,
+  textBlock,
+  thinkingBlock,
   toolUseReply,
   until,
 } from "./run.harness";
@@ -153,6 +156,12 @@ const unanswered: { name: string; step: ModelOutcome }[] = [
 const malformedAnswers: { name: string; step: ModelOutcome }[] = [
   { name: "max_tokens", step: reply(answerJson, "max_tokens") },
   { name: "invalid JSON", step: reply("{ not json", "end_turn") },
+  { name: "no text block", step: endTurnWith([]) },
+  { name: "only a thinking block", step: endTurnWith([thinkingBlock]) },
+  {
+    name: "two text blocks",
+    step: endTurnWith([textBlock(answerJson), textBlock(answerJson)]),
+  },
   {
     name: "a missing field",
     step: reply(JSON.stringify(withoutSources), "end_turn"),
