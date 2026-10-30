@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { TaskCard } from "../../shared/cards";
+import { cardTitle } from "../cards/forms";
 import { islandLayout } from "./views";
 
 export type IslandSize = { cardHeight: number; linesAt480: number };
 
 type IslandProps = {
-  card: Pick<TaskCard, "taskId" | "words" | "spokenLine"> | null;
+  card: Pick<TaskCard, "taskId" | "title" | "words" | "spokenLine"> | null;
   width: number; // the island's body width: 480, or the panel's width for a long line
   windowWidth: number;
   interactive: boolean;
@@ -77,7 +78,7 @@ export function Island(props: IslandProps) {
         onClick={open}
       >
         <span className="w-full truncate text-[14px] leading-5 font-bold text-[#F5F5F7]">
-          {card?.words ?? ""}
+          {card === null ? "" : cardTitle(card)}
         </span>
         <span className="text-[12.5px] leading-[19px]" style={lineColor}>
           {line}

@@ -7,7 +7,7 @@ import { isRunning } from "../cards/list";
 export type ClosedView = "notch" | "ring" | "pill" | "island";
 
 type ViewInput = {
-  island: boolean; // a done task's answer is speaking and was not opened in the panel
+  island: boolean; // the answer island is up, from its line's first audio until it closes
   pill: boolean; // the voice pill is shown
   running: number; // tasks running or waiting their turn
 };
@@ -23,7 +23,7 @@ export function runningCount(tasks: readonly Pick<TaskCard, "state">[]) {
   return tasks.filter((card) => isRunning(card.state)).length;
 }
 
-// Only a done task's own result line grows into the island; a chat reply, a failed line, a question or a notice uses the pill.
+// Only a background task's own result line grows into the island; a chat reply, a failed task's line, a question or a notice uses only the pill.
 export function isAnswerLine(
   phase: VoicePhase,
   tasks: readonly Pick<TaskCard, "taskId" | "state">[],

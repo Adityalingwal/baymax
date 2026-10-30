@@ -4,7 +4,7 @@ import type { VoicePhase } from "../../shared/ipc";
 import { initialPill, pillDelays, pillReducer } from "./pill";
 import type { PillEvent, PillState } from "./pill";
 
-// The pill's state from main's voice phase; answer: the speaking line is a done task's result, for the island.
+// The pill's state from main's voice phase; answer: the answer island is showing the speaking line.
 // Its two timers are keyed by token, so a render never restarts them.
 export function usePill(
   phase: VoicePhase,

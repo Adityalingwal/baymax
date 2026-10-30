@@ -9,12 +9,12 @@ import {
   ringSilhouette,
 } from "./outline";
 import type { Silhouette } from "./outline";
-import { islandShown } from "./pill";
+import type { IslandState } from "./answer-island";
 import type { PillClose, PillState } from "./pill";
 import { closedView, islandLayout, islandWidth, runningCount } from "./views";
 import type { ClosedView } from "./views";
 
-type IslandCard = Pick<TaskCard, "taskId" | "words" | "spokenLine">;
+type IslandCard = Pick<TaskCard, "taskId" | "title" | "words" | "spokenLine">;
 
 export type ClosedShape = {
   view: ClosedView;
@@ -53,6 +53,7 @@ function silhouetteFor(
 // What the closed notch shows and its shape; wide: the panel's body width, for an island whose line needs four lines.
 export function useClosedShape(
   pill: PillState,
+  answerIsland: IslandState,
   tasks: readonly TaskCard[],
   frame: { shape: WindowShape; wide: number },
 ): ClosedShape {
@@ -67,13 +68,15 @@ export function useClosedShape(
         : next,
     );
   }, []);
-  const island = islandShown(pill);
   const running = runningCount(tasks);
-  const view = closedView({ island, pill: pill.shown, running });
+  const view = closedView({
+    island: answerIsland.shown,
+    pill: pill.shown,
+    running,
+  });
   // The last island's card stays, so its text is still there while the island closes.
   const last = useRef<IslandCard | null>(null);
-  const taskId = island ? pill.line?.taskId : undefined;
-  const current = tasks.find((card) => card.taskId === taskId);
+  const current = tasks.find((card) => card.taskId === answerIsland.taskId);
   if (current !== undefined) last.current = current;
   const width = islandWidth(size.linesAt480, frame.wide);
   const { shape } = frame;

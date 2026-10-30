@@ -23,6 +23,8 @@ import { usePill } from "./usePill";
 import { usePointer } from "./usePointer";
 import { useWindowShape } from "./useWindowShape";
 import type { WindowGeometry } from "./useWindowShape";
+import { islandSpeaks } from "./answer-island";
+import { useIsland, useIslandFollows } from "./useIsland";
 import { isAnswerLine } from "./views";
 import { VoicePill } from "./VoicePill";
 
@@ -152,11 +154,10 @@ function usePanel(input: PanelInput) {
     pointer.dispatch({ kind: "escape" });
     event.target.blur();
   };
-  const { open } = pointer.state;
-  const { layers } = motion;
   return {
-    open,
-    layers,
+    open: pointer.state.open,
+    inVisible: pointer.state.inVisible,
+    layers: motion.layers,
     contentElement,
     onKeyDown,
     dispatch: pointer.dispatch,
@@ -202,6 +203,7 @@ function ClosedLayers(props: ClosedLayersProps) {
         pill={voice.pill}
         windowWidth={frame.width}
         interactive={showing("pill") || showing("island")}
+        quiet={closed.view === "island" && !voice.pill.shown}
         layers={layers}
         onMute={props.onMute}
       />
@@ -221,19 +223,20 @@ function ClosedLayers(props: ClosedLayersProps) {
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const { frame, children, phase, tasks, setMuted } = props;
   const fullReport = props.fullReportOpen ?? false;
-  const voice = usePill(phase, isAnswerLine(phase, tasks), props.muted);
-  const closed = useClosedShape(voice.pill, tasks, {
+  const { island, dispatch } = useIsland(phase, isAnswerLine(phase, tasks));
+  const voice = usePill(phase, islandSpeaks(island, phase), props.muted);
+  const closed = useClosedShape(voice.pill, island, tasks, {
     shape: frame.shape,
     wide: panelLimits.reportWidth,
   });
   const panel = usePanel({ ...props, closed, fullReport });
   const { open, layers } = panel;
+  useIslandFollows(dispatch, panel);
   const scrollTo = useScrollTo(open);
   const onMute = () =>
     clickMute(voice.pill, { dispatch: voice.dispatch, setMuted });
-  // The explicit open-result event: it ends the island, opens the panel and scrolls to the result.
+  // The explicit open-result event: it opens the panel, which ends the island, and scrolls to the result.
   const onOpenResult = (taskId: TaskId) => {
-    voice.dispatch({ kind: "open-result" });
     panel.dispatch({ kind: "open-result" });
     props.onOpenResult();
     scrollTo(taskId);

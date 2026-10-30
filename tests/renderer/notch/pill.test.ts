@@ -238,7 +238,11 @@ const answer = (lineId: string): PillEvent =>
     { phase: "speaking", line: { lineId, taskId: "t1", kind: "answer" } },
     true,
   );
-const openResult: PillEvent = { kind: "open-result" };
+// The island stops showing the line, as when a click on its card opens the panel.
+const islandLeft = phase(
+  { phase: "speaking", line: { lineId: "a1", taskId: "t1", kind: "answer" } },
+  false,
+);
 
 type IslandRow = {
   name: string;
@@ -257,7 +261,7 @@ const islandRows: IslandRow[] = [
     shown: true,
   },
   {
-    name: "its line ending closes the island at once, with no 800 ms hold",
+    name: "its line ending ends the pill at once, with no 800 ms hold",
     steps: [answer("a1"), idle],
     island: false,
     shown: false,
@@ -314,14 +318,14 @@ const islandRows: IslandRow[] = [
     shown: true,
   },
   {
-    name: "a click on the card ends the island; the line goes on as a pill line",
-    steps: [answer("a1"), openResult],
+    name: "the island leaving a line that still plays: it goes on as a pill line",
+    steps: [answer("a1"), islandLeft],
     island: false,
     shown: true,
   },
   {
-    name: "after a click the line's end uses the pill's 800 ms hold",
-    steps: [answer("a1"), openResult, idle],
+    name: "after the island left, the line's end uses the pill's 800 ms hold",
+    steps: [answer("a1"), islandLeft, idle],
     island: false,
     shown: true,
     holding: true,
