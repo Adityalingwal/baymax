@@ -17,10 +17,11 @@ export function restingFrame(
 ): Frame {
   const on = (shows: boolean) => (shows ? 1 : 0);
   const voice = view === "pill" || view === "island";
+  const { hidden, ...outline } = shape;
   return {
-    ...shape,
+    ...outline,
     content: on(view === "open"),
-    shade: 1,
+    shade: on(hidden !== true),
     pill: on(voice),
     rim: on(view === "pill"),
     card: on(view === "island"),
@@ -102,7 +103,7 @@ function planClose(current: Frame, keys: PanelKeys, now: number): Motion {
     fade(t.landingMs, from, to, landing);
   return makeMotion(
     current,
-    target,
+    { ...target, shade: 1 },
     {
       shape: { delay: fadeLeft, duration: t.closeMs, skip, ease: t.closeEase },
       content: fade(t.closeContentMs, current.content, 0),
@@ -112,7 +113,7 @@ function planClose(current: Frame, keys: PanelKeys, now: number): Motion {
       card: back(current.card, target.card),
       ring: back(current.ring, target.ring),
     },
-    { now },
+    { now, end: target },
   );
 }
 

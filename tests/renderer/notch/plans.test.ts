@@ -84,6 +84,20 @@ describe("planPanel with the pill", () => {
     expect(sample(motion, 80)).toMatchObject({ pill: 0, rim: 0 });
   });
 
+  it("closes onto the hidden notch, drawn until its last frame", () => {
+    const hidden = { ...notch, hidden: true };
+    const keys = { collapsed: hidden, opened, view: "notch" as const };
+    const from = restingFrame(opened, "open");
+    const motion = planPanel(from, keys, {
+      open: false,
+      reduced: false,
+      now: 0,
+    });
+    const end = motionEnd(motion);
+    expect(sample(motion, end - 1).shade).toBe(1);
+    expect(sample(motion, end)).toEqual(restingFrame(hidden, "notch"));
+  });
+
   it("lands back on the pill with its word", () => {
     const from = restingFrame(opened, "open");
     const motion = planPanel(from, panelKeys, {

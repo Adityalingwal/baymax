@@ -53,9 +53,11 @@ function setOpacity(element: Styled, value: number, slide = 0) {
 // Written straight to the elements: a React render per frame would be too slow for a 60 fps shape.
 function draw(runner: Runner, windowWidth: number, layers: Layers): void {
   const { frame } = runner;
-  runner.path = silhouettePath(windowWidth, frame);
+  const path = silhouettePath(windowWidth, frame);
+  // A shape not drawn takes no clicks: the empty path hits nothing.
+  runner.path = frame.shade === 0 ? "" : path;
   const shape = layers.shape.current;
-  if (shape !== null) shape.style.clipPath = `path("${runner.path}")`;
+  if (shape !== null) shape.style.clipPath = `path("${path}")`;
   setOpacity(shape, frame.shade);
   setOpacity(layers.content.current, frame.content, -panelTiming.slide);
   const voice = layers.voice.current;

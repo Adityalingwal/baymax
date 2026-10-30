@@ -47,7 +47,7 @@ export function progressAt(ease: Ease, value: number): number {
 
 // What the shell draws: the silhouette, then opacities: the panel content, the whole shape (reduced motion fades it),
 // the pill's word and mute button, the pill's corner lines, the answer island's card and the running ring.
-export type Frame = Silhouette & {
+export type Frame = Omit<Silhouette, "hidden"> & {
   content: number;
   shade: number;
   pill: number;

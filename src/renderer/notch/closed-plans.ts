@@ -74,7 +74,11 @@ function planSoft(
     card: layer(current.card, target.card, t.wordMs, late),
     ring: layer(current.ring, target.ring, t.ringMs, late),
   };
-  return makeMotion(current, target, timings, { now });
+  // A shape closing onto the hidden notch stays drawn until its last frame.
+  return makeMotion(current, { ...target, shade: 1 }, timings, {
+    now,
+    end: target,
+  });
 }
 
 // The closed shape moving between the notch, the ring, the pill and the island; it always starts from the frame drawn now.

@@ -20,6 +20,7 @@ export type Silhouette = {
   ear: number;
   rx: number;
   ry: number;
+  hidden?: boolean; // resting on it draws nothing
 };
 
 // Sizes from the locked design: design-lock-shape.md, "Ears".
@@ -54,15 +55,19 @@ export function openBodyWidth(geometry: OutlineGeometry): number {
   return geometry.width - 2 * panelShape.ear;
 }
 
-// Square on a notched screen (the shape hides behind the hardware notch), a small pill without one.
+// macOS reports no notch radius; about 9 pt was estimated, so a shape closing onto this one never peeks past the real corners.
+const notchCorner = 8;
+
+// On a notched screen nothing is drawn at rest: this is only where a shape starts and ends, behind the hardware notch. Without a notch, a small pill.
 export function notchSilhouette(shape: WindowShape): Silhouette {
-  const radius = shape.notched ? 0 : shape.notchHeight / 2;
+  const radius = shape.notched ? notchCorner : shape.notchHeight / 2;
   return {
     width: shape.notchWidth,
     height: shape.notchHeight,
     ear: 0,
     rx: radius,
     ry: radius,
+    ...(shape.notched ? { hidden: true } : {}),
   };
 }
 
