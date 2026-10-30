@@ -82,7 +82,7 @@ const demoCards: TaskCard[] = [
   demoCard("demo-3", {
     state: "failed",
     words: "Compare the pricing of three search APIs",
-    line: "I ran out of time on that one before I had an answer.",
+    line: "That task reached a limit before it had an answer. Try a narrower question or try again.",
     sourcesRead: 3,
     answer: {
       cardText:

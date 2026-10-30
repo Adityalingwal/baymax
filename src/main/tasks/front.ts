@@ -10,10 +10,11 @@ import {
   addChat,
   dropped,
   holdQuestion,
+  nextAttemptId,
   say,
   talk,
 } from "./record";
-import { admit, cancelTask, endChat, endSpoken } from "./run";
+import { admit, cancelTask, endChat, endSpoken, retryTask } from "./run";
 import type { QuestionId, TalkerReply } from "./talk";
 
 // Starts one front call for the record; its id is unique, so a late result of an older call is told apart.
@@ -22,9 +23,8 @@ export function openAttempt(
   record: TaskRecord,
   parts: FrontParts,
 ): void {
-  record.attempts += 1;
+  const id = nextAttemptId(record);
   change.model.exchangeOrder += 1;
-  const id = `${record.card.taskId}#${record.attempts}`;
   const order = change.model.exchangeOrder;
   record.attempt = { id, order, parts };
   talk(change, { kind: "front", attemptId: id, ...parts });
@@ -42,6 +42,22 @@ function earlierThan(model: Model, taskId: TaskId): ReadonlySet<TaskId> {
 function canStop(model: Model, taskId: TaskId): boolean {
   const state = model.records.get(taskId)?.card.state;
   return state === "running" || state === "queued" || state === "clarifying";
+}
+
+// A task that can still say more keeps its exchange, so the later line has somewhere to go.
+function canSayMore(model: Model, taskId: TaskId): boolean {
+  const state = model.records.get(taskId)?.card.state;
+  if (state === "queued" || state === "running") return true;
+  return (
+    model.failureCall?.taskId === taskId ||
+    model.pendingFailures.some((pending) => pending.taskId === taskId)
+  );
+}
+
+// A call that started before the task's latest failure was about an older run, so its yes is stale.
+function canRetry(model: Model, taskId: TaskId, order: number): boolean {
+  const record = model.records.get(taskId);
+  return record?.card.canRetry === true && record.failedAt < order;
 }
 
 function addChatTurn(change: Change, words: string, line: string): void {
@@ -101,6 +117,13 @@ function applyDecision(
     endSpoken(change, record);
     return true;
   }
+  if (decision.route === "retry") {
+    addChatTurn(change, attempt.parts.words, line);
+    setExchangeTask(change.model.exchanges, attempt.order, decision.taskId);
+    retryTask(change, decision.taskId);
+    endSpoken(change, record);
+    return true;
+  }
   if (decision.route !== "work" || decision.answerTo !== null) {
     addChatTurn(change, attempt.parts.words, line);
   }
@@ -136,12 +159,16 @@ export function receiveFront(
   }
   record.attempt = null;
   // What was spoken is part of the conversation whether or not the decision holds.
-  addExchange(change.model.exchanges, {
-    order: attempt.order,
-    taskId,
-    words: attempt.parts.words,
-    line: reply.text ?? "",
-  });
+  addExchange(
+    change.model.exchanges,
+    {
+      order: attempt.order,
+      taskId,
+      words: attempt.parts.words,
+      line: reply.text ?? "",
+    },
+    (id) => canSayMore(change.model, id),
+  );
   if (reply.kind === "failed") {
     const spoke = (reply.text ?? "").trim() !== "";
     return failFront(change, record, attempt, { kind: reply.failure, spoke });
@@ -152,6 +179,7 @@ export function receiveFront(
     taskId,
     earlier: (id: TaskId) => earlierThan(change.model, id),
     canStop: (id: TaskId) => canStop(change.model, id),
+    canRetry: (id: TaskId) => canRetry(change.model, id, attempt.order),
   };
   const check = checkDecision(reply.decision, context);
   if (!check.ok) {

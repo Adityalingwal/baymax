@@ -22,7 +22,8 @@ async function spokenAll(w: Wired): Promise<string[]> {
 
 const found: Findings = { cardText: "- Page one", sources: [] };
 
-const limitLine = "I ran out of time on that one before I had an answer.";
+const limitLine =
+  "That task reached a limit before it had an answer. Try a narrower question or try again.";
 const errorLine = "I hit an error on that question. Try again.";
 
 type FailedRow = {
@@ -132,7 +133,7 @@ const stepRows = [
 
 describe("a failed task through the wiring", () => {
   it.each(failedRows)(
-    "$name shows and says its line",
+    "$name shows its line and tells the talker the same cause",
     async ({ cause, reason, answer, line }) => {
       const w = wire();
       await admitAs(w, "hermes");
@@ -157,8 +158,12 @@ describe("a failed task through the wiring", () => {
         step: null,
         sourcesRead: 2,
       });
-      expect((await spokenAll(w)).at(-1)).toBe(line);
-      expect(w.talkerCalls).toHaveLength(1);
+      expect(w.talkerCalls).toHaveLength(2);
+      const turn = String(w.talkerCalls[1].request.messages.at(-1)?.content);
+      expect(turn).toContain(`cause: ${line}\n`);
+      const shown = answer === null ? "nothing" : "the pages it read";
+      expect(turn).toContain(`on screen: ${shown}\n`);
+      expect(await spokenAll(w)).toEqual(["Checking hermes."]);
     },
   );
 });

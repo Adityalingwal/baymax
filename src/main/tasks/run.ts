@@ -1,7 +1,8 @@
 import type { Findings, TaskId } from "../../shared/cards";
 import type { EngineEvent, ParentResult } from "../../shared/engine";
 import type { Decision } from "./decision";
-import { appendResult } from "./history";
+import { forgetFailure } from "./failure";
+import { appendLine } from "./history";
 import { failedLine, stepText } from "./lines";
 import type { Admission, Change, Input, Model, TaskRecord } from "./record";
 import {
@@ -57,7 +58,7 @@ function endDone(
   record.card.answer = findings;
   record.card.line = null;
   const { taskId } = record.card;
-  appendResult(change.model.exchanges, taskId, spokenLine);
+  appendLine(change.model, record.card, spokenLine);
   say(change, taskId, spokenLine, "answer");
 }
 
@@ -71,6 +72,7 @@ export function endChat(change: Change, record: TaskRecord, text: string) {
   record.card.line = null;
 }
 
+// It has no line of its own: the talker tells it, in a turn that runs when nothing is in the way.
 function endFailed(
   change: Change,
   record: TaskRecord,
@@ -81,7 +83,12 @@ function endFailed(
   closeTask(change, record, { outcome: "failed", findings, spokenLine: null });
   record.card.answer = findings;
   record.card.line = line;
-  say(change, record.card.taskId, line, "failure");
+  record.card.canRetry = record.admission !== null;
+  record.failedAt = change.model.exchangeOrder;
+  change.model.pendingFailures.push({
+    taskId: record.card.taskId,
+    cause: line,
+  });
 }
 
 function clearForLeaving(change: Change, record: TaskRecord): void {
@@ -103,6 +110,7 @@ function endCancelled(
   });
   record.card.line = null;
   clearForLeaving(change, record);
+  forgetFailure(change, record.card.taskId);
   silence(change, record.card.taskId);
 }
 
@@ -173,15 +181,29 @@ function startTask(
   });
 }
 
+function startOrQueue(
+  change: Change,
+  record: TaskRecord,
+  admission: Admission,
+): void {
+  const { model } = change;
+  // Its line is already spoken, so work is never refused: a race past the limit queues one extra.
+  if (!slotBusy(model) && canStart(model, record)) {
+    startTask(change, record, admission);
+  } else {
+    record.card.state = "queued";
+    model.queue.push(record.card.taskId);
+  }
+}
+
 // The decision check already kept a follow-up's parent to tasks created before this one.
 export function admit(
   change: Change,
   record: TaskRecord,
   decision: Admitted,
 ): boolean {
-  const { model } = change;
   const { card } = record;
-  dropQuestion(model, record);
+  dropQuestion(change.model, record);
   record.shown = true;
   record.admission = { ask: decision.ask };
   record.topic = decision.topic;
@@ -189,13 +211,26 @@ export function admit(
   card.parentTaskId = decision.parentTaskId;
   card.canRetry = false;
   card.line = null;
-  // Its line is already spoken, so work is never refused: a race past the limit queues one extra.
-  if (!slotBusy(model) && canStart(model, record)) {
-    startTask(change, record, record.admission);
-  } else {
-    card.state = "queued";
-    model.queue.push(card.taskId);
+  startOrQueue(change, record, record.admission);
+  return true;
+}
+
+// The one way back in, for a yes and for the card's button: the same task runs again with its saved ask.
+export function retryTask(change: Change, taskId: TaskId): boolean {
+  const record = change.model.records.get(taskId);
+  const admission = record?.admission ?? null;
+  if (record === undefined || admission === null || !record.card.canRetry) {
+    return dropped(change, `retry ${taskId}`);
   }
+  const { card } = record;
+  forgetFailure(change, taskId);
+  change.model.answers.delete(taskId);
+  record.retried = true;
+  card.canRetry = false;
+  card.line = null;
+  card.answer = null;
+  card.sourcesRead = 0;
+  startOrQueue(change, record, admission);
   return true;
 }
 
@@ -271,6 +306,10 @@ export function cancelTask(change: Change, taskId: TaskId): boolean {
   switch (record.card.state) {
     case "queued":
       endCancelled(change, record, null);
+      return true;
+    // The engine holds nothing for a failed task, so no cancel is sent; what it found stays for a follow-up.
+    case "failed":
+      endCancelled(change, record, record.card.answer);
       return true;
     case "thinking":
     case "clarifying":

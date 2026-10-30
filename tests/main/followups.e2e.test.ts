@@ -302,7 +302,7 @@ describe("a follow-up with the real engine", () => {
       w,
       workOnRoute("t1", "how Hermes differs from Claude Code"),
       "I'll compare them.",
-      1,
+      2,
     );
     await until("card 2's run", () => lastRun(w, "t2") !== undefined);
     const shown = w.published

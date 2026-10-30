@@ -3,6 +3,7 @@ import type { EngineCommand, EngineEvent } from "../../shared/engine";
 import type { OpenSource } from "../../shared/ipc";
 import { ask } from "./ask";
 import { buildDisplay, waitingQuestion } from "./display";
+import { receiveFailureTurn, setVoiceIdle, startFailureTurn } from "./failure";
 import { receiveFront } from "./front";
 import type {
   Change,
@@ -26,6 +27,7 @@ import {
   receiveRunEvent,
   receiveUnaskedCancel,
   receiveWhileCancelling,
+  retryTask,
   startNext,
 } from "./run";
 
@@ -41,6 +43,7 @@ export type MainStateDeps = {
   publish: (state: DisplayState) => void;
   say: (line: SaidLine) => void;
   silence: (taskId: TaskId) => void;
+  cutFailure: (taskId: TaskId) => void;
   talk: (request: TalkRequest) => void;
   cancelAttempt: (attemptId: string) => void;
   openUrl: (url: string) => Promise<void>;
@@ -62,6 +65,7 @@ export type MainState = {
   openSource: (payload: OpenSource) => void;
   setMuted: (muted: boolean) => void;
   setVoiceAvailable: (available: boolean) => void;
+  setVoiceIdle: (idle: boolean) => void;
   showNotice: (notice: Notice) => void;
   talkerReplied: (
     taskId: TaskId,
@@ -80,15 +84,15 @@ export function createMainState(deps: MainStateDeps): MainState {
       update((c) => ask(c, deps.nextTaskId, { words, utteranceId, waiting })),
     waitingQuestion: () => waitingQuestion(model),
     cancelTask: (taskId) => update((c) => cancelTask(c, taskId)),
-    // A failed front call has no card to retry, and no failed task can be retried yet.
-    retryTask: (taskId) => update((c) => dropped(c, `retry ${taskId}`)),
+    retryTask: (taskId) => update((c) => retryTask(c, taskId)),
     openSource: (payload) => update((c) => openSource(c, deps, payload)),
     setMuted: (muted) => update((c) => setMuted(c, muted)),
     setVoiceAvailable: (available) =>
       update((c) => setVoiceAvailable(c, available)),
+    setVoiceIdle: (idle) => update((c) => setVoiceIdle(c, idle)),
     showNotice: (notice) => update((c) => showNotice(c, notice)),
     talkerReplied: (taskId, attemptId, reply) =>
-      update((c) => receiveFront(c, taskId, attemptId, reply)),
+      update((c) => receiveTalk(c, taskId, attemptId, reply)),
     receive: (event) => update((c) => receiveEvent(c, event)),
     displayState: () => buildDisplay(model),
   };
@@ -116,6 +120,8 @@ function flushOutput(
     guard("say", () => deps.say(output.line));
   } else if (output.kind === "silence") {
     guard("silence", () => deps.silence(output.taskId));
+  } else if (output.kind === "cutFailure") {
+    guard("cutFailure", () => deps.cutFailure(output.taskId));
   } else if (output.kind === "talk") {
     guard("talk", () => deps.talk(output.request));
   } else if (output.kind === "cancelAttempt") {
@@ -144,6 +150,7 @@ function createUpdatePath(
     if (!input(change)) return;
     startNext(change);
     reAskOlderQuestion(change);
+    startFailureTurn(change);
     guarded(deps, "publish", () => deps.publish(buildDisplay(model)));
     change.outputs.forEach((output) => flushOutput(deps, update, output));
   };
@@ -158,6 +165,18 @@ function createUpdatePath(
     }
   };
   return update;
+}
+
+function receiveTalk(
+  change: Change,
+  taskId: TaskId,
+  attemptId: string,
+  reply: TalkerReply,
+): boolean {
+  const call = change.model.failureCall;
+  return call?.attemptId === attemptId
+    ? receiveFailureTurn(change, call, reply)
+    : receiveFront(change, taskId, attemptId, reply);
 }
 
 function receiveEvent(change: Change, event: EngineEvent): boolean {

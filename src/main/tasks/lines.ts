@@ -15,7 +15,8 @@ export const fixedLines = {
   restarting: "Baymax hit a problem and is restarting.",
 } as const;
 
-const failureLines: Record<FailureKind, string> = {
+// What went wrong and what to do, in plain words: what a card shows and what the talker is told.
+const causeLines: Record<FailureKind | "limitHit", string> = {
   modelsUnreachable:
     "I can't reach my models right now. Try again in a few minutes.",
   searchDown: "Search isn't working right now. Try again in a few minutes.",
@@ -28,15 +29,15 @@ const failureLines: Record<FailureKind, string> = {
   noCredit:
     "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
   error: "I hit an error on that question. Try again.",
+  // The event does not tell time, model-call and cost limits apart, so neither does the line.
+  limitHit:
+    "That task reached a limit before it had an answer. Try a narrower question or try again.",
 };
 
-// What a failed task says and shows: the worker's own sentence when it found nothing, else a fixed line naming the cause and the fix.
+// A failed task's cause: the worker's own sentence when it found nothing, else a fixed line naming the cause and the fix.
 export function failedLine(cause: FailureCause, reason: string | null): string {
-  if (cause === "limitHit") {
-    return "I ran out of time on that one before I had an answer.";
-  }
-  if (cause === "nothingFound") return reason ?? failureLines.error;
-  return failureLines[cause];
+  if (cause === "nothingFound") return reason ?? causeLines.error;
+  return causeLines[cause];
 }
 
 // The line of a failed front call: a known cause names the fix; otherwise it depends on whether Baymax had already spoken. It never blames hearing.
@@ -46,7 +47,7 @@ export function frontFailureLine(kind: FailureKind, spoke: boolean): string {
     kind === "noCredit" ||
     kind === "modelsUnreachable"
   ) {
-    return failureLines[kind];
+    return causeLines[kind];
   }
   return spoke
     ? "Something went wrong on my side, so nothing started. Ask again."

@@ -283,18 +283,6 @@ const endedRows: { name: string; taskId: TaskId; end: (w: Wired) => void }[] = [
   },
   { name: "a done task", taskId: "t1", end: (w) => w.port.emit(done("t1")) },
   {
-    name: "a failed task",
-    taskId: "t1",
-    end: (w) =>
-      w.port.emit({
-        type: "failed",
-        taskId: "t1",
-        cause: "limitHit",
-        reason: null,
-        findings: findings("Part."),
-      }),
-  },
-  {
     name: "a cancelled task",
     taskId: "t2",
     end: (w) => w.send(ipcChannels.cancelTask, { taskId: "t2" }),
