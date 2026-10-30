@@ -111,9 +111,14 @@ describe("statusLine", () => {
       line: "1 needs you · 1 running",
     },
     {
-      name: "results only, chat not counted",
+      name: "results only, chat and failed cards not counted",
       tasks: [result, { ...result, id: "r2" }, card("i", "failed"), chat],
-      line: "3 done",
+      line: "2 done",
+    },
+    {
+      name: "only a failed card",
+      tasks: [card("i", "failed")],
+      line: "Nothing running",
     },
   ])("$name: $line", ({ tasks, line }) => {
     expect(statusLine(tasks)).toBe(line);

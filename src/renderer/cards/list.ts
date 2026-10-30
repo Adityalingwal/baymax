@@ -32,8 +32,7 @@ export function statusLine(tasks: readonly ListCard[]): string {
   const needsYou = tasks.filter((card) => card.state === "clarifying").length;
   const running = tasks.filter((card) => isRunning(card.state)).length;
   const done = tasks.filter(
-    (card) =>
-      (card.state === "done" || card.state === "failed") && !isChatReply(card),
+    (card) => card.state === "done" && !isChatReply(card),
   ).length;
   const parts = [
     needsYou > 0 ? `${needsYou} needs you` : null,
