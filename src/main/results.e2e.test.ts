@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Findings } from "../shared/cards";
 import type { FailureKind, Incomplete } from "../shared/engine";
-import { admitAs, wire } from "./wiring.harness";
+import { admitAs, admitTask, runToDone, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
+import { findings } from "./tasks/harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -209,4 +210,33 @@ describe("a running task's step", () => {
     w.port.emit({ type: "progress", taskId: "t1", step, sourcesRead: 1 });
     expect(w.card("t1")).toMatchObject({ step: text, sourcesRead: 1 });
   });
+});
+
+const tenMinutes = 10 * 60 * 1000;
+
+const endedRows = [
+  { name: "done", end: runToDone },
+  {
+    name: "incomplete",
+    end: async (w: Wired) => {
+      await admitTask(w);
+      w.port.emit({
+        type: "incomplete",
+        taskId: "t1",
+        incomplete: { kind: "limitHit", findings: findings("Part.") },
+      });
+    },
+  },
+];
+
+describe("an ended card stays until the user acts", () => {
+  it.each(endedRows)(
+    "keeps a $name card open after 10 minutes",
+    async ({ name, end }) => {
+      const w = wire();
+      await end(w);
+      w.advance(tenMinutes);
+      expect(w.card("t1")).toMatchObject({ state: name });
+    },
+  );
 });
