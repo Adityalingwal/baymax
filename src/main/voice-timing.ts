@@ -1,3 +1,4 @@
+import { speechStartBufferMs } from "../shared/ipc";
 import type { LineId, SpeechChunk } from "../shared/ipc";
 import type { LineFeed, Spoken } from "./speech";
 
@@ -60,6 +61,7 @@ const dryLimitMs = 100;
 type Watched = { lineId: LineId; startedAt: number; audioMs: number };
 
 // Logs when a streamed line's audio ran out before its next chunk arrived, which the listener hears as a gap.
+// The renderer's dropped lead silence is not counted, so a line that lost some can run dry without a log.
 export function createGapWatch(
   now: () => number,
   log: (message: string) => void,
@@ -70,7 +72,9 @@ export function createGapWatch(
     if (watched === null || watched.lineId !== chunk.lineId) {
       watched = { lineId: chunk.lineId, startedAt: at, audioMs: 0 };
     }
-    const dryMs = at - (watched.startedAt + watched.audioMs);
+    const playsUntil =
+      watched.startedAt + speechStartBufferMs + watched.audioMs;
+    const dryMs = at - playsUntil;
     if (dryMs >= dryLimitMs) {
       log(
         `speech gap: audio ran dry ${Math.round(dryMs)} ms before chunk ${chunk.seq}`,
