@@ -56,10 +56,29 @@ function card(taskId: string, cardText: string): TaskCard {
   };
 }
 
+const atFivePast = new Date(2026, 9, 30, 14, 5).getTime();
 const display = {
   tasks: [card("t1", "A report."), card("t2", "")],
-  chat: [{ id: "c1", from: "user" as const, text: "hi", at: 0 }],
+  chat: [
+    { id: "c1", from: "user" as const, text: "hi", at: atFivePast },
+    { id: "c2", from: "baymax" as const, text: "hello", at: atFivePast },
+  ],
 };
+
+describe("the Chat tab", () => {
+  it("lists only the conversation, oldest first, each side with its time", () => {
+    const content = panelContent(run([toChat]), display);
+    expect(content).toEqual({
+      kind: "chat",
+      rows: [
+        expect.objectContaining({ id: "c1", side: "left", text: "hi" }),
+        expect.objectContaining({ id: "c2", side: "right", text: "hello" }),
+      ],
+    });
+    if (content.kind !== "chat") return;
+    expect(content.rows[0].time).toMatch(/\b(2|14):05\b/);
+  });
+});
 
 describe("what the panel shows", () => {
   it.each<{ name: string; events: PanelViewEvent[]; kind: string }>([

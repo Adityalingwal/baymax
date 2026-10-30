@@ -5,6 +5,7 @@ import type { VoicePhase } from "../shared/ipc";
 import type { CardActions } from "./actions";
 import { ReportPage } from "./cards/ReportPage";
 import { TasksList } from "./cards/TasksList";
+import { ChatList } from "./ChatList";
 import { startMicrophone } from "./microphone";
 import { NotchShell } from "./notch/NotchShell";
 import { initialView, panelContent, viewReducer } from "./panel-contents";
@@ -48,19 +49,6 @@ function useMainState() {
   return { accessibility, holdKeyLabel, display, phase };
 }
 
-function ChatList({ chat }: { chat: DisplayState["chat"] }) {
-  if (chat.length === 0) return null;
-  return (
-    <section className="flex min-h-0 shrink flex-col gap-1 overflow-y-auto">
-      {chat.map((entry) => (
-        <p key={entry.id} className="type-body">
-          {entry.text}
-        </p>
-      ))}
-    </section>
-  );
-}
-
 type PanelBodyProps = {
   content: PanelContent;
   actions: CardActions;
@@ -71,7 +59,7 @@ function PanelBody({ content, actions, changeView }: PanelBodyProps) {
   const keptScroll = useRef(0);
   switch (content.kind) {
     case "chat":
-      return <ChatList chat={content.entries} />;
+      return <ChatList rows={content.rows} />;
     case "tasks":
       return (
         <TasksList

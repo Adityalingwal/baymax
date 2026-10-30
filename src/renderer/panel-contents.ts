@@ -36,8 +36,27 @@ export function viewReducer(view: PanelView, event: PanelViewEvent): PanelView {
   }
 }
 
+export type ChatRow = {
+  id: string;
+  side: "left" | "right"; // your words on the left, Baymax's on the right
+  text: string;
+  time: string;
+};
+
+function chatRows(chat: readonly ChatEntry[]): ChatRow[] {
+  return chat.map(({ id, from, text, at }) => ({
+    id,
+    side: from === "user" ? "left" : "right",
+    text,
+    time: new Date(at).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    }),
+  }));
+}
+
 export type PanelContent =
-  | { kind: "chat"; entries: ChatEntry[] }
+  | { kind: "chat"; rows: ChatRow[] }
   | { kind: "tasks"; cards: TaskCard[] }
   | { kind: "report"; card: TaskCard; report: string };
 
@@ -46,7 +65,7 @@ export function panelContent(
   view: PanelView,
   { chat, tasks }: Pick<DisplayState, "chat" | "tasks">,
 ): PanelContent {
-  if (view.tab === "chat") return { kind: "chat", entries: chat };
+  if (view.tab === "chat") return { kind: "chat", rows: chatRows(chat) };
   const card = tasks.find(({ taskId }) => taskId === view.reportOf);
   const report = card === undefined ? null : shownReport(card);
   return card === undefined || report === null
