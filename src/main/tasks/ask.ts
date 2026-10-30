@@ -8,7 +8,7 @@ import type { AnswerQuestion } from "../../shared/ipc";
 import { recentExchanges, taskSummaries } from "./display";
 import { openAttempt } from "./front";
 import { conversationHistory } from "./history";
-import { clearOneOffNotice } from "./notices";
+import { clearOneOffNotice } from "./lines";
 import type { Change, FrontParts, TaskRecord } from "./record";
 import { addRecord, dropped } from "./record";
 import type { WaitingQuestion } from "./talk";

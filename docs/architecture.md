@@ -327,7 +327,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/restart.ts` | The restart path: the restarting line, work stopped, one relaunch after a short delay, and the loop guard |
 | `src/main/wiring.ts` | Connects main's state to voice, the engine port and the renderer actions; a state throw goes to the restart path |
 | `src/main/renderer-actions.ts` | The renderer -> main actions: sender and payload checks, then one state or voice call each |
-| `src/main/tasks/` | Main's shown state: the task list and queue, card lifetime and the fixed lines, through one update path. It asks the front call through talk requests (`talk.ts`), checks its decision (`decision.ts`), keeps the attempts and retries (`front.ts`), applies each route (`route.ts`), ends cards (`end.ts`), shows and says the waiting questions (`questions.ts`), binds clarifying answers (`ask.ts`) and keeps the conversation history (`history.ts`) |
+| `src/main/tasks/` | Main's shown state: the task list and queue, card lifetime and the fixed lines, through one update path. It asks the front call through talk requests (`talk.ts`), checks its decision (`decision.ts`), keeps the attempts and retries and applies each route (`front.ts`), ends cards (`run.ts`), shows and says the waiting questions (`record.ts`), binds clarifying answers (`ask.ts`) and keeps the conversation history (`history.ts`) |
 | `src/engine/index.ts` | Engine entry: the start function and the port; wires in the plugs |
 | `src/engine/core/` | What every plug shares: the task runner, the worker loop, the dispatch function and limits |
 | `src/engine/plugs/research/` | The research plug: the web tool (safe page reads, pages kept by source id), its prompts and its done condition |

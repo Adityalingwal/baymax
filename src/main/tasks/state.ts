@@ -8,8 +8,8 @@ import type {
 import { ask, bindAnswer } from "./ask";
 import { buildDisplay, waitingQuestion } from "./display";
 import { receiveFront, retryTask } from "./front";
-import { setVoiceAvailable, showNotice } from "./notices";
-import type { Notice } from "./notices";
+import { setVoiceAvailable, showNotice } from "./lines";
+import type { Notice } from "./lines";
 import type {
   Change,
   Input,
@@ -18,8 +18,13 @@ import type {
   SaidKind as RecordSaidKind,
   SaidLine as RecordSaidLine,
 } from "./record";
-import { createModel, dropped, isEnded, silence } from "./record";
-import { showNextQuestion } from "./questions";
+import {
+  createModel,
+  dropped,
+  isEnded,
+  showNextQuestion,
+  silence,
+} from "./record";
 import type { TalkRequest, TalkerReply, WaitingQuestion } from "./talk";
 import {
   cancelTask,
