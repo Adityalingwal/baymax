@@ -39,7 +39,6 @@ async function runOf(steps: FakeStep[], searches: FakeSearchStep[] = []) {
   return { run, last };
 }
 
-// The tool results the worker got back in its last request.
 function lastResults(request: ModelRequest): unknown {
   return request.messages[request.messages.length - 1].content;
 }

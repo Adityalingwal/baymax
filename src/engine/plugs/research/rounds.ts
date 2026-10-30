@@ -28,7 +28,7 @@ type Fault =
   | (FaultBase & { stage: "answer"; findings: null })
   | (FaultBase & { stage: "code"; findings: Findings });
 
-// An answer turn as the round sees it, read once: cut off, not valid, or a parsed answer.
+// Read once.
 type AnswerTurn =
   | { kind: "cutOff" }
   | { kind: "malformed" }
@@ -39,7 +39,6 @@ type RoundEnd =
   | { kind: "fault"; fault: Fault }
   | { kind: "aborted" };
 
-// What the worker loop gave back: an answer turn to check, an ending, or a cancel.
 export type WorkTurn =
   | {
       kind: "turn";

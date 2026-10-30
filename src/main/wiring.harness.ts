@@ -288,7 +288,6 @@ export async function runToDone(w: Wired): Promise<void> {
   });
 }
 
-// Asks by the text box and admits the new card as a new task.
 export async function admitAs(w: Wired, topic: string): Promise<void> {
   w.send(ipcChannels.submitQuestion, { text: `tell me ${topic}` });
   await streamFront(w, newTask(topic), `Checking ${topic}.`);

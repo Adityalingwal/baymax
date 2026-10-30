@@ -298,7 +298,6 @@ function forEachLive(state: State, call: (utterance: Utterance) => void) {
   for (const utterance of [...state.byId.values()]) call(utterance);
 }
 
-// Binds Flux's turns to held utterances, with the deadline and the batch fallback.
 export function createTurns(deps: TurnsDeps): Turns {
   const state: State = {
     deps,

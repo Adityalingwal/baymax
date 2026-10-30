@@ -57,7 +57,6 @@ function findingsLines(findings: Findings | null): string[] {
   ];
 }
 
-// What an earlier task left, for the brief writer and the worker alike.
 export function parentResultBlock(parent: ParentResult): string {
   const lines = [
     `outcome: ${parent.outcome}`,

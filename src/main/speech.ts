@@ -38,7 +38,6 @@ type SpeechDeps = {
   timers: Timers;
 };
 
-// A line's text: whole at once, or fed piece by piece by the talker until it ends.
 type LineText = {
   text: string;
   ended: boolean;

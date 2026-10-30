@@ -214,7 +214,6 @@ describe("runTask a call past the active time", () => {
   });
 });
 
-// The tool results the worker got back in a request.
 const lastResults = (request: ModelRequest): unknown =>
   request.messages[request.messages.length - 1].content;
 

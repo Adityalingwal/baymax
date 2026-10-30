@@ -30,7 +30,6 @@ export type WaitingQuestion = {
   question: ClarifyingQuestion;
 };
 
-// One turn of the conversation so far, as plain text.
 export type HistoryTurn = { role: "user" | "assistant"; text: string };
 
 // What main asks the front call for: a spoken line about new words, then a decision about them.

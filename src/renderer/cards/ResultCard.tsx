@@ -30,7 +30,6 @@ export function ResultCard({ card, actions }: ResultCardProps) {
   );
 }
 
-// A chat reply: only the reply text, in a small glass card.
 export function ChatCard({ card }: { card: TaskCard }) {
   return (
     <article

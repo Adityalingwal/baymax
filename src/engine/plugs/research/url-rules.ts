@@ -19,7 +19,7 @@ export type CheckedUrl = {
 type UrlCheck =
   { ok: true; checked: CheckedUrl } | { ok: false; rule: RefusalRule };
 
-// The hostname of a URL, lowercased by the URL parser; null when it does not parse.
+// Lowercased by the URL parser.
 export function hostOf(url: string): string | null {
   try {
     return new URL(url).hostname;

@@ -21,7 +21,6 @@ export type Role = keyof typeof roles;
 
 type RoleModel = (typeof roles)[Role]["model"];
 
-// What this task has used so far.
 export type TaskBudget = {
   modelCalls: number;
   activeMs: number;

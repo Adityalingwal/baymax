@@ -222,7 +222,6 @@ function lineGone(tracker: Tracker, spoken: Spoken, lineId: LineId | null) {
 function createPhaseTracker(send: (phase: VoicePhase) => void): PhaseTracker {
   const tracker: Tracker = { held: false, pending: null, speaking: null };
   let sent = JSON.stringify(phaseOf(tracker));
-  // Only a change is sent.
   const after =
     <A extends unknown[]>(change: (t: Tracker, ...a: A) => void) =>
     (...args: A): void => {

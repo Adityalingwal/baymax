@@ -30,7 +30,7 @@ type Attempt = {
   stopFirstWords: () => void; // the first words came, so only the whole-call deadline is left
   stopDeadline: () => void; // both deadlines
   ended: boolean; // the line was ended (or cut), so nothing more is pushed to it
-  spoken: string; // the text pushed to speech so far
+  spoken: string;
 };
 
 const talkerModel = "claude-fable-5-1";

@@ -148,7 +148,6 @@ type ReadOptions = {
   signal?: AbortSignal;
 };
 
-// Reads one URL through the fake network, the way each page-reader test does.
 export function readThrough(
   network: FakeNetwork,
   url: string,

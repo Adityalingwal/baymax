@@ -15,7 +15,6 @@ export type RendererIpc = {
   removeListener: (channel: string, listener: RendererListener) => unknown;
 };
 
-// What the actions call: main's state, and voice for the mic audio, playback and mute.
 export type ActionTargets = {
   state: MainState;
   voice: Pick<Voice, "micAudio" | "playbackFinished" | "setMuted">;

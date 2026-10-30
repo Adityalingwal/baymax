@@ -128,7 +128,7 @@ function scriptedModel(steps: FakeStep[], briefSteps: FakeStep[]) {
   return {
     model,
     clock,
-    requests, // every model call, in order
+    requests,
     briefRequests: ofKind("brief"),
     workerRequests: ofKind("worker"),
     // the worker's calls in order: every call but the brief writer's

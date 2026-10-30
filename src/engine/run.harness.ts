@@ -26,7 +26,6 @@ export const ask = {
   userWords: "how does Hermes agent work inside?",
 };
 
-// The brief the fake brief writer answers for this ask.
 export const brief = { ...ask, ...fakeBriefParts };
 
 export function runTask(
