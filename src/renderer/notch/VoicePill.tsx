@@ -105,7 +105,7 @@ function Word({ pill }: { pill: PillState }) {
 }
 
 function MuteButton({ pill, onMute }: Pick<VoicePillProps, "pill" | "onMute">) {
-  const crossed = pill.clearLabel === "Muted";
+  const crossed = pill.mainMuted;
   return (
     <button
       type="button"
