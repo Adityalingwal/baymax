@@ -280,8 +280,8 @@ function turnEnded(state: State, utterance: Utterance, last: string): void {
 function heard(state: State, event: FluxEvent): void {
   const head = state.awaiting[0];
   if (event.kind === "other") return state.deps.log(`flux: ${event.summary}`);
-  if (head === undefined) return state.deps.log(`flux ${event.kind}: no turn`);
   if (event.kind === "update") return;
+  if (head === undefined) return state.deps.log(`flux ${event.kind}: no turn`);
   // A timeout ends Flux's turn inside one long hold; its words wait for the rest of that hold.
   if (event.kind === "endOfTurn" && event.trigger === "timeout") {
     head.kept.push(event.transcript);
