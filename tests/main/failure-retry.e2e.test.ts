@@ -49,6 +49,26 @@ const turnOf = (w: Wired, index: number) =>
 
 const lastTurn = (w: Wired) => turnOf(w, w.talkerCalls.length - 1);
 
+// The turns before the current one, as the last talker call read them.
+function historyOf(w: Wired): string[] {
+  const messages = w.talkerCalls.at(-1)?.request.messages ?? [];
+  return messages
+    .slice(0, -1)
+    .map(({ content }) =>
+      typeof content === "string"
+        ? content
+        : content.map((block) => ("text" in block ? block.text : "")).join(""),
+    );
+}
+
+// Enough chat turns to push a task's exchange past the ones kept.
+async function chatAway(w: Wired): Promise<void> {
+  for (let i = 0; i < 31; i += 1) {
+    ask(w, `hi ${i}`);
+    await streamFront(w, replyRoute(), `Hello ${i}.`);
+  }
+}
+
 // A running task that failed and whose failure turn was told, with everything played out.
 async function failedTask(w: Wired): Promise<void> {
   await admitAs(w, "hermes");
@@ -171,6 +191,41 @@ describe("a failure line in the history", () => {
     const history = JSON.stringify(w.talkerCalls.at(-1)?.request.messages);
     expect(history).toContain(`Checking hermes.\\n${offerLine}`);
     expect(history).toContain("Trying again.\\nHermes runs a loop.");
+  });
+});
+
+describe("a line about a task whose exchange is old", () => {
+  it("a failure line after a long chat is the newest turn, with the task's own exchange", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await w.playAll();
+    await chatAway(w);
+    failTask(w);
+    await streamFront(w, replyRoute(), offerLine);
+    ask(w, "yes");
+    expect(historyOf(w).slice(-2)).toEqual([
+      "tell me hermes",
+      `Checking hermes.\n${offerLine}`,
+    ]);
+  });
+
+  it("a result after the card's Retry returns even when the exchange aged out", async () => {
+    const w = wire();
+    await failedTask(w);
+    await chatAway(w);
+    expect(historyOf(w)).not.toContain("tell me hermes");
+    w.send(ipcChannels.retryTask, { taskId: "t1" });
+    w.port.emit({
+      type: "result",
+      taskId: "t1",
+      spokenLine: "Hermes runs a loop.",
+      findings: findings("Hermes runs a loop."),
+    });
+    ask(w, "thanks");
+    expect(historyOf(w).slice(-2)).toEqual([
+      "tell me hermes",
+      "Hermes runs a loop.",
+    ]);
   });
 });
 

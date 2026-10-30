@@ -58,7 +58,7 @@ function endDone(
   record.card.answer = findings;
   record.card.line = null;
   const { taskId } = record.card;
-  appendLine(change.model.exchanges, taskId, spokenLine);
+  appendLine(change.model, record.card, spokenLine);
   say(change, taskId, spokenLine, "answer");
 }
 

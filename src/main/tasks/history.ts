@@ -1,14 +1,17 @@
-import type { TaskId } from "../../shared/cards";
+import type { TaskCard, TaskId } from "../../shared/cards";
 import type { HistoryTurn } from "./talk";
 
 // One front call that said something: the user's words and the line Baymax said, kept apart from the cards.
 export type Exchange = {
-  order: number; // when its front call started, so a slower call cannot reorder the conversation
+  order: number; // when its front call started, so a slower call cannot reorder the conversation; a later line moves it up
   taskId: TaskId;
   words: string;
   line: string;
   later: string[]; // what Baymax said about the task afterwards, in order: its failure line, its result
 };
+
+// Where the conversation is kept; the order counter is shared with the front calls.
+type ExchangeLog = { exchanges: Exchange[]; exchangeOrder: number };
 
 const WINDOW = 20;
 const KEEP = 30;
@@ -42,19 +45,26 @@ export function setExchangeTask(
   if (exchange !== undefined) exchange.taskId = taskId;
 }
 
-// A line said about a task with no words of its own joins the task's latest exchange, so no empty user turn enters history.
+// A line with no words of its own joins the task's latest exchange, so no empty user turn enters history.
+// It was just said, so the exchange moves to the newest place; one that aged out comes back with the task's words.
 export function appendLine(
-  exchanges: Exchange[],
-  taskId: TaskId,
+  log: ExchangeLog,
+  { taskId, words }: Pick<TaskCard, "taskId" | "words">,
   line: string,
 ): void {
   if (line.trim() === "") return;
-  for (let index = exchanges.length - 1; index >= 0; index -= 1) {
-    const exchange = exchanges[index];
-    if (exchange.taskId !== taskId) continue;
+  log.exchangeOrder += 1;
+  const order = log.exchangeOrder;
+  const exchange = log.exchanges
+    .filter((other) => other.taskId === taskId)
+    .at(-1);
+  if (exchange === undefined) {
+    log.exchanges.push({ order, taskId, words, line, later: [] });
+  } else {
     exchange.later.push(line);
-    return;
+    exchange.order = order;
   }
+  log.exchanges.sort((a, b) => a.order - b.order);
 }
 
 // The last exchanges as alternating user and assistant turns, oldest first.

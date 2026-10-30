@@ -75,16 +75,17 @@ export function receiveFailureTurn(
 ): boolean {
   const { model } = change;
   model.failureCall = null;
-  appendLine(model.exchanges, taskId, reply.text ?? "");
+  const record = model.records.get(taskId);
+  if (record === undefined) return true;
+  appendLine(model, record.card, reply.text ?? "");
   if (reply.kind === "failed") {
-    appendLine(model.exchanges, taskId, cause);
+    appendLine(model, record.card, cause);
     addChat(change, "baymax", cause);
     say(change, taskId, cause, "failure");
     return true;
   }
   addChat(change, "baymax", reply.text);
-  const record = model.records.get(taskId);
-  if (record !== undefined && !record.retried) openOffer(model, record);
+  if (!record.retried) openOffer(model, record);
   return true;
 }
 
