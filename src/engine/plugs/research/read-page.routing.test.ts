@@ -3,12 +3,12 @@ import type { ConnectTarget, LookupAll } from "./connection";
 import {
   dripRoute,
   readablePage,
+  readThrough,
   sendRoute,
   startFakeNetwork,
   testLimits,
 } from "./fake-network";
 import type { FakeNetwork, FakeRoute } from "./fake-network";
-import { readPage } from "./read-page";
 import type { PageOutcome } from "./read-page";
 
 const limits = { ...testLimits, maxRedirects: 3 };
@@ -219,11 +219,7 @@ afterEach(async () => {
 });
 
 function read(url: string, lookup: LookupAll = network.lookup) {
-  return readPage(
-    url,
-    { lookup, connect: network.connect, limits },
-    new AbortController().signal,
-  );
+  return readThrough(network, url, { limits, lookup });
 }
 
 describe("readPage connections", () => {

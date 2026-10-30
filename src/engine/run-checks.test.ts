@@ -126,6 +126,30 @@ const codeRows: CodeRow[] = [
 const everyRound = (answer: ModelOutcome) =>
   readTwo(answer, answer, answer, answer, answer);
 
+describe("runTask card sources", () => {
+  it("takes sources only from the claims' ids, in read order, ignoring markers", async () => {
+    const answer = workerAnswer({
+      cardText: "A [s3] and B.",
+      claims: [
+        { claim: "A", sourceIds: ["s2"] },
+        { claim: "B", sourceIds: ["s1", "s2"] },
+      ],
+    });
+    const event = await finalEvent([
+      toolUseReply([{ search: "hermes" }]),
+      toolUseReply([{ read: pageUrl("one") }]),
+      toolUseReply([{ read: pageUrl("two") }]),
+      toolUseReply([{ read: pageUrl("three") }]),
+      answer,
+    ]);
+    if (event.type !== "result") throw new Error(`ended ${event.type}`);
+    expect(event.findings.sources.map((source) => source.id)).toEqual([
+      "s1",
+      "s2",
+    ]);
+  });
+});
+
 describe("runTask code check", () => {
   it.each(codeRows)("fails rule $name in every round", async (row) => {
     const event = await finalEvent(everyRound(workerAnswer(row.answer)));

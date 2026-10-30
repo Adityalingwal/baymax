@@ -9,17 +9,15 @@ import {
   htmlPage,
   readablePage,
   sendRoute,
+  readThrough,
   startFakeNetwork,
-  testLimits,
 } from "./fake-network";
 import type { FakeNetwork, FakeRoute } from "./fake-network";
-import { readPage } from "./read-page";
 import type { PageOutcome, ReadLimits } from "./read-page";
+import { createWebTool } from "./web-tool";
 
 const gzipped = promisify(gzip);
 const brotlied = promisify(brotliCompress);
-
-const limits = testLimits;
 
 const html = { "Content-Type": "text/html; charset=utf-8" };
 const words = "Plain words for a reader to keep. ";
@@ -155,11 +153,7 @@ function read(
   overrides: Partial<ReadLimits> = {},
   connect = network.connect,
 ) {
-  return readPage(
-    url,
-    { lookup: network.lookup, connect, limits: { ...limits, ...overrides } },
-    new AbortController().signal,
-  );
+  return readThrough(network, url, { limits: overrides, connect });
 }
 
 describe("readPage text", () => {
@@ -300,5 +294,126 @@ describe("readPage unreachable", () => {
       netConnect(port, "127.0.0.1"),
     );
     expect(outcome).toEqual({ ok: false, cause: "unreachable" });
+  });
+});
+
+type Compress = (text: string) => Promise<Buffer>;
+const encodings: [string, Compress][] = [
+  ["gzip", (text) => gzipped(text, { level: 0 })],
+  ["br", (text) => brotlied(text)],
+];
+
+// Sends the body in 4 KB pieces, so the reader meets the encoded budget mid-stream.
+function streamedRoute(body: Buffer, encoding: string): FakeRoute {
+  return (_req, res) => {
+    res.writeHead(200, {
+      "Content-Type": "text/plain",
+      "Content-Encoding": encoding,
+    });
+    let sent = 0;
+    const timer = setInterval(() => {
+      if (res.destroyed) return;
+      if (sent >= body.length) {
+        clearInterval(timer);
+        res.end();
+        return;
+      }
+      res.write(body.subarray(sent, (sent += 4_096)));
+    }, 5);
+    res.on("close", () => clearInterval(timer));
+  };
+}
+
+describe("readPage compressed streams", () => {
+  it.each(encodings)(
+    "keeps what was decoded when a streamed %s body meets the encoded budget",
+    async (encoding, compress) => {
+      // Random base64 barely compresses, so the encoded body really exceeds the budget.
+      const text = randomBytes(150_000).toString("base64");
+      const body = await compress(text);
+      expect(body.length).toBeGreaterThan(20_000);
+      network.route("/", streamedRoute(body, encoding));
+      const outcome = await read("http://example.test/", {
+        maxBytes: 20_000,
+        maxChars: 100_000,
+      });
+      if (!outcome.ok) throw new Error(`read failed: ${outcome.cause}`);
+      expect(outcome.page.text.length).toBeGreaterThan(1_000);
+      expect(text.startsWith(outcome.page.text.slice(0, 100))).toBe(true);
+    },
+  );
+
+  it.each(encodings)(
+    "refuses a %s body that ends early within the budget",
+    async (encoding, compress) => {
+      const whole = await compress(words.repeat(100));
+      const body = whole.subarray(0, whole.length - 8);
+      network.route(
+        "/",
+        sendRoute({
+          headers: {
+            "Content-Type": "text/plain",
+            "Content-Encoding": encoding,
+          },
+          body,
+        }),
+      );
+      expect(await read("http://example.test/")).toEqual({
+        ok: false,
+        cause: "noUsableText",
+      });
+    },
+  );
+});
+
+describe("readPage protocol upgrades", () => {
+  it("ends a 101 response as an HTTP error before the deadline", async () => {
+    network.route("/", (req) => {
+      req.socket.write(
+        "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: other\r\n\r\n",
+      );
+    });
+    const started = Date.now();
+    expect(await read("http://example.test/", { timeoutMs: 2_000 })).toEqual({
+      ok: false,
+      cause: "httpError",
+    });
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+// The Exa path's own cap: the port cannot set the read limits, so this stays below it.
+describe("createWebTool reads through Exa Contents", () => {
+  it("keeps Exa's text, collapsed and capped, under the checked URL it asked for", async () => {
+    const asked: string[] = [];
+    const web = createWebTool({
+      search: async () => ({ ok: true, hits: [] }),
+      contents: async (url) => {
+        asked.push(url);
+        return {
+          ok: true,
+          title: " Exa\n  title ",
+          text: `  Exa   text\n\n\n\nfrom its crawler. ${words.repeat(10)}`,
+        };
+      },
+      lookup: network.lookup,
+      connect: network.connect,
+      limits: { timeoutMs: 5_000, minChars: 20, maxChars: 60 },
+    });
+    const outcome = await web.read(
+      "http://example.test./one#part",
+      new AbortController().signal,
+    );
+    expect(outcome).toEqual({
+      ok: true,
+      page: {
+        id: "s1",
+        url: "http://example.test/one",
+        title: "Exa title",
+        text: "Exa text\n\nfrom its crawler. Plain words for a reader to keep",
+      },
+    });
+    expect(asked).toEqual(["http://example.test/one"]);
+    expect(network.targets).toHaveLength(0);
   });
 });

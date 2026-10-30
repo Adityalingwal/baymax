@@ -1,4 +1,4 @@
-import type { ClarifyingReply, DisplayState } from "../shared/cards";
+import type { DisplayState } from "../shared/cards";
 import { ipcChannels } from "../shared/ipc";
 import type { MicAudio, RendererToMain } from "../shared/ipc";
 import type { MainState } from "./tasks/state";
@@ -15,7 +15,6 @@ export type RendererIpc = {
   removeListener: (channel: string, listener: RendererListener) => unknown;
 };
 
-// What the actions call: main's state, and voice for the mic audio, playback and mute.
 export type ActionTargets = {
   state: MainState;
   voice: Pick<Voice, "micAudio" | "playbackFinished" | "setMuted">;
@@ -47,21 +46,6 @@ function fieldsOf(payload: unknown): Fields | null {
     : null;
 }
 
-function readReply(value: unknown): ClarifyingReply | null {
-  const reply = fieldsOf(value);
-  if (
-    reply?.kind === "choice" &&
-    typeof reply.index === "number" &&
-    Number.isInteger(reply.index)
-  ) {
-    return { kind: "choice", index: reply.index };
-  }
-  if (reply?.kind === "text" && typeof reply.text === "string") {
-    return { kind: "text", text: reply.text };
-  }
-  return null;
-}
-
 type Channel = keyof RendererToMain;
 type Reader<C extends Channel> = (fields: Fields) => RendererToMain[C] | null;
 
@@ -70,20 +54,6 @@ const readSubmit: Reader<typeof ipcChannels.submitQuestion> = (f) =>
 
 const readTaskAction: Reader<typeof ipcChannels.cancelTask> = (f) =>
   typeof f.taskId === "string" ? { taskId: f.taskId } : null;
-
-const readAnswer: Reader<typeof ipcChannels.answerQuestion> = (f) => {
-  const reply = readReply(f.reply);
-  return typeof f.taskId === "string" &&
-    typeof f.questionId === "string" &&
-    reply !== null
-    ? { taskId: f.taskId, questionId: f.questionId, reply }
-    : null;
-};
-
-const readFold: Reader<typeof ipcChannels.setCardFolded> = (f) =>
-  typeof f.taskId === "string" && typeof f.folded === "boolean"
-    ? { taskId: f.taskId, folded: f.folded }
-    : null;
 
 const readOpenSource: Reader<typeof ipcChannels.openSource> = (f) =>
   typeof f.taskId === "string" && typeof f.url === "string"
@@ -176,20 +146,11 @@ const actions: Action[] = [
   action(ipcChannels.submitQuestion, readSubmit, ({ state }, { text }) =>
     state.ask(text, null, state.waitingQuestion()),
   ),
-  action(ipcChannels.answerQuestion, readAnswer, ({ state }, payload) =>
-    state.answerQuestion(payload),
-  ),
   action(ipcChannels.cancelTask, readTaskAction, ({ state }, { taskId }) =>
     state.cancelTask(taskId),
   ),
   action(ipcChannels.retryTask, readTaskAction, ({ state }, { taskId }) =>
     state.retryTask(taskId),
-  ),
-  action(ipcChannels.closeCard, readTaskAction, ({ state }, { taskId }) =>
-    state.closeCard(taskId),
-  ),
-  action(ipcChannels.setCardFolded, readFold, ({ state }, payload) =>
-    state.setCardFolded(payload),
   ),
   action(ipcChannels.openSource, readOpenSource, ({ state }, payload) =>
     state.openSource(payload),

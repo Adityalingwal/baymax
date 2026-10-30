@@ -18,19 +18,12 @@ import { synthesizeSpeech, transcribeClip } from "./providers/deepgram";
 import { startFlux } from "./providers/flux";
 import { openWebSocket } from "./providers/warm-socket";
 import { ipcChannels } from "./shared/ipc";
-import type {
-  HoldState,
-  MainToRenderer,
-  StartupInfo,
-  VoicePhase,
-} from "./shared/ipc";
+import type { MainToRenderer, StartupInfo, VoicePhase } from "./shared/ipc";
 
 const startedAt = Date.now();
 let mainWindow: BrowserWindow | null = null;
 let wiring: Wiring | null = null;
 let workStopped = false;
-// Current state is kept here so a renderer that mounts (or reloads) mid-hold can ask for it.
-let holdState: HoldState = "idle";
 let voicePhase: VoicePhase = { phase: "idle" };
 // Set once the talker has a key: a key press opens its connection before the question needs it.
 let warmTalker = (): void => undefined;
@@ -91,11 +84,6 @@ function sendToWindow<C extends keyof MainToRenderer>(
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
-}
-
-function sendHoldState(state: HoldState): void {
-  holdState = state;
-  sendToWindow(ipcChannels.holdState, state);
 }
 
 function sendVoicePhase(phase: VoicePhase): void {
@@ -175,10 +163,6 @@ function registerHoldHandlers(accessibilityAtStartup: boolean | null): void {
     holdKeyLabel,
   }));
 
-  ipcMain.on(ipcChannels.getHoldState, (event) => {
-    event.sender.send(ipcChannels.holdState, holdState);
-  });
-
   ipcMain.on(ipcChannels.getVoicePhase, (event) => {
     event.sender.send(ipcChannels.voicePhase, voicePhase);
   });
@@ -223,7 +207,6 @@ async function startApp(): Promise<void> {
 
   if (!isMac || accessibilityAtStartup) {
     startHoldKey((state, outcome) => {
-      sendHoldState(state);
       if (state === "listening") warmTalker();
       started.voice.holdChanged(state, outcome);
     });

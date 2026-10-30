@@ -23,7 +23,6 @@ export function CardShell({
 
 type LabelProps = { pulse?: boolean; children: ReactNode };
 
-// The small label line above a card's title.
 export function LabelLine({ pulse = false, children }: LabelProps) {
   return (
     <p className="type-label flex min-w-0 items-center gap-2 pr-9">
@@ -40,7 +39,6 @@ export function LabelLine({ pulse = false, children }: LabelProps) {
 
 type ControlProps = { card: TaskCard; actions: CardActions };
 
-// A 28 pt round glass stop button in the card's top right corner.
 export function StopButton({ card, actions }: ControlProps) {
   if (!canCancel(card.state)) return null;
   return (

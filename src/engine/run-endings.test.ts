@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ModelOutcome, ModelRequest } from "../providers/anthropic";
-import type { SearchOutcome } from "../providers/search";
+import type { SearchOutcome } from "../providers/exa";
 import type { EngineEvent, Incomplete } from "../shared/engine";
 import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
@@ -29,7 +29,6 @@ const searchDown = ended({
   cause: "searchDown",
   findings: null,
 });
-const limitHit = ended({ kind: "limitHit", findings: null });
 const modelError: ModelOutcome = { ok: false, failure: "error", detail: "x" };
 
 async function runOf(steps: FakeStep[], searches: FakeSearchStep[] = []) {
@@ -40,7 +39,6 @@ async function runOf(steps: FakeStep[], searches: FakeSearchStep[] = []) {
   return { run, last };
 }
 
-// The tool results the worker got back in its last request.
 function lastResults(request: ModelRequest): unknown {
   return request.messages[request.messages.length - 1].content;
 }
@@ -88,21 +86,6 @@ describe("runTask search limits", () => {
     expect(last).toEqual([searchDown]);
     expect(run.queries).toHaveLength(2);
   });
-
-  it("ends limitHit at the 21st search without sending it", async () => {
-    const steps = Array.from({ length: 21 }, (_, index) =>
-      toolUseReply([{ search: `query ${index + 1}` }]),
-    );
-    const searches = Array.from({ length: 21 }, () => hits(pageUrl("one")));
-    const { run, last } = await runOf(steps, searches);
-    expect(last).toEqual([limitHit]);
-    expect(run.queries).toHaveLength(20);
-    expect(lastResults(run.workerRequests()[20])).toEqual([
-      expect.objectContaining({
-        content: expect.stringContaining("Searches left: 0."),
-      }),
-    ]);
-  });
 });
 
 describe("runTask other endings", () => {
@@ -120,29 +103,6 @@ describe("runTask other endings", () => {
         ),
       }),
     ]);
-  });
-
-  it("ends limitHit before a tool batch once the active time is used up", async () => {
-    // the brief writer's call takes the first two readings
-    const times = [0, 0, 0, 250_000];
-    const now = () => times.shift() ?? 250_000;
-    const run = await startRun(
-      [toolUseReply([{ search: "hermes" }])],
-      [hits(pageUrl("one"))],
-      now,
-    );
-    run.port.send(runTask());
-    const events = await run.ended();
-    expect(events).toEqual([limitHit]);
-    expect(run.queries).toEqual([]);
-  });
-
-  it("ends limitHit when the next worker call would cross a limit", async () => {
-    const costly = toolUseReply([{ search: "hermes" }]);
-    if (costly.ok) costly.message.usage.input_tokens = 248_000;
-    const { run, last } = await runOf([costly], [hits(pageUrl("one"))]);
-    expect(last).toEqual([limitHit]);
-    expect(run.loopRequests()).toHaveLength(1);
   });
 });
 
@@ -190,26 +150,6 @@ const malformedAnswers: { name: string; step: ModelOutcome }[] = [
     step: answerWith({ spokenLine: 3 }),
   },
 ];
-
-describe("runTask active time", () => {
-  it("counts a tool batch's time as active time", async () => {
-    const sent: { queries: string[] } = { queries: [] };
-    const now = () => (sent.queries.length > 0 ? 250_000 : 0);
-    const run = await startRun(
-      [toolUseReply([{ search: "hermes" }])],
-      [hits(pageUrl("one"))],
-      now,
-    );
-    sent.queries = run.queries;
-    run.port.send(runTask());
-    expect(await run.ended()).toEqual([
-      expect.objectContaining({ type: "progress" }),
-      limitHit,
-    ]);
-    expect(run.queries).toEqual(["hermes"]);
-    expect(run.loopRequests()).toHaveLength(1);
-  });
-});
 
 describe("runTask malformed answers", () => {
   it.each(unanswered)("ends error at once on $name", async (row) => {
@@ -261,4 +201,48 @@ describe("runTask malformed tool calls", () => {
       expect(run.network.targets).toEqual([]);
     },
   );
+});
+
+describe("runTask tool batches", () => {
+  it("aborts a waiting sibling read when a search ends the task, and waits for it", async () => {
+    const run = await startRun(
+      [toolUseReply([{ read: pageUrl("slow") }, { search: "hermes" }])],
+      [{ ok: false, cause: "keyRejected" }],
+    );
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events[events.length - 1]).toEqual({
+      type: "incomplete",
+      taskId: "task-1",
+      incomplete: { kind: "error", cause: "searchDown", findings: null },
+    });
+    const tools = run.entries.filter((entry) => entry.event === "toolCall");
+    expect(tools.map((entry) => [entry.tool, entry.outcome])).toEqual([
+      ["search", "keyRejected"],
+      ["read", "aborted"],
+    ]);
+    expect(
+      run.entries.findIndex((entry) => entry.event === "taskEnd"),
+    ).toBeGreaterThan(run.entries.findIndex((entry) => entry.tool === "read"));
+  });
+
+  it("sends only the searches left when one turn crosses the search limit", async () => {
+    const queries = Array.from({ length: 22 }, (_, index) => ({
+      search: `query ${index + 1}`,
+    }));
+    const run = await startRun(
+      [toolUseReply(queries)],
+      Array.from({ length: 22 }, () => hits(pageUrl("one"))),
+    );
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events[events.length - 1]).toEqual({
+      type: "incomplete",
+      taskId: "task-1",
+      incomplete: { kind: "limitHit", findings: null },
+    });
+    expect(run.queries).toEqual(
+      queries.slice(0, 20).map((call) => call.search),
+    );
+  });
 });

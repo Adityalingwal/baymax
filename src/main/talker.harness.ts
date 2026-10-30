@@ -14,34 +14,49 @@ type Call = {
   onText: (text: string) => void;
   onToolStart: () => void;
   resolve: (outcome: TextOutcome) => void;
+  settled: boolean; // a test resolved it
+  aborted: boolean;
 };
 
+// The front call's model faked: each call waits until a test streams its text and settles it.
+// With ignoreAbort the call records its signal but stays pending, as a provider that finishes late would.
+export function fakeStream(ignoreAbort = false) {
+  const calls: Call[] = [];
+  const stream: TextStream = (request, options, onText, onToolStart) =>
+    new Promise<TextOutcome>((resolve) => {
+      const call: Call = {
+        request,
+        signal: options.signal,
+        onText,
+        onToolStart: onToolStart ?? (() => undefined),
+        resolve: (outcome) => {
+          call.settled = true;
+          resolve(outcome);
+        },
+        settled: false,
+        aborted: false,
+      };
+      calls.push(call);
+      options.signal.addEventListener("abort", () => {
+        call.aborted = true;
+        // The real call ends as aborted when its signal fires.
+        if (!ignoreAbort)
+          resolve({ ok: false, failure: "aborted", detail: "aborted" });
+      });
+    });
+  return { calls, stream };
+}
+
 // The talker with its model call, its speech lines and its timer faked; a line is shown as its pushes and its end.
-// With ignoreAbort the fake call records its signal but stays pending until a test settles it, as a provider that finishes late would.
 export function createHarness(
   options: { noKey?: boolean; ignoreAbort?: boolean } = {},
 ) {
-  const calls: Call[] = [];
+  const { calls, stream } = fakeStream(options.ignoreAbort === true);
   const lines: { taskId: TaskId | null; kind: string; parts: string[] }[] = [];
   const replies: { taskId: TaskId; attemptId: string; reply: TalkerReply }[] =
     [];
   const logs: string[] = [];
   const clock = createClock();
-  const stream: TextStream = (request, streamOptions, onText, onToolStart) =>
-    new Promise<TextOutcome>((resolve) => {
-      calls.push({
-        request,
-        signal: streamOptions.signal,
-        onText,
-        onToolStart: onToolStart ?? (() => undefined),
-        resolve,
-      });
-      // The real call ends as aborted when its signal fires.
-      if (options.ignoreAbort === true) return;
-      streamOptions.signal.addEventListener("abort", () =>
-        resolve({ ok: false, failure: "aborted", detail: "aborted" }),
-      );
-    });
   const talker = createTalker({
     stream: options.noKey === true ? null : stream,
     talk: ({ taskId, kind }) => {
@@ -71,11 +86,6 @@ export function createHarness(
 
 export const flush = () =>
   new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-export function lastUserText(request: TextRequest): string {
-  const content = request.messages.at(-1)?.content;
-  return typeof content === "string" ? content : "";
-}
 
 export const frontRequest = (
   fields: Partial<TalkRequest> = {},

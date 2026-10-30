@@ -1,10 +1,27 @@
 import type { Findings, TaskId } from "../../shared/cards";
-import type { EngineEvent, ParentResult } from "../../shared/engine";
+import type {
+  EngineEvent,
+  Incomplete,
+  ParentResult,
+} from "../../shared/engine";
 import type { Decision } from "./decision";
-import { endCancelled, endDone, endIncomplete } from "./end";
-import { fixedLines, partialParentLine, stepText } from "./lines";
-import type { Admission, Change, Model, TaskRecord } from "./record";
-import { abandonAttempt, dropped, hold, sendCancel, silence } from "./record";
+import { appendResult } from "./history";
+import {
+  fixedLines,
+  incompleteLines,
+  partialParentLine,
+  stepText,
+} from "./lines";
+import type { Admission, Change, Input, Model, TaskRecord } from "./record";
+import {
+  abandonAttempt,
+  dropped,
+  hold,
+  say,
+  sendCancel,
+  setTimer,
+  silence,
+} from "./record";
 
 const QUEUE_LIMIT = 3;
 
@@ -13,6 +30,116 @@ type RunEvent = Extract<
   { type: "progress" } | { type: "result" } | { type: "incomplete" }
 >;
 type Admitted = Extract<Decision, { route: "newTask" | "followUp" }>;
+
+const LEAVE_MS = 3000;
+
+function closeTask(
+  change: Change,
+  record: TaskRecord,
+  outcome: ParentResult["outcome"],
+  findings: Findings | null,
+): void {
+  const { model } = change;
+  const { taskId } = record.card;
+  model.answers.set(taskId, { taskId, outcome, findings });
+  model.queue = model.queue.filter((id) => id !== taskId);
+  model.questions = model.questions.filter((id) => id !== taskId);
+  record.sent = null;
+  record.attempt = null;
+  record.failedAttempt = null;
+  record.hiddenQuestion = null;
+  record.card.state = outcome;
+  record.card.step = null;
+}
+
+// The result's spoken line is said as the worker wrote it, and joins the conversation history.
+function endDone(
+  change: Change,
+  record: TaskRecord,
+  spokenLine: string,
+  findings: Findings,
+): void {
+  closeTask(change, record, "done", findings);
+  record.spokenLine = spokenLine;
+  record.card.spokenLine = spokenLine;
+  record.card.answer = findings;
+  record.card.line = record.builtOnPartial ? fixedLines.builtOnPartial : null;
+  const { taskId } = record.card;
+  appendResult(change.model.exchanges, taskId, spokenLine);
+  say(change, taskId, spokenLine, "answer");
+}
+
+// The front call's line was the whole answer, so the card shows it as a done answer.
+export function endChat(change: Change, record: TaskRecord, text: string) {
+  const findings: Findings = { cardText: text, sources: [], openPoints: [] };
+  closeTask(change, record, "done", findings);
+  record.spokenLine = text;
+  record.card.spokenLine = text;
+  record.card.reply = text;
+  record.card.question = null;
+  record.card.answer = findings;
+  record.card.line = null;
+}
+
+function endIncomplete(
+  change: Change,
+  record: TaskRecord,
+  incomplete: Incomplete,
+): void {
+  const lines = incompleteLines(incomplete, record.topic);
+  closeTask(change, record, "incomplete", incomplete.findings);
+  record.card.answer = incomplete.findings;
+  record.card.line = lines.line;
+  record.card.missing = lines.missing;
+  // Without a fixed line, the spoken text is the worker's own (its next question or its answer), said as given.
+  say(change, record.card.taskId, lines.spoken, "incomplete");
+}
+
+function clearForLeaving(change: Change, record: TaskRecord): void {
+  const { card } = record;
+  card.question = null;
+  card.answer = null;
+  card.missing = null;
+  card.canRetry = false;
+  setTimer(change, LEAVE_MS, leave(card.taskId));
+}
+
+function endCancelled(
+  change: Change,
+  record: TaskRecord,
+  findings: Findings | null,
+  line: string | null,
+): void {
+  closeTask(change, record, "cancelled", findings);
+  record.card.line = line;
+  clearForLeaving(change, record);
+  const { taskId } = record.card;
+  if (line === null) silence(change, taskId);
+  else say(change, taskId, line, "failure");
+}
+
+// A request to act outside research: the front call's own line, already said, is the card's reply.
+export function endOutside(
+  change: Change,
+  record: TaskRecord,
+  spoken: string,
+): void {
+  closeTask(change, record, "cancelled", null);
+  record.card.line = null;
+  record.card.reply = spoken;
+  clearForLeaving(change, record);
+}
+
+function leave(taskId: TaskId): Input {
+  return (change) => {
+    const record = change.model.records.get(taskId);
+    if (record?.card.state !== "cancelled" || !record.shown) {
+      return dropped(change, `leave timer for ${taskId}`);
+    }
+    record.shown = false;
+    return true;
+  };
+}
 
 function slotBusy(model: Model): boolean {
   for (const record of model.records.values()) {

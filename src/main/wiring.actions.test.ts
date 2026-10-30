@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ipcChannels } from "../shared/ipc";
-import { clarify } from "./tasks/harness";
+import { findings } from "./tasks/harness";
 import {
+  admitAs,
   failFront,
   fakeSender,
   admitTask,
   runToDone,
   source,
-  streamFront,
   submit,
   wire,
 } from "./wiring.harness";
@@ -44,20 +44,6 @@ const actionRows: ActionRow[] = [
     },
   },
   {
-    name: "close removes the done card",
-    prepare: runToDone,
-    channel: ipcChannels.closeCard,
-    payload: { taskId: "t1" },
-    check: (w) => expect(w.card("t1")).toBeUndefined(),
-  },
-  {
-    name: "fold folds the done card",
-    prepare: runToDone,
-    channel: ipcChannels.setCardFolded,
-    payload: { taskId: "t1", folded: true },
-    check: (w) => expect(w.card("t1")?.folded).toBe(true),
-  },
-  {
     name: "open source opens a listed source",
     prepare: runToDone,
     channel: ipcChannels.openSource,
@@ -71,40 +57,14 @@ const actionRows: ActionRow[] = [
     payload: { muted: true },
     check: (w) => expect(w.published.at(-1)?.muted).toBe(true),
   },
-  {
-    name: "an answer to the shown question runs the front call with the choice as the words",
-    prepare: async (w) => {
-      submit(w);
-      await streamFront(w, clarify(["Office", "Gaming"]), "Which kind?");
-    },
-    channel: ipcChannels.answerQuestion,
-    payload: {
-      taskId: "t1",
-      questionId: "t1:question",
-      reply: { kind: "choice", index: 1 },
-    },
-    check: (w) => {
-      expect(w.talkerCalls).toHaveLength(2);
-      expect(JSON.stringify(w.talkerCalls[1].request.messages)).toContain(
-        "<words>\\nGaming\\n</words>",
-      );
-      expect(w.port.sent).toEqual([]);
-    },
-  },
 ];
 
 // Valid payloads that would change something, so a foreign sender is shown to be dropped.
 const validPayloads: [string, unknown][] = [
   [ipcChannels.getDisplayState, undefined],
   [ipcChannels.submitQuestion, { text: "what is new" }],
-  [
-    ipcChannels.answerQuestion,
-    { taskId: "t1", questionId: "q1", reply: { kind: "choice", index: 0 } },
-  ],
   [ipcChannels.cancelTask, { taskId: "t1" }],
   [ipcChannels.retryTask, { taskId: "t1" }],
-  [ipcChannels.closeCard, { taskId: "t1" }],
-  [ipcChannels.setCardFolded, { taskId: "t1", folded: true }],
   [ipcChannels.openSource, { taskId: "t1", url: source }],
   [ipcChannels.setMuted, { muted: true }],
   [
@@ -114,24 +74,12 @@ const validPayloads: [string, unknown][] = [
   [ipcChannels.playbackFinished, { lineId: "l1", outcome: "ended" }],
 ];
 
-const answer = (reply: unknown) => ({ taskId: "t1", questionId: "q1", reply });
-
 const malformedPayloads: [string, unknown][] = [
   [ipcChannels.submitQuestion, undefined],
   [ipcChannels.submitQuestion, "what is new"],
   [ipcChannels.submitQuestion, { text: 5 }],
-  [ipcChannels.answerQuestion, answer(null)],
-  [ipcChannels.answerQuestion, answer({ kind: "text" })],
-  [ipcChannels.answerQuestion, answer({ kind: "choice", index: 1.5 })],
-  [ipcChannels.answerQuestion, answer({ kind: "voice", text: "first" })],
-  [
-    ipcChannels.answerQuestion,
-    { taskId: "t1", reply: { kind: "text", text: "a" } },
-  ],
   [ipcChannels.cancelTask, { taskId: 1 }],
   [ipcChannels.retryTask, null],
-  [ipcChannels.closeCard, {}],
-  [ipcChannels.setCardFolded, { taskId: "t1", folded: "yes" }],
   [ipcChannels.openSource, { taskId: "t1" }],
   [ipcChannels.setMuted, { muted: "true" }],
   [ipcChannels.micAudio, { type: "failed", reason: "error" }],
@@ -188,4 +136,79 @@ describe("renderer actions", () => {
       expect(w.logs.at(-1)).toBe(`${channel} dropped: ${reason}`);
     },
   );
+});
+
+const finishWith = (w: Wired, taskId: string, urls: string[]) =>
+  w.port.emit({
+    type: "result",
+    taskId,
+    spokenLine: "Done.",
+    findings: findings("Done.", urls),
+  });
+
+async function threeTasks(): Promise<Wired> {
+  const w = wire();
+  await admitAs(w, "hermes");
+  finishWith(w, "t1", ["https://a.com/x", "javascript:alert(1)", "not a url"]);
+  await admitAs(w, "rust");
+  finishWith(w, "t2", ["https://b.com/y"]);
+  await admitAs(w, "zig");
+  return w;
+}
+
+const refusedRows = [
+  { name: "another URL", taskId: "t1", url: "https://a.com/other" },
+  { name: "another task's source", taskId: "t1", url: "https://b.com/y" },
+  {
+    name: "a listed javascript: URL",
+    taskId: "t1",
+    url: "javascript:alert(1)",
+  },
+  {
+    name: "a listed string that does not parse",
+    taskId: "t1",
+    url: "not a url",
+  },
+  { name: "an unknown task", taskId: "t9", url: "https://a.com/x" },
+  { name: "a task with no answer", taskId: "t3", url: "https://a.com/x" },
+];
+
+const counts = (w: Wired) => [
+  w.published.length,
+  w.port.sent.length,
+  w.syntheses.length,
+];
+
+describe("opening a source", () => {
+  it("opens an exact read-source URL of the task and publishes nothing", async () => {
+    const w = await threeTasks();
+    const before = counts(w);
+    w.send(ipcChannels.openSource, { taskId: "t1", url: "https://a.com/x" });
+    expect(w.opened).toEqual(["https://a.com/x"]);
+    expect(counts(w)).toEqual(before);
+  });
+
+  it.each(refusedRows)("refuses $name and logs it", async ({ taskId, url }) => {
+    const w = await threeTasks();
+    const before = counts(w);
+    const logs = w.logs.length;
+    w.send(ipcChannels.openSource, { taskId, url });
+    expect(w.opened).toEqual([]);
+    expect(counts(w)).toEqual(before);
+    expect(w.logs.length).toBe(logs + 1);
+  });
+
+  it("keeps the allowlist when a published card is changed", async () => {
+    const w = await threeTasks();
+    w.published.at(-1)?.tasks[0].answer?.sources.push({
+      id: "s9",
+      url: "https://unread.example",
+      title: "unread",
+    });
+    w.send(ipcChannels.openSource, {
+      taskId: "t1",
+      url: "https://unread.example",
+    });
+    expect(w.opened).toEqual([]);
+  });
 });

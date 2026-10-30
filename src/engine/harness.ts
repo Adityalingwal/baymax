@@ -4,7 +4,7 @@ import type {
   ModelOutcome,
   ModelRequest,
 } from "../providers/anthropic";
-import type { ContentsFn } from "../providers/page-contents";
+import type { ContentsFn } from "../providers/exa";
 import type { EngineEvent } from "../shared/engine";
 import type { DevLogEntry } from "./core/dev-log";
 import { startEngine } from "./index";
@@ -128,7 +128,7 @@ function scriptedModel(steps: FakeStep[], briefSteps: FakeStep[]) {
   return {
     model,
     clock,
-    requests, // every model call, in order
+    requests,
     briefRequests: ofKind("brief"),
     workerRequests: ofKind("worker"),
     // the worker's calls in order: every call but the brief writer's

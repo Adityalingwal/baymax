@@ -29,18 +29,6 @@ const effects: [string, DemoAction, (after: DisplayState) => void][] = [
     },
   ],
   [
-    "a matching answer marks the question answered",
-    {
-      kind: "answerQuestion",
-      payload: {
-        taskId: "demo-8",
-        questionId: "q-1",
-        reply: { kind: "choice", index: 0 },
-      },
-    },
-    (after) => expect(find(after, "demo-8")?.question?.answered).toBe(true),
-  ],
-  [
     "cancel moves a cancellable card to cancelling",
     { kind: "cancelTask", payload: { taskId: "demo-9" } },
     (after) => expect(find(after, "demo-9")?.state).toBe("cancelling"),
@@ -49,21 +37,6 @@ const effects: [string, DemoAction, (after: DisplayState) => void][] = [
     "retry sets canRetry false",
     { kind: "retryTask", payload: { taskId: "demo-10" } },
     (after) => expect(find(after, "demo-10")?.canRetry).toBe(false),
-  ],
-  [
-    "close removes the card",
-    { kind: "closeCard", payload: { taskId: "demo-1" } },
-    (after) => expect(find(after, "demo-1")).toBeUndefined(),
-  ],
-  [
-    "fold sets folded",
-    { kind: "setCardFolded", payload: { taskId: "demo-1", folded: true } },
-    (after) => expect(find(after, "demo-1")?.folded).toBe(true),
-  ],
-  [
-    "unfold clears folded",
-    { kind: "setCardFolded", payload: { taskId: "demo-2", folded: false } },
-    (after) => expect(find(after, "demo-2")?.folded).toBe(false),
   ],
   [
     "mute sets muted",
@@ -80,17 +53,6 @@ describe("applyDemoAction changes the demo state", () => {
 
 const unchanged: [string, DemoAction][] = [
   [
-    "a stale question id",
-    {
-      kind: "answerQuestion",
-      payload: {
-        taskId: "demo-8",
-        questionId: "q-old",
-        reply: { kind: "text", text: "Gaming" },
-      },
-    },
-  ],
-  [
     "cancel on an unknown task",
     { kind: "cancelTask", payload: { taskId: "x" } },
   ],
@@ -99,11 +61,6 @@ const unchanged: [string, DemoAction][] = [
     { kind: "cancelTask", payload: { taskId: "demo-1" } },
   ],
   ["retry on an unknown task", { kind: "retryTask", payload: { taskId: "x" } }],
-  ["close on an unknown task", { kind: "closeCard", payload: { taskId: "x" } }],
-  [
-    "fold on an unknown task",
-    { kind: "setCardFolded", payload: { taskId: "x", folded: true } },
-  ],
   [
     "openSource",
     {

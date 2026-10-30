@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { TaskId } from "../shared/cards";
-import { fixedLines } from "./tasks/lines";
 import { admitAs, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
+
+// The fixed lines as written, so a changed cause or fix in the app fails here.
+const fixedLines = {
+  queued: "Okay, I'll look at that after the current one.",
+  queueFull: "I already have three waiting. Cancel one or ask again later.",
+};
 
 const names = ["hermes", "rust", "zig", "go", "ocaml"];
 
@@ -67,10 +72,13 @@ describe("five typed questions through the wiring", () => {
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("speech for five typed questions", () => {
-  it("says each front line and the queue-full line; the queued lines show on the cards only", async () => {
+  it("says each front line and the queue-full line, even after the refused card left; the queued lines show on the cards only", async () => {
     const w = await fiveAsked();
+    // The refused card leaves at 3000 ms; its line is still said.
+    w.advance(3000);
     await flush();
     await w.playAll();
+    expect(w.stops).toEqual([]);
     expect(w.spoken()).toEqual([
       ...names.map((name) => `Checking ${name}.`),
       fixedLines.queueFull,
@@ -80,6 +88,23 @@ describe("speech for five typed questions", () => {
 });
 
 describe("the queue moving on through the wiring", () => {
+  it("says only the running task's result when the next one starts", async () => {
+    const w = await fiveAsked();
+    await flush();
+    await w.playAll();
+    const spokenBefore = w.spoken().length;
+    w.port.emit({
+      type: "result",
+      taskId: "t1",
+      spokenLine: "Done. spoken",
+      findings: { cardText: "Done.", sources: [], openPoints: [] },
+    });
+    expect(runTaskIds(w)).toEqual(["t1", "t2"]);
+    await flush();
+    await w.playAll();
+    expect(w.spoken().slice(spokenBefore)).toEqual(["Done. spoken"]);
+  });
+
   it("starts the oldest queued task when the running one ends, and keeps the rest in order", async () => {
     const w = await fiveAsked();
     finish(w, "t1");

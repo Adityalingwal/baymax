@@ -17,9 +17,6 @@ export type ClarifyingQuestion = {
   choices: string[];
 };
 
-export type ClarifyingReply =
-  { kind: "choice"; index: number } | { kind: "text"; text: string };
-
 // What a task found: a done answer, or the labelled partial findings of an incomplete one.
 export type Findings = {
   cardText: string; // Markdown with no links; sources[] lists the pages the card relies on, opened through openSource (ids serve the done check)
@@ -54,7 +51,6 @@ export type TaskCard = {
   answer: Findings | null; // partial exactly when state is "incomplete"
   missing: string | null; // model text on what is missing: the next question, or the unchecked part
   canRetry: boolean;
-  folded: boolean;
 };
 
 export type DisplayState = {

@@ -9,7 +9,11 @@ import {
   sendAudio,
   synthesized,
   transcribed,
+  waitingQuestion,
 } from "./voice.harness";
+import type { Transcription } from "../providers/deepgram";
+import type { UtteranceId } from "../shared/cards";
+import type { Harness } from "./voice.harness";
 
 const line = (text: string): SaidLine => ({
   taskId: "t1",
@@ -90,42 +94,160 @@ describe("hold routing", () => {
   });
 });
 
-describe("mute", () => {
-  it("reaches main's state and speech", async () => {
+describe("renderer reset during a hold", () => {
+  it("keeps speech quiet until the key is released", () => {
     const h = createHarness();
-    h.voice.setMuted(true);
+    h.voice.holdChanged("listening", null);
+    h.voice.rendererReset();
     h.voice.say(line("Hello."));
-    expect(h.calls).toEqual(["muted true"]);
     expect(h.syntheses).toHaveLength(0);
-    h.voice.setMuted(false);
-    h.voice.say(line("Again."));
-    expect(h.calls).toEqual(["muted true", "muted false"]);
-    expect(h.syntheses.map((call) => call.text)).toEqual(["Again."]);
+    h.voice.holdChanged("idle", "accept");
+    expect(h.syntheses.map((call) => call.text)).toEqual(["Hello."]);
+  });
+});
+
+describe("stop", () => {
+  it("drops a transcript that settles after it", async () => {
+    const h = createHarness();
+    sendAudio(h, hold(h));
+    h.voice.stop();
+    await transcribed(h, 0, { kind: "words", words: "late" });
+    expect(h.asked).toEqual([]);
+  });
+
+  it("still speaks, so the restart line can be heard", async () => {
+    const h = createHarness();
+    h.voice.holdChanged("listening", null);
+    h.voice.stop();
+    h.voice.say(line("Restarting."));
+    await synthesized(h, 0, audio);
+    expect(h.speeches).toHaveLength(1);
+  });
+});
+
+describe("a state throw outside a listener", () => {
+  it("goes to the restart path from a transcript", async () => {
+    const h = createHarness();
+    sendAudio(h, hold(h));
+    h.waiting.stateFails = true;
+    await transcribed(h, 0, { kind: "words", words: "hello" });
+    expect(h.failures).toEqual(["Error: ask broke"]);
+  });
+
+  it("goes to the restart path from a speech health change", async () => {
+    const h = createHarness();
+    h.waiting.stateFails = true;
+    h.voice.say(line("Hello."));
+    await synthesized(h, 0, {
+      kind: "failed",
+      cause: "unreachable",
+      detail: "",
+    });
+    expect(h.failures).toEqual(["Error: voice state broke"]);
+  });
+});
+
+const words = (text: string): Transcription => ({ kind: "words", words: text });
+
+function heldAndSent(h: Harness): UtteranceId {
+  const utteranceId = hold(h);
+  sendAudio(h, utteranceId);
+  return utteranceId;
+}
+
+describe("admitted utterances", () => {
+  it("still asks with an older accepted utterance's words that come while a newer key is held", async () => {
+    const h = createHarness();
+    const first = heldAndSent(h);
+    h.voice.holdChanged("listening", null);
+    await transcribed(h, 0, words("first"));
+    expect(h.asked.map((asked) => [asked.words, asked.utteranceId])).toEqual([
+      ["first", first],
+    ]);
+  });
+
+  it("sends two holds in transcription at once to ask with their own waiting question", async () => {
+    const h = createHarness();
+    h.waiting.waiting = waitingQuestion("q1");
+    const first = heldAndSent(h);
+    h.waiting.waiting = waitingQuestion("q2");
+    const second = heldAndSent(h);
+    await transcribed(h, 0, words("first"));
+    await transcribed(h, 1, words("second"));
+    expect(h.asked).toEqual([
+      { words: "first", utteranceId: first, waiting: waitingQuestion("q1") },
+      { words: "second", utteranceId: second, waiting: waitingQuestion("q2") },
+    ]);
+  });
+
+  it("forgets a discarded hold, so it never pushes an accepted one out", async () => {
+    const h = createHarness();
+    heldAndSent(h);
+    for (let index = 0; index < 16; index += 1) hold(h, "discard");
+    await transcribed(h, 0, words("kept"));
+    expect(h.calls).toEqual(["ask kept"]);
+  });
+
+  it("forgets a hold that a new hold replaced before its release", async () => {
+    const h = createHarness();
+    heldAndSent(h);
+    for (let index = 0; index < 16; index += 1) {
+      h.voice.holdChanged("listening", null);
+    }
+    h.voice.holdChanged("idle", "discard");
+    await transcribed(h, 0, words("kept"));
+    expect(h.calls).toEqual(["ask kept"]);
+  });
+});
+
+const droppedRows: { name: string; result: Transcription; log: string }[] = [
+  { name: "words", result: words("late"), log: "words dropped" },
+  {
+    name: "a failure",
+    result: failed("unreachable"),
+    log: "notCaught dropped",
+  },
+];
+
+describe("dropped transcripts", () => {
+  it.each(droppedRows)(
+    "drops $name that settles after a renderer reset",
+    async ({ result }) => {
+      const h = createHarness();
+      heldAndSent(h);
+      h.voice.rendererReset();
+      await transcribed(h, 0, result);
+      expect(h.calls).toEqual([]);
+      expect(h.logs).toContain("transcript dropped: its hold already ended");
+    },
+  );
+
+  it.each(droppedRows)(
+    "drops $name of an utterance pushed out by newer holds",
+    async ({ result, log }) => {
+      const h = createHarness();
+      heldAndSent(h);
+      for (let index = 0; index < 16; index += 1) hold(h);
+      await transcribed(h, 0, result);
+      expect(h.calls).toEqual([]);
+      expect(h.logs).toContain(`${log}: not an accepted hold`);
+    },
+  );
+
+  it("keeps sixteen utterances", async () => {
+    const h = createHarness();
+    heldAndSent(h);
+    for (let index = 0; index < 15; index += 1) hold(h);
+    await transcribed(h, 0, words("kept"));
+    expect(h.calls).toEqual(["ask kept"]);
   });
 });
 
 const timing = (h: ReturnType<typeof createHarness>) =>
   h.logs.filter((message) => message.startsWith("first spoken line"));
 
-describe("time to the first spoken line", () => {
-  it("logs the time from release to the first line once", async () => {
-    const h = createHarness();
-    h.control.now = 1000;
-    sendAudio(h, hold(h));
-    h.voice.say(line("Let me check."));
-    h.control.now = 2480.4;
-    await synthesized(h, 0, audio);
-    h.voice.playbackFinished({
-      lineId: h.speeches[0].lineId,
-      outcome: "ended",
-    });
-    h.voice.say(line("The answer."));
-    await synthesized(h, 1, audio);
-    expect(h.speeches).toHaveLength(2);
-    expect(timing(h)).toEqual(["first spoken line 1480 ms after release"]);
-  });
-
-  it("times the first streamed chunk too", () => {
+describe("streamed audio and transcripts reaching their targets", () => {
+  it("sends streamed chunks to the renderer and times the first one", () => {
     const aura = createFakeAura();
     const h = createHarness({ aura });
     aura.open();
@@ -139,20 +261,7 @@ describe("time to the first spoken line", () => {
     expect(timing(h)).toEqual(["first spoken line 800 ms after release"]);
   });
 
-  it("is cleared by a new hold", async () => {
-    const h = createHarness();
-    hold(h);
-    h.voice.holdChanged("listening", null);
-    h.voice.holdChanged("idle", "discard");
-    h.voice.say(line("Hello."));
-    await synthesized(h, 0, audio);
-    expect(h.speeches).toHaveLength(1);
-    expect(timing(h)).toEqual([]);
-  });
-});
-
-describe("time to the final transcript", () => {
-  it("logs the time from release to the transcript", async () => {
+  it("asks with the final transcript and times it from the release", async () => {
     const h = createHarness();
     h.control.now = 1000;
     sendAudio(h, hold(h));
@@ -160,5 +269,14 @@ describe("time to the final transcript", () => {
     await transcribed(h, 0, { kind: "words", words: "hi" });
     expect(h.logs).toContain("final transcript 451 ms after release");
     expect(h.calls).toEqual(["ask hi"]);
+  });
+});
+
+describe("a release while the talker is silent", () => {
+  it("says nothing until the talker speaks, past the transcript deadline", () => {
+    const h = createHarness();
+    hold(h);
+    h.advance(5000);
+    expect(h.syntheses.map((call) => call.text)).toEqual([]);
   });
 });

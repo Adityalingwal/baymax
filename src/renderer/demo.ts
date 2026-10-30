@@ -1,5 +1,4 @@
 import type { DisplayState, TaskCard, TaskId } from "../shared/cards";
-import type { AnswerQuestion } from "../shared/ipc";
 import type { CardActions } from "./actions";
 import { canCancel } from "./cards/forms";
 
@@ -24,7 +23,6 @@ function demoCard(taskId: TaskId, fields: Partial<TaskCard>): TaskCard {
     answer: null,
     missing: null,
     canRetry: false,
-    folded: false,
     ...fields,
   };
 }
@@ -178,23 +176,6 @@ function nextDemoId(state: DisplayState): TaskId {
   return `demo-${Math.max(0, ...numbers) + 1}`;
 }
 
-function answer(state: DisplayState, payload: AnswerQuestion): DisplayState {
-  return changeCard(state, payload.taskId, (card) => {
-    const { question } = card;
-    if (question === null || question.questionId !== payload.questionId) {
-      return card;
-    }
-    if (question.answered) return card;
-    return { ...card, question: { ...question, answered: true } };
-  });
-}
-
-function close(state: DisplayState, taskId: TaskId): DisplayState {
-  const tasks = state.tasks.filter((card) => card.taskId !== taskId);
-  if (tasks.length === state.tasks.length) return state;
-  return { ...state, tasks };
-}
-
 export function applyDemoAction(
   state: DisplayState,
   action: DemoAction,
@@ -204,8 +185,6 @@ export function applyDemoAction(
       const card = demoCard(nextDemoId(state), { words: action.payload.text });
       return { ...state, tasks: [...state.tasks, card] };
     }
-    case "answerQuestion":
-      return answer(state, action.payload);
     case "cancelTask":
       return changeCard(state, action.payload.taskId, (card) =>
         canCancel(card.state) ? { ...card, state: "cancelling" } : card,
@@ -214,14 +193,6 @@ export function applyDemoAction(
       return changeCard(state, action.payload.taskId, (card) =>
         card.canRetry ? { ...card, canRetry: false } : card,
       );
-    case "closeCard":
-      return close(state, action.payload.taskId);
-    case "setCardFolded": {
-      const { folded } = action.payload;
-      return changeCard(state, action.payload.taskId, (card) =>
-        card.folded === folded ? card : { ...card, folded },
-      );
-    }
     case "setMuted":
       return { ...state, muted: action.payload.muted };
     case "openSource":

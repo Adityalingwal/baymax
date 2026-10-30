@@ -9,7 +9,6 @@ import type { HoldOutcome } from "./hold";
 export type NotCaughtCause =
   "empty" | MicFailure | "unreachable" | "keyRejected" | "noCredit";
 
-// What one accepted utterance produced: a question's words, or why nothing was caught.
 export type Heard =
   | { kind: "words"; utteranceId: UtteranceId; words: string }
   | { kind: "notCaught"; utteranceId: UtteranceId; cause: NotCaughtCause };

@@ -20,7 +20,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 - Write plain functions and modules. Use a class only when a library requires one.
 - Use `as const` objects and union types instead of `enum`.
 - Write application code in TypeScript (`.ts`, `.tsx`). Keep it strict: no `any`, `@ts-ignore` or non-null `!`.
-- Keep a file at 300 lines or fewer and a function at 50 or fewer. One file does one job.
+- Keep one concept in one file, up to about 500 lines, and a function at 50 lines or fewer.
 - Name folders and functions by what they do (`adapters/`, `startListening`). Replace generic names such as `utils/`, `helpers/`, `Manager`, `handler`, `data` with specific ones.
 - Use one word per concept: `hold`, `listening`, `idle`, `talker`, `coordinator`, `worker`, `plug`, `engine`, `task`, `card`, `done check`, `adapter`.
 - When the same concept is written twice, move it to one place. Code that only looks similar stays separate.
@@ -49,7 +49,9 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 ## Tests
 
-- Test logic and providers through their public interface. One behavior gets one test; variants go in one table-driven test.
+- Test important behaviour only: what a card shows or what Baymax says, cancel and the queue, an error that names its cause and fix, and safety (which URLs may be read, size caps, keys). Dev-log timing, log text and internal guards get no test of their own.
+- Test through the top interfaces: main through the wiring harness and its `*.e2e.test.ts` files, the engine through its port, each provider through its own call, the renderer through its pure modules. A lower module keeps its own test only when a top test cannot reach its important behaviour.
+- One behaviour gets one test. A new case goes into the existing table as a row; add a test file only when no top-level file covers that area.
 - Fake only external things: network and providers, including the agent's model API. A person checks UI, hold-key and permission changes with `npm start`.
 - Fix the code, not the test: keep tests and checks intact. After two failed repair attempts, stop and report the failure and what was tried.
 

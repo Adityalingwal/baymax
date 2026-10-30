@@ -1,16 +1,11 @@
-import type {
-  ModelFailure,
-  TextOutcome,
-  TextRequest,
-  TextStream,
-} from "../providers/anthropic";
+import type { ModelFailure } from "../providers/anthropic";
 import type { Synthesis, Transcription } from "../providers/deepgram";
 import type { DisplayState, TaskId } from "../shared/cards";
 import type { EngineCommand, EngineEvent, EnginePort } from "../shared/engine";
 import { ipcChannels } from "../shared/ipc";
 import type { RecordingCommand, SpeechLine, StopPlayback } from "../shared/ipc";
 import type { RendererListener, RendererSender } from "./renderer-actions";
-import { finished } from "./talker.harness";
+import { fakeStream, finished } from "./talker.harness";
 import { createClock, findings, newTask } from "./tasks/harness";
 import { wireMain } from "./wiring";
 
@@ -21,37 +16,6 @@ type Options = {
   voiceFails?: boolean; // transcription and synthesis answer a Deepgram failure
   port?: EnginePort; // a real engine; the fake port records around it
 };
-
-type TalkerCall = {
-  request: TextRequest;
-  onText: (text: string) => void;
-  onToolStart: () => void;
-  resolve: (outcome: TextOutcome) => void;
-  settled: boolean;
-};
-
-// The front call's model faked: each call waits until a test streams its text and settles it.
-function fakeTalker() {
-  const calls: TalkerCall[] = [];
-  const stream: TextStream = (request, options, onText, onToolStart) =>
-    new Promise<TextOutcome>((resolve) => {
-      const call: TalkerCall = {
-        request,
-        onText,
-        onToolStart: onToolStart ?? (() => undefined),
-        resolve: (outcome) => {
-          call.settled = true;
-          resolve(outcome);
-        },
-        settled: false,
-      };
-      calls.push(call);
-      options.signal.addEventListener("abort", () =>
-        resolve({ ok: false, failure: "aborted", detail: "aborted" }),
-      );
-    });
-  return { calls, stream };
-}
 
 type Pending<T> = { input: string; resolve: (result: T) => void };
 
@@ -210,7 +174,7 @@ export function fakeSender() {
 function fakesFor(options: Options) {
   return {
     clock: createClock(),
-    talker: fakeTalker(),
+    talker: fakeStream(),
     port: fakePort(options.sendFails ?? (() => false), options.port ?? null),
     ipc: fakeIpc(),
     own: fakeSender(),
@@ -324,7 +288,6 @@ export async function runToDone(w: Wired): Promise<void> {
   });
 }
 
-// Asks by the text box and admits the new card as a new task.
 export async function admitAs(w: Wired, topic: string): Promise<void> {
   w.send(ipcChannels.submitQuestion, { text: `tell me ${topic}` });
   await streamFront(w, newTask(topic), `Checking ${topic}.`);

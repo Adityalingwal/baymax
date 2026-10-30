@@ -55,7 +55,7 @@ function readTurnInfo(message: Record<string, unknown>): FluxEvent {
   return { kind: "other", summary: `TurnInfo ${text(message.event)}` };
 }
 
-export function readFluxMessage(payload: SocketPayload): FluxEvent {
+function readFluxMessage(payload: SocketPayload): FluxEvent {
   if (typeof payload !== "string") return { kind: "other", summary: "binary" };
   let message: unknown;
   try {

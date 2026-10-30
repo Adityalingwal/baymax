@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { readFluxMessage, startFlux } from "./flux";
+import { startFlux } from "./flux";
 import type { FluxEvent } from "./flux";
 import { createSocketHarness, describeSent } from "./socket.harness";
 
 function start() {
   const h = createSocketHarness();
   const seen: string[] = [];
+  const events: FluxEvent[] = [];
   const flux = startFlux(
     {
       key: "dg-key",
@@ -15,12 +16,15 @@ function start() {
     },
     {
       opened: () => seen.push("opened"),
-      heard: (event) => seen.push(event.kind),
+      heard: (event) => {
+        seen.push(event.kind);
+        events.push(event);
+      },
       closed: () => seen.push("closed"),
     },
   );
   const sent = () => h.last().sent.map(describeSent);
-  return { h, seen, flux, sent };
+  return { h, seen, events, flux, sent };
 }
 
 const messageRows: { name: string; payload: string; event: FluxEvent }[] = [
@@ -89,7 +93,10 @@ const messageRows: { name: string; payload: string; event: FluxEvent }[] = [
 
 describe("Flux messages", () => {
   it.each(messageRows)("reads $name", ({ payload, event }) => {
-    expect(readFluxMessage(payload)).toEqual(event);
+    const { h, events } = start();
+    h.last().events.opened();
+    h.last().events.received(payload);
+    expect(events[0]).toEqual(event);
   });
 });
 

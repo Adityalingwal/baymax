@@ -5,10 +5,12 @@ import {
   createHarness,
   failure,
   finish,
+  flush,
   play,
   resolveCall,
   said,
 } from "./speech.harness";
+import type { VoiceDownCause } from "./speech";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -218,4 +220,215 @@ describe("renderer reset", () => {
     h.speech.speak(said("after"));
     expect(h.texts()).toEqual(["after"]);
   });
+});
+
+beforeEach(() => {
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+});
+
+describe("hold", () => {
+  it("nothing is synthesized or sent while held; lines said during the hold play after release", async () => {
+    const h = createHarness();
+    h.speech.holdStarted();
+    h.speech.speak(said("first"));
+    h.speech.speak(said("second"));
+    expect(h.texts()).toEqual([]);
+    h.speech.holdEnded();
+    expect(h.texts()).toEqual(["first"]);
+    await resolveCall(h, 0);
+    finish(h, h.speeches[0].lineId);
+    expect(h.texts()).toEqual(["first", "second"]);
+  });
+
+  it("a second key-down clears again, including lines said during the hold", () => {
+    const h = createHarness();
+    h.speech.holdStarted();
+    h.speech.speak(said("during the first hold"));
+    h.speech.holdStarted();
+    h.speech.holdEnded();
+    expect(h.texts()).toEqual([]);
+  });
+
+  it("a release when not held changes nothing", () => {
+    const h = createHarness();
+    h.speech.speak(said("first"));
+    h.speech.holdEnded();
+    expect(h.calls[0].signal.aborted).toBe(false);
+    expect(h.texts()).toEqual(["first"]);
+  });
+});
+
+const holdAndMute: { name: string; steps: (h: Harness) => void }[] = [
+  {
+    name: "hold, then mute",
+    steps: (h) => {
+      h.speech.holdStarted();
+      h.speech.setMuted(true);
+    },
+  },
+  {
+    name: "mute, then hold",
+    steps: (h) => {
+      h.speech.setMuted(true);
+      h.speech.holdStarted();
+    },
+  },
+];
+
+describe("mute with hold", () => {
+  it.each(holdAndMute)(
+    "$name: a release while still muted plays nothing",
+    ({ steps }) => {
+      const h = createHarness();
+      steps(h);
+      h.speech.speak(said("while muted"));
+      h.speech.holdEnded();
+      h.speech.setMuted(false);
+      expect(h.texts()).toEqual([]);
+    },
+  );
+});
+
+describe("mute alone", () => {
+  it("drops every line said while muted, with no synthesis", () => {
+    const h = createHarness();
+    h.speech.setMuted(true);
+    h.speech.speak(said("while muted"));
+    expect(h.synthesize).not.toHaveBeenCalled();
+    h.speech.setMuted(false);
+    h.speech.speak(said("after"));
+    expect(h.texts()).toEqual(["after"]);
+  });
+
+  it("unmute replays nothing that was cleared", async () => {
+    const h = createHarness();
+    await play(h, said("playing"));
+    h.speech.speak(said("pending"));
+    h.speech.setMuted(true);
+    h.speech.setMuted(false);
+    expect(h.texts()).toEqual(["playing"]);
+    expect(h.speeches).toHaveLength(1);
+  });
+
+  it("the same value twice is a no-op", async () => {
+    const h = createHarness();
+    const lineId = await play(h, said("playing"));
+    h.speech.setMuted(false);
+    expect(h.stops).toEqual([]);
+    h.speech.setMuted(true);
+    h.speech.setMuted(true);
+    expect(h.stops).toEqual([{ lineId }]);
+  });
+
+  it("a line said while held but not muted waits through an unmute until release", () => {
+    const h = createHarness();
+    h.speech.holdStarted();
+    h.speech.setMuted(true);
+    h.speech.setMuted(false);
+    h.speech.speak(said("held"));
+    expect(h.texts()).toEqual([]);
+    h.speech.holdEnded();
+    expect(h.texts()).toEqual(["held"]);
+  });
+});
+
+beforeEach(() => {
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+});
+
+const causes: VoiceDownCause[] = ["unreachable", "keyRejected", "noCredit"];
+
+describe.each(causes)("voice down: %s", (cause) => {
+  it("is reported once, the next lines still try, and audio brings voice back", async () => {
+    const h = createHarness();
+    h.speech.speak(said("first"));
+    h.speech.speak(said("second"));
+    h.speech.speak(said("third"));
+    await resolveCall(h, 0, failure(cause));
+    expect(h.voice).toEqual([{ available: false, cause }]);
+    expect(h.texts()).toEqual(["first", "second"]);
+
+    await resolveCall(h, 1, failure(cause));
+    expect(h.voice).toHaveLength(1);
+    expect(h.texts()).toEqual(["first", "second", "third"]);
+
+    await resolveCall(h, 2, audio(3));
+    expect(h.voice).toEqual([
+      { available: false, cause },
+      { available: true, cause: null },
+    ]);
+    expect(h.speeches).toHaveLength(1);
+
+    finish(h, h.speeches[0].lineId);
+    h.speech.speak(said("fourth"));
+    await resolveCall(h, 3, failure(cause));
+    expect(h.voice).toHaveLength(3);
+    expect(h.voice[2]).toEqual({ available: false, cause });
+  });
+
+  it("an aborted job's audio does not bring voice back; an owning job's does", async () => {
+    const h = createHarness();
+    h.speech.speak(said("first"));
+    await resolveCall(h, 0, failure(cause));
+    h.speech.speak(said("second"));
+    h.speech.holdStarted();
+    await resolveCall(h, 1, audio());
+    expect(h.voice).toEqual([{ available: false, cause }]);
+
+    h.speech.holdEnded();
+    h.speech.speak(said("third"));
+    await resolveCall(h, 2, audio());
+    expect(h.voice[1]).toEqual({ available: true, cause: null });
+  });
+});
+
+const errorRows: {
+  name: string;
+  throwsAtOnce: boolean;
+  fail: (h: Harness) => Promise<void>;
+}[] = [
+  {
+    name: "a failure with cause error",
+    throwsAtOnce: false,
+    fail: (h) => resolveCall(h, 0, failure("error")),
+  },
+  {
+    name: "a rejected synthesize",
+    throwsAtOnce: false,
+    fail: (h) => {
+      h.calls[0].reject(new TypeError("socket closed"));
+      return flush();
+    },
+  },
+  {
+    name: "a synthesize that throws synchronously",
+    throwsAtOnce: true,
+    fail: () => flush(),
+  },
+];
+
+describe("synthesis errors", () => {
+  it.each(errorRows)(
+    "$name drops only that line, with no report",
+    async ({ throwsAtOnce, fail }) => {
+      const h = createHarness();
+      if (throwsAtOnce) {
+        h.synthesize.mockImplementationOnce(() => {
+          throw new Error("boom");
+        });
+      }
+      h.speech.speak(said("first"));
+      h.speech.speak(said("second"));
+      await fail(h);
+      expect(h.voice).toEqual([]);
+      expect(h.speeches).toEqual([]);
+      expect(h.texts()).toEqual(
+        throwsAtOnce ? ["second"] : ["first", "second"],
+      );
+      await resolveCall(h, h.calls.length - 1, audio(2));
+      expect(h.speeches.map((s) => [...new Uint8Array(s.audio)])).toEqual([
+        [2],
+      ]);
+    },
+  );
 });

@@ -1,6 +1,6 @@
 import type { DisplayState, TaskCard, TaskId } from "../../shared/cards";
 import type { Model } from "./record";
-import { shownQuestion } from "./questions";
+import { shownQuestion } from "./record";
 import type { RecentExchange, TaskSummary, WaitingQuestion } from "./talk";
 
 const RECENT_COUNT = 5;

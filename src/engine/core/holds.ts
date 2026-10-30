@@ -16,13 +16,13 @@ export type Holds = {
   held: Map<TaskId, Hold>;
 };
 
-// A run's view of what it has found so far; the run sets current when it starts.
+// The run sets current when it starts.
 export type FoundSoFar = { current: () => Findings | null };
 
 // The work of one held task: it returns its one terminal event, or null when it has nothing to say.
 type HeldWork = {
   start: (signal: AbortSignal) => Promise<EngineEvent | null>;
-  found: () => Findings | null; // what the work has found so far
+  found: () => Findings | null;
   onThrow: (found: Findings | null) => EngineEvent;
 };
 

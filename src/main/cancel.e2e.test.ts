@@ -12,6 +12,7 @@ type CancelRow = {
   taskId: TaskId;
   ending: EngineEvent | null; // the engine's reply that ends the step; null when nothing is in flight
   starts: TaskId | null; // the queued task that runs once the ending arrives
+  aborts: boolean; // the cancel aborts a front call in flight
 };
 
 const answerSpoken = "Hermes runs a loop.";
@@ -43,6 +44,7 @@ const rows: CancelRow[] = [
     taskId: "t2",
     ending: null,
     starts: null,
+    aborts: false,
   },
   {
     name: "clarifying, question shown and not answered",
@@ -50,6 +52,7 @@ const rows: CancelRow[] = [
     taskId: "t4",
     ending: null,
     starts: null,
+    aborts: false,
   },
   {
     name: "thinking after a front call failure",
@@ -60,6 +63,7 @@ const rows: CancelRow[] = [
     taskId: "t4",
     ending: null,
     starts: null,
+    aborts: false,
   },
   {
     name: "thinking, front call in flight",
@@ -67,20 +71,18 @@ const rows: CancelRow[] = [
     taskId: "t4",
     ending: null,
     starts: null,
+    aborts: true,
   },
   {
-    name: "clarifying, answer's front call in flight",
+    name: "clarifying, a typed answer's front call in flight",
     prepare: async (w) => {
       await clarifying(w);
-      w.send(ipcChannels.answerQuestion, {
-        taskId: "t4",
-        questionId: "t4:question",
-        reply: { kind: "choice", index: 0 },
-      });
+      w.send(ipcChannels.submitQuestion, { text: "Office" });
     },
     taskId: "t4",
     ending: null,
     starts: null,
+    aborts: false,
   },
   {
     name: "running",
@@ -88,6 +90,7 @@ const rows: CancelRow[] = [
     taskId: "t1",
     ending: cancelled("t1"),
     starts: "t2",
+    aborts: false,
   },
   {
     name: "running, a result arrives instead",
@@ -100,8 +103,28 @@ const rows: CancelRow[] = [
       findings: findings(answerSpoken),
     },
     starts: "t2",
+    aborts: false,
+  },
+  {
+    name: "running, an incomplete arrives instead",
+    prepare: () => undefined,
+    taskId: "t1",
+    ending: {
+      type: "incomplete",
+      taskId: "t1",
+      incomplete: { kind: "limitHit", findings: findings("Part.") },
+    },
+    starts: "t2",
+    aborts: false,
   },
 ];
+
+const done = (taskId: TaskId): EngineEvent => ({
+  type: "result",
+  taskId,
+  spokenLine: "Done.",
+  findings: findings("Done."),
+});
 
 const others = (w: Wired, taskId: TaskId): TaskCard[] =>
   w.published.at(-1)?.tasks.filter((card) => card.taskId !== taskId) ?? [];
@@ -133,9 +156,15 @@ describe("cancel by the renderer action, nothing in flight", () => {
     expect(w.card(row.taskId)).toMatchObject({
       state: "cancelled",
       line: null,
+      step: null,
       question: null,
+      answer: null,
+      missing: null,
       canRetry: false,
     });
+    expect(w.talkerCalls.filter((call) => call.aborted)).toHaveLength(
+      row.aborts ? 1 : 0,
+    );
     expect(w.port.sent).toHaveLength(sentBefore);
     expect(others(w, row.taskId)).toEqual(othersBefore);
     expect(w.failures).toEqual([]);
@@ -149,7 +178,14 @@ describe("cancel by the renderer action, a step in flight", () => {
       const w = await prepared(row);
       const sentBefore = w.port.sent.length;
       const othersBefore = others(w, row.taskId);
+      const before = w.card(row.taskId);
       w.send(ipcChannels.cancelTask, { taskId: row.taskId });
+      expect(w.card(row.taskId)).toEqual({
+        ...before,
+        state: "cancelling",
+        canRetry: false,
+      });
+      w.advance(60_000);
       expect(w.card(row.taskId)?.state).toBe("cancelling");
       expect(w.port.sent.slice(sentBefore)).toEqual([
         { type: "cancel", taskId: row.taskId },
@@ -187,6 +223,20 @@ function expectNextStarted(
     cards.filter((card) => card.taskId !== row.starts);
   expect(unmoved(others(w, row.taskId))).toEqual(unmoved(othersBefore));
 }
+
+describe("cancelling a running task's speech", () => {
+  it("stops its playing line at the cancel, before the engine replies", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await w.settleNext();
+    const lineId = w.speeches[0].lineId;
+    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    expect(w.port.events).toEqual([]);
+    expect(w.stops).toEqual([{ lineId }]);
+    w.port.emit(cancelled("t1"));
+    expect(w.stops).toEqual([{ lineId }]);
+  });
+});
 
 describe("the queue after a cancel", () => {
   it.each(rows)(
@@ -248,7 +298,8 @@ describe("a cancelled card's lifetime", () => {
 
 describe("a result that ends a cancelling task", () => {
   it("shows no answer and speaks none", async () => {
-    const row = rows[rows.length - 1];
+    const row = rows.find((other) => other.ending?.type === "result");
+    if (row === undefined) throw new Error("no row ends with a result");
     const w = await cancelToEnd(row);
     expect(w.card("t1")?.answer).toBeNull();
     await w.playAll();
@@ -270,8 +321,78 @@ describe("a late front reply for a cancelled card", () => {
       text: "Late.",
       decision: newTask("laptops"),
     });
+    w.wiring.state.talkerReplied("t4", "t4#1", {
+      kind: "failed",
+      failure: "error",
+    });
     expect(w.published).toHaveLength(published);
     expect(w.port.sent).toHaveLength(sent);
     expect(w.card("t4")).toMatchObject({ state: "cancelled", reply: null });
+  });
+});
+
+const endedRows: { name: string; taskId: TaskId; end: (w: Wired) => void }[] = [
+  {
+    name: "a cancelling task",
+    taskId: "t1",
+    end: (w) => w.send(ipcChannels.cancelTask, { taskId: "t1" }),
+  },
+  { name: "a done task", taskId: "t1", end: (w) => w.port.emit(done("t1")) },
+  {
+    name: "an incomplete task",
+    taskId: "t1",
+    end: (w) =>
+      w.port.emit({
+        type: "incomplete",
+        taskId: "t1",
+        incomplete: { kind: "limitHit", findings: findings("Part.") },
+      }),
+  },
+  {
+    name: "a cancelled task",
+    taskId: "t2",
+    end: (w) => w.send(ipcChannels.cancelTask, { taskId: "t2" }),
+  },
+  { name: "an unknown task", taskId: "t9", end: () => undefined },
+];
+
+describe("a cancel that changes nothing", () => {
+  it.each(endedRows)("is dropped for $name", async ({ taskId, end }) => {
+    const w = wire();
+    await background(w);
+    end(w);
+    const counts = () => [
+      w.published.length,
+      w.port.sent.length,
+      w.syntheses.length,
+    ];
+    const before = counts();
+    w.send(ipcChannels.cancelTask, { taskId });
+    expect(counts()).toEqual(before);
+  });
+});
+
+describe("a cancel the engine sends unasked", () => {
+  it("ends the running task cancelled and frees the slot for the next", async () => {
+    const w = wire();
+    await background(w);
+    w.port.emit(cancelled("t1"));
+    expect(w.card("t1")?.state).toBe("cancelled");
+    expect(w.card("t2")?.state).toBe("running");
+  });
+});
+
+describe("cancelling a clarifying task", () => {
+  it("ends it at once when no answer is in flight and shows the next question", async () => {
+    const w = wire();
+    await clarifying(w);
+    await clarifying(w);
+    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    expect(w.card("t1")?.state).toBe("cancelled");
+    expect(w.port.sent).toEqual([]);
+    expect(w.card("t2")?.question).toMatchObject({
+      questionId: "t2:question",
+      answered: false,
+    });
   });
 });

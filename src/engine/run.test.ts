@@ -105,38 +105,6 @@ describe("runTask worker requests", () => {
   });
 });
 
-describe("runTask prompt start", () => {
-  it("keeps the prompt start byte-identical between two tasks", async () => {
-    const run = await startRun([
-      { ok: false, failure: "error", detail: "x" },
-      { ok: false, failure: "error", detail: "x" },
-    ]);
-    run.port.send(runTask());
-    run.port.send(runTask({ taskId: "task-2" }));
-    await run.settle(2);
-    const [first, second] = run.workerRequests();
-    expect(run.workerRequests()).toHaveLength(2);
-    expect(promptStart(second)).toBe(promptStart(first));
-  });
-
-  it("only appends to the history, thinking blocks included", async () => {
-    const run = await startRun(happySteps(), [hits(pageUrl("one"))]);
-    run.port.send(runTask());
-    await run.ended();
-    const worker = run.workerRequests().slice(0, 4);
-    for (const [step, request] of worker.entries()) {
-      expect(request.messages).toHaveLength(1 + 2 * step);
-      if (step === 0) continue;
-      const before = worker[step - 1].messages;
-      expect(request.messages.slice(0, before.length)).toEqual(before);
-    }
-    expect(worker[1].messages[1]).toMatchObject({
-      role: "assistant",
-      content: [thinkingBlock, { type: "tool_use", name: "search" }],
-    });
-  });
-});
-
 const parent: ParentResult = {
   taskId: "task-0",
   outcome: "done",

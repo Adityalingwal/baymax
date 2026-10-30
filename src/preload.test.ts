@@ -69,19 +69,6 @@ const actionRows: ActionRow[] = [
     expected: [ipcChannels.submitQuestion, { text: "how does Hermes work" }],
   },
   {
-    name: "answerQuestion",
-    act: () =>
-      api.answerQuestion({
-        taskId: "t1",
-        questionId: "q1",
-        reply: { kind: "choice", index: 0 },
-      }),
-    expected: [
-      ipcChannels.answerQuestion,
-      { taskId: "t1", questionId: "q1", reply: { kind: "choice", index: 0 } },
-    ],
-  },
-  {
     name: "cancelTask",
     act: () => api.cancelTask(taskAction),
     expected: [ipcChannels.cancelTask, taskAction],
@@ -90,16 +77,6 @@ const actionRows: ActionRow[] = [
     name: "retryTask",
     act: () => api.retryTask(taskAction),
     expected: [ipcChannels.retryTask, taskAction],
-  },
-  {
-    name: "closeCard",
-    act: () => api.closeCard(taskAction),
-    expected: [ipcChannels.closeCard, taskAction],
-  },
-  {
-    name: "setCardFolded",
-    act: () => api.setCardFolded({ taskId: "t1", folded: true }),
-    expected: [ipcChannels.setCardFolded, { taskId: "t1", folded: true }],
   },
   {
     name: "openSource",
@@ -161,13 +138,6 @@ type SubscriptionRow = {
 };
 
 const subscriptionRows: SubscriptionRow[] = [
-  {
-    name: "onHoldState",
-    subscribe: (callback) => api.onHoldState(callback),
-    channel: ipcChannels.holdState,
-    payload: "listening",
-    replay: [[ipcChannels.getHoldState]],
-  },
   {
     name: "onDisplayState",
     subscribe: (callback) => api.onDisplayState(callback),

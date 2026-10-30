@@ -64,11 +64,8 @@ function useDemoSwitch(): boolean {
 function demoActions(dispatch: Dispatch<DemoAction>): CardActions {
   return {
     submitQuestion: (payload) => dispatch({ kind: "submitQuestion", payload }),
-    answerQuestion: (payload) => dispatch({ kind: "answerQuestion", payload }),
     cancelTask: (payload) => dispatch({ kind: "cancelTask", payload }),
     retryTask: (payload) => dispatch({ kind: "retryTask", payload }),
-    closeCard: (payload) => dispatch({ kind: "closeCard", payload }),
-    setCardFolded: (payload) => dispatch({ kind: "setCardFolded", payload }),
     openSource: (payload) => {
       console.log("[Demo] openSource", payload);
       dispatch({ kind: "openSource", payload });

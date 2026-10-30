@@ -8,7 +8,6 @@ import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import { runResearch } from "./plugs";
 import type { RunTaskCommand } from "./plugs";
-import { briefInstructions } from "./plugs/research/brief-prompt";
 import {
   ask,
   closeRuns,
@@ -194,23 +193,6 @@ describe("the brief writer: the default brief", () => {
   );
 });
 
-describe("the brief writer: cancel", () => {
-  it("stops at a cancel during the Sonnet call: no Opus call, no worker, one cancelled", async () => {
-    const run = await startRun([], [], undefined, undefined, ["waitForAbort"]);
-    run.port.send(runTask());
-    await run.settle();
-    run.port.send({ type: "cancel", taskId: "task-1" });
-    expect(await run.ended()).toEqual([
-      { type: "cancelled", taskId: "task-1", findings: null },
-    ]);
-    expect(run.briefRequests()).toHaveLength(1);
-    expect(run.workerRequests()).toHaveLength(0);
-    expect(run.entries.map((entry) => entry.event)).not.toContain(
-      "briefDefault",
-    );
-  });
-});
-
 describe("the brief writer: its request", () => {
   it("sends the brief writer the date, the escaped words and goal, and no history", async () => {
     const parent: ParentResult = {
@@ -232,7 +214,6 @@ describe("the brief writer: its request", () => {
     run.port.send(command);
     await run.ended();
     const [request] = run.briefRequests();
-    expect(request.system).toBe(briefInstructions);
     expect(request.messages).toHaveLength(1);
     expect(textOf(request)).toBe(
       [

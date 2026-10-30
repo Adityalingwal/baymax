@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { searchWeb } from "./search";
-import type { SearchOutcome } from "./search";
+import { searchWeb } from "./exa";
+import type { SearchOutcome } from "./exa";
 
 const key = "exa-test-key-123";
 const never = new AbortController().signal;

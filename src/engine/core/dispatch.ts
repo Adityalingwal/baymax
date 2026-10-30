@@ -7,9 +7,8 @@ import type {
 } from "../../providers/anthropic";
 import type { TaskId } from "../../shared/cards";
 import type { DevLog } from "./dev-log";
-import { roles, taskLimits } from "./limits";
+import { costOf, roles, taskLimits } from "./limits";
 import type { Role, TaskBudget } from "./limits";
-import { costOf } from "./pricing";
 
 export type DispatchOutcome =
   | { ok: true; message: Anthropic.Message }

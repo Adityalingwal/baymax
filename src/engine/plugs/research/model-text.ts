@@ -1,7 +1,6 @@
-import type { SearchHit } from "../../../providers/search";
+import type { SearchHit } from "../../../providers/exa";
 import type { Findings } from "../../../shared/cards";
 import type { ParentResult } from "../../../shared/engine";
-import type { WorkerBrief } from "./brief";
 import type { ReadPage } from "./page-text";
 
 // Page text and snippets are untrusted: escaping keeps them from closing or opening a block.
@@ -45,17 +44,6 @@ export function taggedText(tag: string, text: string): string {
   return `<${tag}>\n${escapeText(text)}\n</${tag}>`;
 }
 
-export function briefForModel(brief: WorkerBrief): string {
-  const parts = [
-    taggedText("goal", brief.goal),
-    taggedText("result_shape", brief.resultShape),
-    taggedText("sources", brief.sources),
-    taggedText("limits", brief.limits),
-    taggedText("user_words", brief.userWords),
-  ];
-  return `<brief>\n${parts.join("\n")}\n</brief>`;
-}
-
 function findingsLines(findings: Findings | null): string[] {
   if (findings === null) return ["No findings."];
   const sources = findings.sources.map(
@@ -69,7 +57,6 @@ function findingsLines(findings: Findings | null): string[] {
   ];
 }
 
-// What an earlier task left, for the brief writer and the worker alike.
 export function parentResultBlock(parent: ParentResult): string {
   const lines = [
     `outcome: ${parent.outcome}`,

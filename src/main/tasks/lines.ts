@@ -32,7 +32,7 @@ const failureLines: Record<FailureKind, string> = {
   error: "I hit an error on that question. Try again.",
 };
 
-export function failureLine(kind: FailureKind): string {
+function failureLine(kind: FailureKind): string {
   return failureLines[kind];
 }
 
@@ -46,10 +46,7 @@ function topicShort(topic: string | null): string {
   return (topic ?? "").split(",")[0].trim();
 }
 
-export function taskShortForm(
-  topic: string | null,
-  fallback = "This task",
-): string {
+function taskShortForm(topic: string | null, fallback = "This task"): string {
   const short = topicShort(topic);
   if (short === "") return fallback;
   return short[0].toUpperCase() + short.slice(1);

@@ -1,160 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  createHarness,
-  finished,
-  flush,
-  frontRequest,
-  lastUserText,
-} from "./talker.harness";
+import { createHarness, finished, flush, frontRequest } from "./talker.harness";
 
 const decide = (input: unknown) => ({ name: "decide", input });
-
-const turns = [
-  { role: "user", text: "hi" },
-  { role: "assistant", text: "Hello!" },
-] as const;
-
-describe("the front call's request", () => {
-  it("asks Fable 5.1 at low effort with the decide tool, no thinking and no tool choice", () => {
-    const h = createHarness();
-    h.talker.talk(frontRequest({ history: [...turns] }));
-    const [{ request }] = h.calls;
-    expect(request).toMatchObject({
-      model: "claude-fable-5-1",
-      max_tokens: 2048,
-      output_config: { effort: "low" },
-      tools: [{ name: "decide" }],
-    });
-    expect(request.thinking).toBeUndefined();
-    expect(request.tool_choice).toBeUndefined();
-    expect(request.system).toContain("Then call the decide tool once");
-  });
-
-  it("asks decide for a one-line goal, not a brief", () => {
-    const h = createHarness();
-    h.talker.talk(frontRequest());
-    const { request } = h.calls[0];
-    const [tool] = request.tools ?? [];
-    expect(tool).toMatchObject({
-      input_schema: {
-        required: [
-          "route",
-          "topic",
-          "parentTaskId",
-          "answerTo",
-          "choices",
-          "goal",
-        ],
-        properties: { goal: { type: ["string", "null"] } },
-      },
-    });
-    expect(tool).not.toHaveProperty("input_schema.properties.brief");
-    const system = String(request.system);
-    expect(system).toContain(
-      "goal, for newTask and followUp: one sentence naming what the user wants to know",
-    );
-    expect(system).toContain(
-      "A separate step turns it into the research brief",
-    );
-    expect(system).not.toContain("resultShape");
-    expect(system).not.toContain("brief, for newTask");
-  });
-});
-
-describe("the front call's instructions", () => {
-  it("carry the prompt rules from the live tests: a bare greeting, an open question, an answer already written", () => {
-    const h = createHarness();
-    h.talker.talk(frontRequest());
-    const system = String(h.calls[0].request.system);
-    expect(system).toContain(
-      "A greeting gets a short greeting back, and the line ends there.",
-    );
-    expect(system).toContain(
-      'there is no request yet, such as "can you help me with a task?"',
-    );
-    expect(system).toContain(
-      "a question whose answer is already written in an earlier answer in this conversation",
-    );
-    expect(system).toContain("Never invent a task id or a question id.");
-  });
-
-  it("sends the history as real turns before the current one, with the cache mark on the last history turn", () => {
-    const h = createHarness();
-    h.talker.talk(frontRequest({ history: [...turns] }));
-    const { messages } = h.calls[0].request;
-    expect(messages).toEqual([
-      { role: "user", content: "hi" },
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "text",
-            text: "Hello!",
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-      },
-      { role: "user", content: expect.stringContaining("<words>") },
-    ]);
-  });
-
-  it("sends only the current turn, with no cache mark, when there is no history", () => {
-    const h = createHarness();
-    h.talker.talk(frontRequest());
-    expect(h.calls[0].request.messages).toHaveLength(1);
-    expect(JSON.stringify(h.calls[0].request)).not.toContain("cache_control");
-  });
-});
-
-describe("the front call's data blocks", () => {
-  it("carries every id and card fact the instructions refer to", () => {
-    const h = createHarness();
-    h.talker.talk(
-      frontRequest({
-        recent: [
-          {
-            taskId: "t0",
-            state: "done",
-            question: "headphones under 30k",
-            answer: "Three picks.",
-            cardText: "Sennheiser 24,990 | Sony 26,990",
-          },
-        ],
-        tasks: [
-          { taskId: "t1", state: "running", words: "hermes", topic: "Hermes" },
-        ],
-        waiting: {
-          taskId: "t3",
-          words: "find me a laptop",
-          question: {
-            questionId: "t3:question",
-            text: "For what use?",
-            choices: ["Office", "Gaming"],
-          },
-        },
-      }),
-    );
-    const text = lastUserText(h.calls[0].request);
-    for (const fact of [
-      "<words>\nwill it rain in Delhi tomorrow?\n</words>",
-      "task t0 (done): question: headphones under 30k | answer: Three picks.",
-      "card: Sennheiser 24,990 | Sony 26,990",
-      "task t1 (running): hermes | topic: Hermes",
-      "task id: t3",
-      "question id: t3:question",
-      "request: find me a laptop",
-      "question: For what use?",
-      "- Office",
-      "- Gaming",
-    ]) {
-      expect(text).toContain(fact);
-    }
-    h.talker.talk(frontRequest({ attemptId: "t4#1", taskId: "t4" }));
-    expect(lastUserText(h.calls[1].request)).toContain(
-      "<waiting_question>\nnone\n</waiting_question>",
-    );
-  });
-});
 
 describe("the front call's line and decision", () => {
   it("streams the line into speech, ends it when the tool starts, and drops text after it", async () => {
@@ -198,5 +45,291 @@ describe("the front call's line and decision", () => {
       text: "It's 4.",
       decision: null,
     });
+  });
+});
+
+const input = { route: "chat" };
+
+const rows = [
+  [
+    "a rejected key",
+    { ok: false, failure: "keyRejected", detail: "x" },
+    "keyRejected",
+  ],
+  ["no credit", { ok: false, failure: "noCredit", detail: "x" }, "noCredit"],
+  [
+    "an unreachable model",
+    { ok: false, failure: "unreachable", detail: "x" },
+    "modelsUnreachable",
+  ],
+  ["an error", { ok: false, failure: "error", detail: "x" }, "error"],
+  ["no text", finished("  ", [decide(input)]), "error"],
+  ["a truncated reply", finished("Hi", [decide(input)], "max_tokens"), "error"],
+  ["a refusal", finished("No.", [], "refusal"), "error"],
+  ["two tools", finished("Hi", [decide(input), decide(input)]), "error"],
+  ["another tool", finished("Hi", [{ name: "search", input }]), "error"],
+  [
+    "a tool without the tool stop",
+    finished("Hi", [decide(input)], "end_turn"),
+    "error",
+  ],
+] as const;
+
+describe("a failing front call", () => {
+  it.each(rows)(
+    "reports %s as %s, never throwing",
+    async (_name, outcome, kind) => {
+      const h = createHarness();
+      h.talker.talk(frontRequest());
+      h.calls[0].resolve(outcome);
+      await flush();
+      const spoken = outcome.ok ? outcome.text.trim() : "";
+      expect(h.lines[0].parts).toEqual(["<end>"]);
+      expect(h.replies).toEqual([
+        {
+          taskId: "t2",
+          attemptId: "t2#1",
+          reply: {
+            kind: "failed",
+            failure: kind,
+            ...(spoken === "" ? {} : { text: spoken }),
+          },
+        },
+      ]);
+      expect(h.logs[0]).toContain("talker front call failed");
+    },
+  );
+});
+
+describe("a front call that fails after speaking", () => {
+  it("reports the line it already spoke", async () => {
+    const h = createHarness();
+    h.talker.talk(frontRequest());
+    h.calls[0].onText("It's ");
+    h.calls[0].onText("four.");
+    h.calls[0].resolve({ ok: false, failure: "unreachable", detail: "x" });
+    await flush();
+    expect(h.replies[0].reply).toEqual({
+      kind: "failed",
+      failure: "modelsUnreachable",
+      text: "It's four.",
+    });
+  });
+});
+
+describe("a front call without a key", () => {
+  it("fails as a rejected key without an Anthropic key", async () => {
+    const h = createHarness({ noKey: true });
+    h.talker.talk(frontRequest());
+    await flush();
+    expect(h.replies[0].reply).toEqual({
+      kind: "failed",
+      failure: "keyRejected",
+    });
+  });
+});
+
+type Deadline = {
+  name: string;
+  words: { at: number; text: string }[]; // text the call streams, at ms after it starts
+  toolAt: number | null; // when the tool block starts, which ends the line
+  failsAt: number; // when the attempt is reported as failed
+  parts: string[]; // what reached speech
+  text?: string; // the reply carries the spoken text
+};
+
+const deadlines: Deadline[] = [
+  {
+    name: "no words by 6 s",
+    words: [],
+    toolAt: null,
+    failsAt: 6_000,
+    parts: ["<cut>"],
+  },
+  {
+    name: "whitespace only by 6 s",
+    words: [{ at: 500, text: "  " }],
+    toolAt: null,
+    failsAt: 6_000,
+    parts: ["  ", "<cut>"],
+  },
+  {
+    name: "words at 1 s and a call that never finishes",
+    words: [{ at: 1_000, text: "I'll " }],
+    toolAt: null,
+    failsAt: 30_000,
+    parts: ["I'll ", "<cut>"],
+    text: "I'll",
+  },
+  {
+    name: "words at 5.9 s, a line that ended, and a tool that never finishes",
+    words: [{ at: 5_900, text: "I'll check." }],
+    toolAt: 6_000,
+    failsAt: 30_000,
+    parts: ["I'll check.", "<end>"],
+    text: "I'll check.",
+  },
+];
+
+// What the fake call does, in time order: its words and the start of its tool.
+function scripted(h: ReturnType<typeof createHarness>, row: Deadline) {
+  const words = row.words.map((word) => ({
+    at: word.at,
+    run: () => h.calls[0].onText(word.text),
+  }));
+  const tool =
+    row.toolAt === null
+      ? []
+      : [{ at: row.toolAt, run: () => h.calls[0].onToolStart() }];
+  return [...words, ...tool].sort((a, b) => a.at - b.at);
+}
+
+describe("the two front deadlines", () => {
+  it.each(deadlines)(
+    "$name: fails once at the right time with both timers cleared",
+    async (row) => {
+      const h = createHarness();
+      h.talker.talk(frontRequest());
+      expect(h.pendingTimers()).toBe(2);
+      let now = 0;
+      const to = (ms: number) => {
+        h.advance(ms - now);
+        now = ms;
+      };
+      const events = scripted(h, row);
+      for (const event of events) {
+        to(event.at);
+        event.run();
+      }
+      to(row.failsAt - 1);
+      await flush();
+      expect(h.replies).toEqual([]);
+      expect(h.calls[0].signal.aborted).toBe(false);
+      to(row.failsAt);
+      await flush();
+      expect(h.calls[0].signal.aborted).toBe(true);
+      expect(h.lines[0].parts).toEqual(row.parts);
+      expect(h.replies).toEqual([
+        {
+          taskId: "t2",
+          attemptId: "t2#1",
+          reply: {
+            kind: "failed",
+            failure: "modelsUnreachable",
+            ...(row.text === undefined ? {} : { text: row.text }),
+          },
+        },
+      ]);
+      expect(h.pendingTimers()).toBe(0);
+      to(60_000);
+      await flush();
+      expect(h.replies).toHaveLength(1);
+    },
+  );
+});
+
+describe("the front deadlines end with the attempt", () => {
+  it("clears both timers when the call finishes in time", async () => {
+    const h = createHarness();
+    h.talker.talk(frontRequest());
+    h.advance(3_000);
+    h.calls[0].resolve(finished("Hi.", [decide({ route: "chat" })]));
+    await flush();
+    expect(h.pendingTimers()).toBe(0);
+    h.advance(60_000);
+    await flush();
+    expect(h.replies).toHaveLength(1);
+    expect(h.calls[0].signal.aborted).toBe(false);
+  });
+
+  it.each([
+    ["a failed call", { ok: false, failure: "error", detail: "x" } as const],
+    ["a call that finished with no tool", finished("Hi.", [])],
+  ])("clears both timers after %s", async (_name, outcome) => {
+    const h = createHarness();
+    h.talker.talk(frontRequest());
+    h.calls[0].resolve(outcome);
+    await flush();
+    expect(h.pendingTimers()).toBe(0);
+  });
+
+  it("clears both timers on cancel and on shutdown", () => {
+    const h = createHarness();
+    h.talker.talk(frontRequest());
+    h.talker.talk(frontRequest({ attemptId: "t5#1", taskId: "t5" }));
+    expect(h.pendingTimers()).toBe(4);
+    h.talker.cancel("t2#1");
+    expect(h.pendingTimers()).toBe(2);
+    h.talker.shutdown();
+    expect(h.pendingTimers()).toBe(0);
+  });
+});
+
+describe("a late result after the deadline", () => {
+  it.each([
+    ["success", finished("I'll check.", [decide({ route: "chat" })])],
+    ["failure", { ok: false, failure: "error", detail: "late" } as const],
+  ])(
+    "changes nothing when a late %s arrives after the deadline",
+    async (_name, late) => {
+      const h = createHarness({ ignoreAbort: true });
+      h.talker.talk(frontRequest());
+      h.calls[0].onText("I'll ");
+      h.advance(30_000);
+      await flush();
+      expect(h.calls[0].signal.aborted).toBe(true);
+      const spoken = [...h.lines[0].parts];
+      h.calls[0].onText("more");
+      h.calls[0].onToolStart();
+      h.calls[0].resolve(late);
+      await flush();
+      expect(h.replies).toHaveLength(1);
+      expect(h.lines[0].parts).toEqual(spoken);
+    },
+  );
+});
+
+describe("cancelling an attempt", () => {
+  it("before any text: aborts the call, cuts the line and reports nothing", async () => {
+    const h = createHarness();
+    h.talker.talk(frontRequest());
+    h.talker.cancel("t2#1");
+    await flush();
+    expect(h.calls[0].signal.aborted).toBe(true);
+    expect(h.lines[0].parts).toEqual(["<cut>"]);
+    expect(h.replies).toEqual([]);
+  });
+
+  it.each([
+    ["success", finished("I'll check", [decide({ route: "chat" })])],
+    ["failure", { ok: false, failure: "error", detail: "late" } as const],
+  ])(
+    "after text: cuts the spoken line, and a late %s changes nothing",
+    async (_name, late) => {
+      const h = createHarness({ ignoreAbort: true });
+      h.talker.talk(frontRequest());
+      h.calls[0].onText("I'll check");
+      h.talker.cancel("t2#1");
+      expect(h.calls[0].signal.aborted).toBe(true);
+      h.calls[0].onText(" more");
+      h.calls[0].onToolStart();
+      h.calls[0].resolve(late);
+      await flush();
+      h.advance(20_000);
+      expect(h.lines[0].parts).toEqual(["I'll check", "<cut>"]);
+      expect(h.replies).toEqual([]);
+    },
+  );
+
+  it("shutdown cancels every attempt, and a late success changes nothing", async () => {
+    const h = createHarness({ ignoreAbort: true });
+    h.talker.talk(frontRequest());
+    h.talker.talk(frontRequest({ attemptId: "t5#1", taskId: "t5" }));
+    h.talker.shutdown();
+    h.calls[0].resolve(finished("Hi.", [decide({ route: "chat" })]));
+    await flush();
+    expect(h.calls.map((call) => call.signal.aborted)).toEqual([true, true]);
+    expect(h.lines.map((line) => line.parts)).toEqual([["<cut>"], ["<cut>"]]);
+    expect(h.replies).toEqual([]);
   });
 });
