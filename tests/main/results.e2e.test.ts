@@ -236,7 +236,6 @@ describe("a failed task through the wiring", () => {
         line,
         spokenLine: null,
         step: null,
-        sourcesRead: 2,
       });
       expect(w.talkerCalls).toHaveLength(2);
       const turn = String(w.talkerCalls[1].request.messages.at(-1)?.content);
@@ -287,7 +286,7 @@ describe("a running task's step", () => {
     const w = wire();
     await admitAs(w, "hermes");
     w.port.emit({ type: "progress", taskId: "t1", step, sourcesRead: 1 });
-    expect(w.card("t1")).toMatchObject({ step: text, sourcesRead: 1 });
+    expect(w.card("t1")).toMatchObject({ step: text });
   });
 });
 

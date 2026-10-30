@@ -53,7 +53,6 @@ describe("wireMain typed path", () => {
     });
     expect(w.card("t1")).toMatchObject({
       step: "searching: Hermes agent internals",
-      sourcesRead: 1,
     });
     w.port.emit({
       type: "result",

@@ -18,7 +18,6 @@ function card(fields: Partial<TaskCard>): TaskCard {
     line: null,
     spokenLine: null,
     step: null,
-    sourcesRead: 0,
     answer: null,
     canRetry: false,
     finishOrder: null,

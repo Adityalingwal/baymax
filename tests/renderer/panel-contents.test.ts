@@ -50,7 +50,6 @@ function card(taskId: string, cardText: string): TaskCard {
     line: null,
     spokenLine: "Done.",
     step: null,
-    sourcesRead: 0,
     answer: { cardText, sources: [] },
     canRetry: false,
     finishOrder: 1,

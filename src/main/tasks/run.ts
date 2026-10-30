@@ -234,7 +234,6 @@ export function retryTask(change: Change, taskId: TaskId): boolean {
   card.canRetry = false;
   card.line = null;
   card.answer = null;
-  card.sourcesRead = 0;
   startOrQueue(change, record, admission);
   return true;
 }
@@ -265,7 +264,6 @@ export function receiveRunEvent(
   switch (event.type) {
     case "progress":
       record.card.step = stepText(event.step);
-      record.card.sourcesRead = event.sourcesRead;
       return true;
     case "result":
       endDone(change, record, event.spokenLine, event.findings);

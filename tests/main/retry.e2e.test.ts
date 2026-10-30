@@ -125,7 +125,6 @@ describe("a yes routed retry", () => {
       state: "running",
       line: null,
       answer: null,
-      sourcesRead: 0,
       canRetry: false,
     });
     const shown = w.published.at(-1)?.tasks.map((card) => card.taskId);

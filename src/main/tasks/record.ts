@@ -130,7 +130,6 @@ export function addRecord(
       line: null,
       spokenLine: null,
       step: null,
-      sourcesRead: 0,
       answer: null,
       canRetry: false,
       finishOrder: null,
