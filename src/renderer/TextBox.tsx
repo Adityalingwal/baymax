@@ -24,7 +24,7 @@ export function TextBox({
   };
   return (
     <form
-      className="glass flex h-10 items-center gap-3 rounded-full pr-4 pl-4"
+      className="glass flex h-10 shrink-0 items-center gap-3 rounded-full pr-4 pl-4"
       onSubmit={ask}
     >
       <input
