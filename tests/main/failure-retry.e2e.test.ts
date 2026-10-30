@@ -549,6 +549,46 @@ const newResult = {
   findings: findings("Hermes runs a loop."),
 } as const;
 
+describe("cancelling a failed task", () => {
+  it("while its turn waits: the turn is gone and the engine hears nothing", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await w.playAll();
+    w.wiring.voice.holdChanged("listening", null);
+    failTask(w);
+    const sent = w.port.sent.length;
+    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    w.wiring.voice.holdChanged("idle", "discard");
+    expect(w.talkerCalls).toHaveLength(1);
+    expect(w.card("t1")).toMatchObject({ state: "cancelled", canRetry: false });
+    expect(w.port.sent).toHaveLength(sent);
+  });
+
+  it("while its call generates: the call is aborted and nothing joins Chat", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await w.playAll();
+    failTask(w);
+    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    expect(w.talkerCalls[1].aborted).toBe(true);
+    expect(w.card("t1")?.state).toBe("cancelled");
+    expect(w.chat()).toEqual([]);
+  });
+
+  it("while its line plays: the line stops and its offer is gone", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await w.playAll();
+    failTask(w);
+    await streamFront(w, replyRoute(), offerLine);
+    const playing = await w.settleNext();
+    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    expect(w.stops).toEqual([{ lineId: playing?.lineId }]);
+    ask(w, "yes");
+    expect(lastTurn(w)).not.toContain("open retry offer");
+  });
+});
+
 describe("the card's Retry during a failure turn", () => {
   it("while the call generates: aborts it, and the later result is still spoken", async () => {
     const w = wire();

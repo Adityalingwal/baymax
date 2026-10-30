@@ -307,6 +307,10 @@ export function cancelTask(change: Change, taskId: TaskId): boolean {
     case "queued":
       endCancelled(change, record, null);
       return true;
+    // The engine holds nothing for a failed task, so no cancel is sent; what it found stays for a follow-up.
+    case "failed":
+      endCancelled(change, record, record.card.answer);
+      return true;
     case "thinking":
     case "clarifying":
     case "running":
