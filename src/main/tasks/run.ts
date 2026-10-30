@@ -81,6 +81,7 @@ function endFailed(
   closeTask(change, record, { outcome: "failed", findings, spokenLine: null });
   record.card.answer = findings;
   record.card.line = line;
+  record.card.canRetry = record.admission !== null;
   say(change, record.card.taskId, line, "failure");
 }
 
@@ -173,15 +174,29 @@ function startTask(
   });
 }
 
+function startOrQueue(
+  change: Change,
+  record: TaskRecord,
+  admission: Admission,
+): void {
+  const { model } = change;
+  // Its line is already spoken, so work is never refused: a race past the limit queues one extra.
+  if (!slotBusy(model) && canStart(model, record)) {
+    startTask(change, record, admission);
+  } else {
+    record.card.state = "queued";
+    model.queue.push(record.card.taskId);
+  }
+}
+
 // The decision check already kept a follow-up's parent to tasks created before this one.
 export function admit(
   change: Change,
   record: TaskRecord,
   decision: Admitted,
 ): boolean {
-  const { model } = change;
   const { card } = record;
-  dropQuestion(model, record);
+  dropQuestion(change.model, record);
   record.shown = true;
   record.admission = { ask: decision.ask };
   record.topic = decision.topic;
@@ -189,13 +204,25 @@ export function admit(
   card.parentTaskId = decision.parentTaskId;
   card.canRetry = false;
   card.line = null;
-  // Its line is already spoken, so work is never refused: a race past the limit queues one extra.
-  if (!slotBusy(model) && canStart(model, record)) {
-    startTask(change, record, record.admission);
-  } else {
-    card.state = "queued";
-    model.queue.push(card.taskId);
+  startOrQueue(change, record, record.admission);
+  return true;
+}
+
+// The one way back in, for a yes and for the card's button: the same task runs again with its saved ask.
+export function retryTask(change: Change, taskId: TaskId): boolean {
+  const record = change.model.records.get(taskId);
+  const admission = record?.admission ?? null;
+  if (record === undefined || admission === null || !record.card.canRetry) {
+    return dropped(change, `retry ${taskId}`);
   }
+  const { card } = record;
+  change.model.answers.delete(taskId);
+  record.retried = true;
+  card.canRetry = false;
+  card.line = null;
+  card.answer = null;
+  card.sourcesRead = 0;
+  startOrQueue(change, record, admission);
   return true;
 }
 

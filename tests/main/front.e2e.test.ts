@@ -57,14 +57,6 @@ describe("the routes of a front decision", () => {
     expect(chat[0]).toMatchObject({ id: "c3", text: "hi 1" });
     expect(chat.at(-1)).toMatchObject({ id: "c202", text: "Hello 100." });
   });
-
-  it("retry: rejected until a failed task can be retried", async () => {
-    const w = wire();
-    ask(w, "yes, try again");
-    await streamFront(w, decision({ route: "retry", taskId: "t9" }));
-    expect(w.logs).toContain("decision rejected for t1: retryNotBuilt");
-    expect(w.port.sent).toEqual([]);
-  });
 });
 
 describe("the work route", () => {
@@ -280,8 +272,8 @@ const failures: Fail[] = [
     spoken: ["Okay.", stalledLine],
   },
   {
-    name: "route retry, not built yet",
-    fail: (w) => streamFront(w, decision({ route: "retry", taskId: "t1" })),
+    name: "a retry naming an unknown task",
+    fail: (w) => streamFront(w, decision({ route: "retry", taskId: "t9" })),
     line: stalledLine,
     spoken: ["Okay.", stalledLine],
   },

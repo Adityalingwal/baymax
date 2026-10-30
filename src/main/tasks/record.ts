@@ -32,6 +32,7 @@ export type TaskRecord = {
   attempt: Attempt | null;
   attempts: number;
   sent: EngineCommand | null;
+  retried: boolean; // limits only what the talker offers, never the card's Retry
 };
 
 export type Model = {
@@ -116,6 +117,7 @@ export function addRecord(
     attempt: null,
     attempts: 0,
     sent: null,
+    retried: false,
   };
   model.records.set(taskId, record);
   return record;

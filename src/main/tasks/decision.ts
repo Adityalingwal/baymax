@@ -6,7 +6,8 @@ type Route =
   | { route: "reply" }
   | { route: "ask"; topic: string | null }
   | { route: "work"; topic: string; ask: TaskAsk; parentTaskId: TaskId | null }
-  | { route: "stop"; taskId: TaskId };
+  | { route: "stop"; taskId: TaskId }
+  | { route: "retry"; taskId: TaskId };
 
 // The front call's decision after the checks; answerTo is the waiting question it answers.
 export type Decision = Route & { answerTo: QuestionId | null };
@@ -17,6 +18,7 @@ export type DecisionContext = {
   earlier: (taskId: TaskId) => ReadonlySet<TaskId>; // tasks created before the given task
   taskId: TaskId; // the task the words were asked as
   canStop: (taskId: TaskId) => boolean; // the task is running, queued or holding a waiting question
+  canRetry: (taskId: TaskId) => boolean; // the task is failed and was admitted
 };
 
 export type DecisionCheck =
@@ -113,6 +115,19 @@ function checkStop(raw: Fields, context: DecisionContext): DecisionCheck {
   };
 }
 
+// A yes to an offer is not an answer to a question; a task no longer failed makes the yes stale, so nothing starts.
+function checkRetry(raw: Fields, context: DecisionContext): DecisionCheck {
+  const taskId = filled(raw.taskId);
+  if (taskId === null) return fail("missingTaskId");
+  if ((raw.answerTo ?? null) !== null) return fail("answerOnRetry");
+  if (!context.canRetry(taskId)) return fail("cannotRetry");
+  return {
+    ok: true,
+    decision: { route: "retry", taskId, answerTo: null },
+    note: null,
+  };
+}
+
 // Checks the decide tool's raw input before main starts, binds or ends anything; no model is asked.
 export function checkDecision(
   raw: unknown,
@@ -121,7 +136,7 @@ export function checkDecision(
   if (!isFields(raw)) return fail("notAnObject");
   const route = readRoute(raw.route);
   if (route === null) return fail("unknownRoute");
-  if (route === "retry") return fail("retryNotBuilt");
+  if (route === "retry") return checkRetry(raw, context);
   if (route === "stop") return checkStop(raw, context);
   const answer = readAnswerTo(raw, route, context.waiting);
   if (!answer.ok) return fail(answer.reason);

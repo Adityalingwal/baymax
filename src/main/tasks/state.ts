@@ -26,6 +26,7 @@ import {
   receiveRunEvent,
   receiveUnaskedCancel,
   receiveWhileCancelling,
+  retryTask,
   startNext,
 } from "./run";
 
@@ -80,8 +81,7 @@ export function createMainState(deps: MainStateDeps): MainState {
       update((c) => ask(c, deps.nextTaskId, { words, utteranceId, waiting })),
     waitingQuestion: () => waitingQuestion(model),
     cancelTask: (taskId) => update((c) => cancelTask(c, taskId)),
-    // A failed front call has no card to retry, and no failed task can be retried yet.
-    retryTask: (taskId) => update((c) => dropped(c, `retry ${taskId}`)),
+    retryTask: (taskId) => update((c) => retryTask(c, taskId)),
     openSource: (payload) => update((c) => openSource(c, deps, payload)),
     setMuted: (muted) => update((c) => setMuted(c, muted)),
     setVoiceAvailable: (available) =>

@@ -13,7 +13,7 @@ import {
   say,
   talk,
 } from "./record";
-import { admit, cancelTask, endChat, endSpoken } from "./run";
+import { admit, cancelTask, endChat, endSpoken, retryTask } from "./run";
 import type { QuestionId, TalkerReply } from "./talk";
 
 // Starts one front call for the record; its id is unique, so a late result of an older call is told apart.
@@ -42,6 +42,10 @@ function earlierThan(model: Model, taskId: TaskId): ReadonlySet<TaskId> {
 function canStop(model: Model, taskId: TaskId): boolean {
   const state = model.records.get(taskId)?.card.state;
   return state === "running" || state === "queued" || state === "clarifying";
+}
+
+function canRetry(model: Model, taskId: TaskId): boolean {
+  return model.records.get(taskId)?.card.canRetry === true;
 }
 
 function addChatTurn(change: Change, words: string, line: string): void {
@@ -101,6 +105,13 @@ function applyDecision(
     endSpoken(change, record);
     return true;
   }
+  if (decision.route === "retry") {
+    addChatTurn(change, attempt.parts.words, line);
+    setExchangeTask(change.model.exchanges, attempt.order, decision.taskId);
+    retryTask(change, decision.taskId);
+    endSpoken(change, record);
+    return true;
+  }
   if (decision.route !== "work" || decision.answerTo !== null) {
     addChatTurn(change, attempt.parts.words, line);
   }
@@ -152,6 +163,7 @@ export function receiveFront(
     taskId,
     earlier: (id: TaskId) => earlierThan(change.model, id),
     canStop: (id: TaskId) => canStop(change.model, id),
+    canRetry: (id: TaskId) => canRetry(change.model, id),
   };
   const check = checkDecision(reply.decision, context);
   if (!check.ok) {
