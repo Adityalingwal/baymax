@@ -87,6 +87,24 @@ describe("two spoken questions", () => {
     expect(w.wiring.state.waitingQuestion()).toMatchObject({ taskId: "t2" });
   });
 
+  it("orders them as spoken when the first call's decision comes last", async () => {
+    const w = wire();
+    ask(w, "a laptop");
+    ask(w, "a hotel");
+    await streamFront(w, askRoute(), "Which city?", 1);
+    await streamFront(w, askRoute(), "What budget?", 0);
+    expect(w.wiring.state.waitingQuestion()).toMatchObject({ taskId: "t2" });
+    await flush();
+    await w.playAll();
+    expect(w.spoken()).toEqual(["What budget?", "Which city?"]);
+    await answerWith(w, "in Delhi", workRoute("hotels", "t2:question"));
+    expect(w.wiring.state.waitingQuestion()).toMatchObject({ taskId: "t1" });
+    await flush();
+    await w.playAll();
+    expect(synthesized(w, "What budget?")).toBe(2);
+    expect(synthesized(w, "Which city?")).toBe(1);
+  });
+
   it.each([
     {
       name: "the latest is answered",

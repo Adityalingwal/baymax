@@ -41,7 +41,7 @@ export type Model = {
   exchanges: Exchange[];
   exchangeOrder: number;
   queue: TaskId[];
-  questions: TaskId[]; // the records holding a question, in the order spoken
+  questions: { taskId: TaskId; order: number }[]; // the records holding a question, in the order spoken
   askedQuestion: QuestionId | null; // the question the user last heard as the active one
   chat: ChatEntry[];
   chatEntries: number; // how many were ever added, for their ids
@@ -191,22 +191,33 @@ export function addChat(
 
 // The latest question spoken is the active one; an older one stays pending.
 export function activeQuestion(model: Model): TaskRecord | null {
-  const taskId = model.questions.at(-1);
-  return taskId === undefined ? null : (model.records.get(taskId) ?? null);
+  const latest = model.questions.at(-1);
+  return latest === undefined
+    ? null
+    : (model.records.get(latest.taskId) ?? null);
 }
 
-export function holdQuestion(change: Change, record: TaskRecord, text: string) {
+// A slower call's decision can arrive after a later call's, so a question takes its place by when its call started, which is when its line got its turn to speak.
+export function holdQuestion(
+  change: Change,
+  record: TaskRecord,
+  text: string,
+  order: number,
+): void {
   const { model } = change;
   const { taskId } = record.card;
-  const questionId = `${taskId}:question`;
-  record.question = { questionId, text };
-  model.questions.push(taskId);
-  model.askedQuestion = questionId;
+  record.question = { questionId: `${taskId}:question`, text };
+  model.questions = [...model.questions, { taskId, order }].sort(
+    (a, b) => a.order - b.order,
+  );
+  model.askedQuestion = activeQuestion(model)?.question?.questionId ?? null;
 }
 
 export function dropQuestion(model: Model, record: TaskRecord): void {
   record.question = null;
-  model.questions = model.questions.filter((id) => id !== record.card.taskId);
+  model.questions = model.questions.filter(
+    ({ taskId }) => taskId !== record.card.taskId,
+  );
 }
 
 // Runs after every accepted change: when the active question went away, the older one is asked again in its stored words.

@@ -115,7 +115,7 @@ function applyDecision(
       target.topic = decision.topic;
       target.card.title = decision.topic;
       target.card.state = "clarifying";
-      holdQuestion(change, target, line);
+      holdQuestion(change, target, line, attempt.order);
       return true;
     case "work":
       return admit(change, target, decision, line);
