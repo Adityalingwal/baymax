@@ -39,6 +39,7 @@ export type TaskCard = {
   sourcesRead: number;
   answer: Findings | null; // may be partial when state is "failed"
   canRetry: boolean;
+  finishOrder: number | null; // grows with each shown task that ends; null while it has not, also after a retry
 };
 
 // One side of the conversation: what the user said, or what Baymax said that was no task's card.

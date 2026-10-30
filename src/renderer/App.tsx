@@ -99,6 +99,9 @@ export function App() {
             }
           />
           {view.tab === "chat" && <ChatList chat={display.chat} />}
+          {view.tab === "tasks" && cards.length === 0 && (
+            <p className="type-empty">No tasks right now</p>
+          )}
           {view.tab === "tasks" && cards.length > 0 && (
             <section className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto">
               {cards.map((card) => (

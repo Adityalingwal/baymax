@@ -55,6 +55,7 @@ export type Model = {
   exchanges: Exchange[];
   exchangeOrder: number;
   queue: TaskId[];
+  finishes: number; // how many shown tasks ever ended, for the cards' finish order
   pendingFailures: PendingFailure[]; // in the order they failed
   failureCall: FailureCall | null;
   voiceIdle: boolean; // no key held, no line playing, no spoken turn pending
@@ -96,6 +97,7 @@ export function createModel(): Model {
     exchanges: [],
     exchangeOrder: 0,
     queue: [],
+    finishes: 0,
     pendingFailures: [],
     failureCall: null,
     voiceIdle: true,
@@ -131,6 +133,7 @@ export function addRecord(
       sourcesRead: 0,
       answer: null,
       canRetry: false,
+      finishOrder: null,
     },
     shown: false,
     created: model.created,
