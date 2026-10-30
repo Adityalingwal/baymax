@@ -52,7 +52,7 @@ function run(steps: Step[]): PillState {
 type Expected = {
   shown: boolean;
   word?: PillWord;
-  muted?: boolean;
+  label?: PillState["clearLabel"];
   closing?: boolean; // the 800 ms hold is running
   close?: PillClose;
 };
@@ -116,12 +116,12 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
   {
     name: "mute while speaking shows Muted and starts the 800 ms hold",
     steps: [speaking, mute],
-    expected: { shown: true, muted: true, closing: true },
+    expected: { shown: true, label: "Muted", closing: true },
   },
   {
     name: "the speech ending after a mute does not restart the hold",
     steps: [speaking, mute, idle, hold],
-    expected: { shown: false, muted: true },
+    expected: { shown: false, label: "Muted" },
   },
   {
     name: "a turn that ends in Thinking closes the pill at once, in the fast close",
@@ -156,7 +156,7 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
   {
     name: "mute does nothing unless Baymax speaks",
     steps: [listening, threshold, thinking, mute],
-    expected: { shown: true, muted: false, closing: false },
+    expected: { shown: true, label: null, closing: false },
   },
 ];
 
@@ -166,7 +166,7 @@ describe("pillReducer", () => {
     expect({
       shown: state.shown,
       ...(expected.word === undefined ? {} : { word: state.word }),
-      ...(expected.muted === undefined ? {} : { muted: state.muted }),
+      ...(expected.label === undefined ? {} : { label: state.clearLabel }),
       ...(expected.closing === undefined
         ? {}
         : { closing: state.wait?.kind === "hold" }),
@@ -174,10 +174,17 @@ describe("pillReducer", () => {
     }).toEqual(expected);
   });
 
-  it("never unmutes on a second click, and keeps the hold from the first", () => {
-    const once = run([speaking, mute]);
+  it("toggles on two clicks in a row, following main's mute, with the 800 ms from each click", () => {
+    const once = run([speaking, mute, mainMuted, idle]);
     const twice = pillReducer(once, mute);
-    expect(twice).toBe(once);
+    expect(once.clearLabel).toBe("Muted");
+    expect(twice.clearLabel).toBe("Unmuted");
+    expect(twice.wait?.token).not.toBe(once.wait?.token);
+    expect(pillReducer(twice, staleHold(once.wait?.token ?? -1)).shown).toBe(
+      true,
+    );
+    const unmuted = pillReducer(twice, { kind: "main-muted", muted: false });
+    expect(pillReducer(unmuted, mute).clearLabel).toBe("Muted");
   });
 
   it("counts the mute hold from the click, not from the speech end", () => {

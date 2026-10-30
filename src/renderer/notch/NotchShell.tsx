@@ -229,7 +229,7 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const scrollTo = useScrollTo(open);
   const onMute = () => {
     voice.dispatch({ kind: "mute-clicked" });
-    setMuted({ muted: true });
+    setMuted({ muted: !props.muted });
   };
   // The explicit open-result event: it ends the island, opens the panel and scrolls to the result.
   const onOpenResult = (taskId: TaskId) => {

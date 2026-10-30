@@ -17,8 +17,8 @@ export type PillState = {
   dismissed: LineId | null; // a line whose island was clicked open: it goes on as a plain pill line
   shown: boolean;
   word: PillWord;
-  muted: boolean; // the Clear label after a mute click; it stays until the pill closes
-  mainMuted: boolean; // main's mute
+  clearLabel: "Muted" | "Unmuted" | null; // the label after a mute click; it stays until the pill closes
+  mainMuted: boolean; // main's mute, the one truth for what a click does
   close: PillClose;
   session: number; // counts pill openings, so the corner lines draw in once per opening
   wait: { kind: "threshold" | "hold"; token: number } | null;
@@ -40,7 +40,7 @@ export const initialPill: PillState = {
   dismissed: null,
   shown: false,
   word: "Listening",
-  muted: false,
+  clearLabel: null,
   mainMuted: false,
   close: "soft",
   session: 0,
@@ -65,7 +65,7 @@ function show(state: PillState, word: PillWord): PillState {
     ...state,
     shown: true,
     word,
-    muted: false,
+    clearLabel: null,
     close: "soft",
     session,
     wait: null,
@@ -113,10 +113,14 @@ function receivePhase(
 }
 
 // On the island there is no 800 ms confirmation: the line stops, and the island closes when it ends.
+// Each click toggles and shows its own label for 800 ms from that click.
 function muteClicked(state: PillState): PillState {
-  if (!state.shown || state.word !== "Speaking" || state.muted) return state;
-  const muted = { ...state, muted: true };
-  return islandShown(state) ? muted : startWait(muted, "hold");
+  if (!state.shown || state.word !== "Speaking") return state;
+  const clicked: PillState = {
+    ...state,
+    clearLabel: state.mainMuted ? "Unmuted" : "Muted",
+  };
+  return islandShown(state) ? clicked : startWait(clicked, "hold");
 }
 
 export function pillReducer(state: PillState, event: PillEvent): PillState {

@@ -84,44 +84,40 @@ export function SpeakerIcon({ crossed }: { crossed: boolean }) {
   );
 }
 
-// Both labels share one grid cell, so swapping them moves nothing.
+const labelClass = (shows: boolean) =>
+  `pill-label col-start-1 row-start-1 ${shows ? "" : "pill-label-out"}`;
+
+// All labels share one grid cell, so swapping them moves nothing.
 function Word({ pill }: { pill: PillState }) {
-  const thinking = pill.word === "Thinking" && !pill.muted;
+  const { clearLabel, word } = pill;
+  const thinking = word === "Thinking" && clearLabel === null;
   return (
     <span className="absolute top-0 left-5 grid h-8 items-center text-[12.5px] font-semibold text-[#F5F5F7]">
       <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "pill-label-out" : ""} ${thinking ? "shimmer" : ""}`}
+        className={`${labelClass(clearLabel === null)} ${thinking ? "shimmer" : ""}`}
       >
-        {pill.word}
+        {word}
       </span>
-      <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "" : "pill-label-out"}`}
-      >
-        Muted
-      </span>
+      <span className={labelClass(clearLabel === "Muted")}>Muted</span>
+      <span className={labelClass(clearLabel === "Unmuted")}>Unmuted</span>
     </span>
   );
 }
 
 function MuteButton({ pill, onMute }: Pick<VoicePillProps, "pill" | "onMute">) {
+  const crossed = pill.clearLabel === "Muted";
   return (
     <button
       type="button"
-      aria-label={pill.muted ? "Muted" : "Mute Baymax"}
-      aria-disabled={pill.muted}
+      aria-label={crossed ? "Unmute Baymax" : "Mute Baymax"}
+      aria-pressed={crossed}
       className="absolute top-[5px] right-5 grid h-[22px] w-[22px] cursor-pointer place-items-center rounded-full bg-[#1C1C1E]"
-      onClick={() => {
-        if (!pill.muted) onMute();
-      }}
+      onClick={onMute}
     >
-      <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "pill-label-out" : ""}`}
-      >
+      <span className={labelClass(!crossed)}>
         <SpeakerIcon crossed={false} />
       </span>
-      <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "" : "pill-label-out"}`}
-      >
+      <span className={labelClass(crossed)}>
         <SpeakerIcon crossed />
       </span>
     </button>
@@ -132,7 +128,7 @@ function MuteButton({ pill, onMute }: Pick<VoicePillProps, "pill" | "onMute">) {
 // It is also the answer island's top strip.
 export function VoicePill(props: VoicePillProps) {
   const { pill, windowWidth, interactive, layers, onMute } = props;
-  const speaking = pill.word === "Speaking" || pill.muted;
+  const speaking = pill.word === "Speaking" || pill.clearLabel !== null;
   const { width, height } = pillShape;
   return (
     <div
