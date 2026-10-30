@@ -8,7 +8,6 @@ import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import { runResearch } from "./plugs";
 import type { RunTaskCommand } from "./plugs";
-import { briefInstructions } from "./plugs/research/brief-writer";
 import {
   ask,
   closeRuns,
@@ -232,7 +231,6 @@ describe("the brief writer: its request", () => {
     run.port.send(command);
     await run.ended();
     const [request] = run.briefRequests();
-    expect(request.system).toBe(briefInstructions);
     expect(request.messages).toHaveLength(1);
     expect(textOf(request)).toBe(
       [

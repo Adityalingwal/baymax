@@ -93,7 +93,7 @@ function answerFault(rule: keyof typeof answerFaults): RoundEnd {
   };
 }
 
-export function readTurn(
+function readTurn(
   run: CheckRun,
   turn: { kind: "answer"; text: string } | { kind: "cutOff" },
 ): AnswerTurn {
@@ -105,10 +105,7 @@ export function readTurn(
 }
 
 // One answer turn through its check: a passed code check ends the task as a result.
-export async function checkRound(
-  run: CheckRun,
-  turn: AnswerTurn,
-): Promise<RoundEnd> {
+async function checkRound(run: CheckRun, turn: AnswerTurn): Promise<RoundEnd> {
   if (turn.kind !== "answer") return answerFault(turn.kind);
   const { answer } = turn;
   if (answer.status !== "complete") return ended(statusEvent(run, answer));

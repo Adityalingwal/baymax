@@ -7,8 +7,7 @@ type ExaFailure =
   | "unreachable" // network error or a 5xx
   | "badResponse"
   | "aborted";
-export type ExaReply =
-  { ok: true; body: unknown } | { ok: false; cause: ExaFailure };
+type ExaReply = { ok: true; body: unknown } | { ok: false; cause: ExaFailure };
 
 export type SearchHit = { url: string; title: string; snippet: string };
 export type SearchFailure = ExaFailure;
@@ -18,7 +17,7 @@ export type SearchFn = (
   query: string,
   signal: AbortSignal,
 ) => Promise<SearchOutcome>;
-export type ContentsFailure = ExaFailure | "noUsableText";
+type ContentsFailure = ExaFailure | "noUsableText";
 export type ContentsOutcome =
   | { ok: true; title: string; text: string } // title is Exa's, trimmed; "" when it gave none
   | { ok: false; cause: ContentsFailure };

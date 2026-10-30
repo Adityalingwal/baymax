@@ -59,7 +59,7 @@ registerProcessor("${processorName}", BaymaxPcm);
 `;
 
 // Loaded as a data URL, which the page's CSP allows for scripts, so no bundler change is needed.
-export function workletUrl(): string {
+function workletUrl(): string {
   return `data:text/javascript;base64,${btoa(processorSource)}`;
 }
 

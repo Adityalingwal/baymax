@@ -16,7 +16,7 @@ export type CheckedUrl = {
   literal: boolean;
 };
 
-export type UrlCheck =
+type UrlCheck =
   { ok: true; checked: CheckedUrl } | { ok: false; rule: RefusalRule };
 
 // The hostname of a URL, lowercased by the URL parser; null when it does not parse.

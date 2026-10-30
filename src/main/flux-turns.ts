@@ -36,7 +36,7 @@ type State = {
   awaiting: Utterance[]; // on the current socket, in the order their audio was sent
 };
 
-export type Turns = {
+type Turns = {
   begin: (utteranceId: UtteranceId) => void;
   frames: (utteranceId: UtteranceId, pcm: ArrayBuffer) => void;
   ended: (utteranceId: UtteranceId) => void;

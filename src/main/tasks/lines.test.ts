@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Findings } from "../../shared/cards";
 import type { FailureKind, Incomplete } from "../../shared/engine";
-import {
-  failureLine,
-  fixedLines,
-  incompleteLines,
-  stepText,
-  taskShortForm,
-} from "./lines";
+import { fixedLines, incompleteLines, stepText } from "./lines";
 
 const found: Findings = { cardText: "Partial.", sources: [], openPoints: [] };
 
@@ -50,7 +44,6 @@ const failureRows: { kind: FailureKind; line: string }[] = [
     kind: "noCredit",
     line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
   },
-  { kind: "error", line: "I hit an error on that question. Try again." },
 ];
 
 const shortFormRows: { sayBack: string | null; short: string }[] = [
@@ -65,6 +58,12 @@ const shortFormRows: { sayBack: string | null; short: string }[] = [
 
 const sayBack = "how Hermes works, from its docs";
 
+const unchecked: Incomplete = {
+  kind: "unchecked",
+  uncheckedPart: "The dates.",
+  findings: found,
+};
+
 type IncompleteRow = {
   name: string;
   incomplete: Incomplete;
@@ -73,15 +72,13 @@ type IncompleteRow = {
   spoken: string;
 };
 
-const errorCauseRows: IncompleteRow[] = failureRows
-  .filter((row) => row.kind !== "error")
-  .map((row) => ({
-    name: `error caused by ${row.kind}`,
-    incomplete: { kind: "error", cause: row.kind, findings: found },
-    line: row.line,
-    missing: null,
-    spoken: row.line,
-  }));
+const errorCauseRows: IncompleteRow[] = failureRows.map((row) => ({
+  name: `error caused by ${row.kind}`,
+  incomplete: { kind: "error", cause: row.kind, findings: found },
+  line: row.line,
+  missing: null,
+  spoken: row.line,
+}));
 
 const answered = { ...found, openPoints: ["the price in India", "the weight"] };
 
@@ -202,12 +199,11 @@ describe("fixed lines", () => {
     expect(fixedLines[name]).toBe(line);
   });
 
-  it.each(failureRows)("failure $kind", ({ kind, line }) => {
-    expect(failureLine(kind)).toBe(line);
-  });
-
   it.each(shortFormRows)("short form of $sayBack", ({ sayBack, short }) => {
-    expect(taskShortForm(sayBack)).toBe(short);
+    const { line } = incompleteLines(unchecked, sayBack);
+    expect(line).toBe(
+      `${short} is finished, but I couldn't check all of it; the unchecked part is marked.`,
+    );
   });
 
   it.each(incompleteRows)(

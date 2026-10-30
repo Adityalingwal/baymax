@@ -12,7 +12,7 @@ import type { SaidKind, Timers } from "./tasks/state";
 import { frontKey } from "./tasks/talk";
 import type { TalkRequest, TalkerReply } from "./tasks/talk";
 
-export type TalkerDeps = {
+type TalkerDeps = {
   stream: TextStream | null; // null when there is no Anthropic key
   talk: (spoken: {
     taskId: TaskId | null;

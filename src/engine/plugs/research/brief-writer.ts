@@ -30,7 +30,7 @@ const partNames = ["goal", "resultShape", "sources", "limits"] as const;
 // Only Sonnet 5.5 accepts this field; Opus 5.5 answers a request that carries it with a 400.
 const sonnetThinking: Anthropic.ThinkingConfigParam = { type: "between_tools" };
 
-export const briefInstructions = `You write the research brief for Baymax's research worker. Baymax is a voice assistant that answers questions by searching the web and reading pages. You do not research and you do not talk to the user: you only turn the request below into a brief.
+const briefInstructions = `You write the research brief for Baymax's research worker. Baymax is a voice assistant that answers questions by searching the web and reading pages. You do not research and you do not talk to the user: you only turn the request below into a brief.
 
 The request comes as the user's own words and a one-line goal written by an earlier step; a follow-up also carries the earlier task's result. When the words include an answer to a clarifying question, the request is the original words together with that answer.
 

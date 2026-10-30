@@ -36,7 +36,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export function readAuraMessage(payload: SocketPayload): AuraEvent {
+function readAuraMessage(payload: SocketPayload): AuraEvent {
   if (typeof payload !== "string") return { kind: "audio", pcm: payload };
   let message: unknown;
   try {

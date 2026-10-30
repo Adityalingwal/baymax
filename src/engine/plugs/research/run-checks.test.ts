@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Findings } from "../../../shared/cards";
-import { checkRound, readTurn } from "./rounds";
+import { runRounds } from "./rounds";
 import type { CheckRun } from "./rounds";
 
 const url = "http://example.test/one";
@@ -31,7 +31,7 @@ const answerWith = (status: string, nextQuestion: string | null) =>
   });
 
 // A cancel can land between this card being built and the run settling, so the run's snapshot gets it at once.
-describe("checkRound status cards", () => {
+describe("status cards of a round", () => {
   it.each([
     { status: "sourcesThin", nextQuestion: null },
     { status: "needsUser", nextQuestion: "Which Hermes?" },
@@ -39,8 +39,12 @@ describe("checkRound status cards", () => {
     const built: Findings[] = [];
     const text = answerWith(row.status, row.nextQuestion);
     const run = checkRun(built);
-    const turn = readTurn(run, { kind: "answer", text });
-    const end = await checkRound(run, turn);
+    const end = await runRounds({
+      checks: run,
+      history: [],
+      work: async () => ({ kind: "turn", turn: { kind: "answer", text } }),
+      researchMark: () => 0,
+    });
     const card = {
       cardText: "A loop.",
       sources: [{ id: "s1", url, title: "Page one" }],
@@ -48,8 +52,8 @@ describe("checkRound status cards", () => {
     };
     expect(built).toEqual([card]);
     expect(end).toMatchObject({
-      kind: "event",
-      event: { type: "incomplete", incomplete: { findings: card } },
+      type: "incomplete",
+      incomplete: { findings: card },
     });
   });
 });

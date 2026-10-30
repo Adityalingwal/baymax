@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readAuraMessage, startAura } from "./aura";
+import { startAura } from "./aura";
 import type { AuraEvent } from "./aura";
 import { createSocketHarness, describeSent } from "./socket.harness";
 
@@ -46,7 +46,10 @@ const messageRows: {
 
 describe("Aura messages", () => {
   it.each(messageRows)("reads $name", ({ payload, event }) => {
-    expect(readAuraMessage(payload)).toEqual(event);
+    const { h, seen } = start();
+    h.last().events.opened();
+    h.last().events.received(payload);
+    expect(seen[0]).toEqual(event);
   });
 });
 

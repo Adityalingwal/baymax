@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { workletUrl } from "./capture";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { startWebAudioCapture } from "./capture";
 
 type Port = {
   onmessage: ((event: MessageEvent) => void) | null;
@@ -13,10 +13,43 @@ type Processor = { process: (inputs: Float32Array[][]) => boolean };
 const flushEvent = () =>
   new MessageEvent("message", Object.fromEntries([["data", "flush"]]));
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+const graphNode = () => ({
+  connect: () => undefined,
+  disconnect: () => undefined,
+});
+
+// Starts a capture on a faked audio graph and returns the module URL it loaded into the worklet.
+async function loadedWorkletUrl(): Promise<string> {
+  const modules: string[] = [];
+  vi.stubGlobal("AudioContext", function FakeContext() {
+    return {
+      state: "running",
+      destination: {},
+      audioWorklet: {
+        addModule: async (url: string) => void modules.push(url),
+      },
+      createMediaStreamSource: graphNode,
+      close: async () => undefined,
+    };
+  });
+  vi.stubGlobal("AudioWorkletNode", function FakeNode() {
+    return {
+      ...graphNode(),
+      port: { onmessage: null, postMessage: () => undefined },
+    };
+  });
+  await startWebAudioCapture({ getTracks: () => [] }, () => undefined);
+  return modules[0];
+}
+
 // Runs the worklet's source the way the AudioWorklet scope would, with its globals faked.
-function loadProcessor(sampleRate: number) {
+async function loadProcessor(sampleRate: number) {
   const prefix = "data:text/javascript;base64,";
-  const url = workletUrl();
+  const url = await loadedWorkletUrl();
   expect(url.startsWith(prefix)).toBe(true);
   const port: Port = {
     onmessage: null,
@@ -43,8 +76,8 @@ function loadProcessor(sampleRate: number) {
 }
 
 describe("the PCM worklet", () => {
-  it("posts 40 ms frames of 16 kHz PCM, then the rest and a flushed reply on a flush", () => {
-    const { processor, port } = loadProcessor(48_000);
+  it("posts 40 ms frames of 16 kHz PCM, then the rest and a flushed reply on a flush", async () => {
+    const { processor, port } = await loadProcessor(48_000);
     for (let block = 0; block < 20; block += 1) {
       expect(processor.process([[new Float32Array(128).fill(0.5)]])).toBe(true);
     }
@@ -58,8 +91,8 @@ describe("the PCM worklet", () => {
     expect(new DataView(first).getInt16(0, true)).toBe(16383);
   });
 
-  it("keeps running with no input and posts nothing", () => {
-    const { processor, port } = loadProcessor(48_000);
+  it("keeps running with no input and posts nothing", async () => {
+    const { processor, port } = await loadProcessor(48_000);
     expect(processor.process([[]])).toBe(true);
     expect(processor.process([])).toBe(true);
     port.onmessage?.(flushEvent());
