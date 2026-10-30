@@ -2,11 +2,13 @@ import type { WindowShape } from "../shared/ipc";
 
 type DisplayBounds = Pick<Electron.Display, "bounds">;
 
+export type NotchSizes = ReadonlyMap<number, { width: number; height: number }>;
+
 // The open panel's width; the window never resizes, only the black shape inside it moves.
 const panelSize = { width: 640, height: 720 } as const;
 
-// Measured on the demo Mac (139 x 25 points on a 1280-point-wide display), not detected.
-const measuredNotch = { width: 139, height: 25, displayWidth: 1280 } as const;
+// The small pill at rest when no notch was measured, sized as on the demo Mac (139 x 25 points on a 1280-point-wide display).
+const restPill = { width: 139, height: 25, displayWidth: 1280 } as const;
 
 export function pickDisplay<D extends Pick<Electron.Display, "internal">>(
   displays: readonly D[],
@@ -26,13 +28,21 @@ export function panelBounds(display: DisplayBounds): Electron.Rectangle {
 }
 
 export function windowShape(
-  display: DisplayBounds,
-  notched: boolean,
+  display: DisplayBounds & Pick<Electron.Display, "id">,
+  notches: NotchSizes,
 ): WindowShape {
-  const scale = display.bounds.width / measuredNotch.displayWidth;
+  const notch = notches.get(display.id);
+  if (notch !== undefined) {
+    return {
+      notched: true,
+      notchWidth: notch.width,
+      notchHeight: notch.height,
+    };
+  }
+  const scale = display.bounds.width / restPill.displayWidth;
   return {
-    notched,
-    notchWidth: Math.round(measuredNotch.width * scale),
-    notchHeight: Math.round(measuredNotch.height * scale),
+    notched: false,
+    notchWidth: Math.round(restPill.width * scale),
+    notchHeight: Math.round(restPill.height * scale),
   };
 }

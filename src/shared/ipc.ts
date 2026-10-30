@@ -26,7 +26,7 @@ export const ipcChannels = {
 
 export type HoldState = "idle" | "listening";
 
-// The notch size is estimated from the display width, not detected.
+// Notched: the screen's real notch, measured by main. Otherwise the size of the small pill at rest.
 export type WindowShape = {
   notched: boolean;
   notchWidth: number;
