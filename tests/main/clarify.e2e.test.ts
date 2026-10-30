@@ -104,7 +104,9 @@ describe("two spoken questions", () => {
     expect(synthesized(w, "What budget?")).toBe(2);
     expect(synthesized(w, "Which city?")).toBe(1);
   });
+});
 
+describe("the older of two spoken questions", () => {
   it.each([
     {
       name: "the latest is answered",
