@@ -249,17 +249,22 @@ describe("the two front deadlines", () => {
 });
 
 const lateRows = [
-  { name: "no words", early: [] },
-  { name: "whitespace only", early: ["  "] },
+  { name: "no words", early: [], tool: false },
+  { name: "whitespace only", early: ["  "], tool: false },
+  { name: "a tool start with no words", early: [], tool: true },
 ];
 
 describe("first words that come too late", () => {
   it.each(lateRows)(
     "$name by 10 s: the same request goes once more and a success speaks once",
-    async ({ early }) => {
+    async ({ early, tool }) => {
       const h = createHarness({ ignoreAbort: true });
       h.talker.talk(frontRequest());
       early.forEach((text) => h.calls[0].onText(text));
+      if (tool) {
+        h.calls[0].onToolStart();
+        h.calls[0].onText("After the tool.");
+      }
       h.advance(10_000);
       await flush();
       expect(h.calls).toHaveLength(2);

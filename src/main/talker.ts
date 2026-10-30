@@ -346,18 +346,21 @@ async function runCall(
     );
   });
   const live = () => alive() && !abort.signal.aborted;
+  let toolStarted = false;
   const answered = call(
     deps,
     body,
     abort.signal,
     (text) => {
-      if (!live() || attempt.ended) return;
+      if (!live() || toolStarted) return;
       if (text.trim() !== "") attempt.stopFirstWords();
       attempt.spoken += text;
       attempt.line.push(text);
     },
     () => {
-      if (live()) endLine(attempt);
+      toolStarted = true;
+      // With nothing said the line stays open, since the first-words deadline may still send the request again.
+      if (live() && attempt.spoken.trim() !== "") endLine(attempt);
     },
   );
   const outcome = await Promise.race([answered, deadline]);
@@ -372,7 +375,7 @@ async function callWithRetry(
   alive: () => boolean,
 ): Promise<Outcome> {
   const first = await runCall(deps, body, attempt, alive);
-  if (first.expired !== "firstWords" || attempt.ended || !alive()) return first;
+  if (first.expired !== "firstWords" || !alive()) return first;
   deps.log("talker front call had no first words, trying once more");
   attempt.abort = new AbortController();
   return runCall(deps, body, attempt, alive);
