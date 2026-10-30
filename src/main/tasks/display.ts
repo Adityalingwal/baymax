@@ -84,8 +84,10 @@ export function taskSummaries(model: Model): TaskSummary[] {
     }));
 }
 
-// A race past the limit queues one extra, so the room left never goes below zero.
+// A cancelling task holds the slot until the engine replies; a race past the limit queues one extra, so the room left never goes below zero.
 export function roomLeft(model: Model): number {
-  const taken = [...model.records.values()].filter(isRunningOrQueued).length;
+  const taken = [...model.records.values()].filter(
+    ({ card, sent }) => card.state === "queued" || sent?.type === "runTask",
+  ).length;
   return Math.max(0, RUNNING_LIMIT + QUEUE_LIMIT - taken);
 }

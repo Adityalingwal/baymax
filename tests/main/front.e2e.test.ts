@@ -153,6 +153,17 @@ describe("the tasks block", () => {
     );
   });
 
+  it("counts a cancelling task's slot as taken until the engine replies", async () => {
+    const w = wire();
+    for (let i = 0; i < 4; i += 1) await admitAs(w, `task ${i}`);
+    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    ask(w, "next");
+    const turn = String(w.talkerCalls.at(-1)?.request.messages.at(-1)?.content);
+    expect(turn).toContain(
+      "0 running, 3 waiting, no room\n</running_and_waiting_tasks>",
+    );
+  });
+
   it.each([
     { tasks: 0, line: "0 running, 0 waiting, room for 4 more" },
     { tasks: 4, line: "1 running, 3 waiting, no room" },
