@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHarness, finished, flush, frontRequest } from "./talker.harness";
 
 const decide = (input: unknown) => ({ name: "decide", input });
@@ -46,7 +46,7 @@ describe("the front call's line and decision", () => {
     h.calls[0].onToolStart();
     expect(h.lines[0].parts.at(-1)).toBe("<end>");
     h.calls[0].onText("Anything else?");
-    const input = { route: "newTask" };
+    const input = { route: "work" };
     h.calls[0].resolve(finished("I'll check the forecast.", [decide(input)]));
     await flush();
     expect(h.lines[0].parts).toEqual(["I'll check ", "the forecast.", "<end>"]);
@@ -336,13 +336,12 @@ describe("the second call of a late front call", () => {
 
 describe("the date in a front call", () => {
   it("gives the date, the local time and the zone from the clock", () => {
-    const zone = process.env.TZ;
-    process.env.TZ = "Asia/Kolkata";
+    vi.stubEnv("TZ", "Asia/Kolkata");
     const h = createHarness({
       now: () => new Date("2026-10-31T00:30:00+05:30"),
     });
     h.talker.talk(frontRequest());
-    process.env.TZ = zone;
+    vi.unstubAllEnvs();
     const turn = String(h.calls[0].request.messages.at(-1)?.content);
     expect(turn).toMatch(
       /^<today>\ndate: Saturday, 2026-10-31\nlocal time: 00:30\ntime zone: Asia\/(Kolkata|Calcutta)\n<\/today>\n/,

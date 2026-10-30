@@ -58,7 +58,17 @@ describe("the routes of a front decision", () => {
     expect(chat.at(-1)).toMatchObject({ id: "c202", text: "Hello 100." });
   });
 
-  it("work: a running card with the topic, the goal and words go to the engine, and nothing more is said", async () => {
+  it("retry: rejected until a failed task can be retried", async () => {
+    const w = wire();
+    ask(w, "yes, try again");
+    await streamFront(w, decision({ route: "retry", taskId: "t9" }));
+    expect(w.logs).toContain("decision rejected for t1: retryNotBuilt");
+    expect(w.port.sent).toEqual([]);
+  });
+});
+
+describe("the work route", () => {
+  it("shows a running card with the topic, sends the goal and words to the engine, and says nothing more", async () => {
     const w = wire();
     ask(w, "  will it rain?  ");
     expect(tasksShown(w)).toEqual([]);
@@ -146,6 +156,7 @@ describe("the tasks block", () => {
   it.each([
     { tasks: 0, line: "0 running, 0 waiting, room for 4 more" },
     { tasks: 4, line: "1 running, 3 waiting, no room" },
+    { tasks: 5, line: "1 running, 4 waiting, no room" },
   ])("with $tasks tasks says $line", async ({ tasks, line }) => {
     const w = wire();
     for (let i = 0; i < tasks; i += 1) await admitAs(w, `task ${i}`);
@@ -168,8 +179,11 @@ describe("a follow-up of an unknown task", () => {
   });
 });
 
-const missedLine = "Sorry, I missed that. Ask again.";
-const stalledLine = "That didn't go through. Ask again.";
+const silentLine = "Something went wrong on my side. Ask again.";
+const stalledLine =
+  "Something went wrong on my side, so nothing started. Ask again.";
+const modelsLine =
+  "I can't reach my models right now. Try again in a few minutes.";
 
 // The front call speaks its text, then fails or ends with no tool.
 async function speakThen(w: Wired, text: string, end: ModelFailure | "noTool") {
@@ -211,14 +225,14 @@ const failures: Fail[] = [
   {
     name: "unreachable models with nothing spoken",
     fail: (w) => failFront(w, "unreachable"),
-    line: missedLine,
-    spoken: [missedLine],
+    line: modelsLine,
+    spoken: [modelsLine],
   },
   {
     name: "an error with nothing spoken",
     fail: (w) => failFront(w, "error"),
-    line: missedLine,
-    spoken: [missedLine],
+    line: silentLine,
+    spoken: [silentLine],
   },
   {
     name: "an error after the line was spoken",
@@ -229,8 +243,8 @@ const failures: Fail[] = [
   {
     name: "unreachable models after the line was spoken",
     fail: (w) => speakThen(w, "I'll check.", "unreachable"),
-    line: stalledLine,
-    spoken: ["I'll check.", stalledLine],
+    line: modelsLine,
+    spoken: ["I'll check.", modelsLine],
   },
   {
     name: "a call with no tool",
@@ -240,13 +254,13 @@ const failures: Fail[] = [
   },
   {
     name: "a decision that fails a check",
-    fail: (w) => streamFront(w, decision({ route: "newTask", topic: "x" })),
+    fail: (w) => streamFront(w, decision({ route: "work", topic: "x" })),
     line: stalledLine,
     spoken: ["Okay.", stalledLine],
   },
   {
     name: "a decision with only its route",
-    fail: (w) => streamFront(w, { route: "newTask" }),
+    fail: (w) => streamFront(w, { route: "work" }),
     line: stalledLine,
     spoken: ["Okay.", stalledLine],
   },
@@ -315,7 +329,7 @@ describe("a front call that fails", () => {
     await flush();
     expect(w.talkerCalls).toHaveLength(2);
     expect(tasksShown(w)).toEqual([]);
-    expect(await spokenAll(w)).toEqual([missedLine]);
+    expect(await spokenAll(w)).toEqual([modelsLine]);
   });
 });
 

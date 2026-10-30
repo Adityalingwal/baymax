@@ -5,8 +5,6 @@ import type {
 } from "../../shared/engine";
 
 export const fixedLines = {
-  queued: "Okay, I'll look at that after the current one.",
-  queueFull: "I already have three waiting. Cancel one or ask again later.",
   wordsNotCaught: "I didn't catch that, say it again.",
   micBlocked:
     "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question.",
@@ -15,8 +13,6 @@ export const fixedLines = {
   voiceUnavailable:
     "Voice isn't working right now. You can type your question instead.",
   restarting: "Baymax hit a problem and is restarting.",
-  frontMissed: "Sorry, I missed that. Ask again.",
-  frontStalled: "That didn't go through. Ask again.",
 } as const;
 
 const failureLines: Record<FailureKind, string> = {
@@ -43,10 +39,18 @@ export function failedLine(cause: FailureCause, reason: string | null): string {
   return failureLines[cause];
 }
 
-// The line of a failed front call: setup problems name the fix; otherwise it depends on whether Baymax had already spoken.
+// The line of a failed front call: a known cause names the fix; otherwise it depends on whether Baymax had already spoken. It never blames hearing.
 export function frontFailureLine(kind: FailureKind, spoke: boolean): string {
-  if (kind === "keyRejected" || kind === "noCredit") return failureLines[kind];
-  return spoke ? fixedLines.frontStalled : fixedLines.frontMissed;
+  if (
+    kind === "keyRejected" ||
+    kind === "noCredit" ||
+    kind === "modelsUnreachable"
+  ) {
+    return failureLines[kind];
+  }
+  return spoke
+    ? "Something went wrong on my side, so nothing started. Ask again."
+    : "Something went wrong on my side. Ask again.";
 }
 
 export function stepText(step: ProgressStep): string {

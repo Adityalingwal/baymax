@@ -221,14 +221,11 @@ describe("invalid parents and the queue", () => {
     },
   );
 
-  it("refuses a fourth waiting follow-up like a new task", async () => {
+  it("queues a fourth waiting follow-up like new work", async () => {
     const w = wire();
     for (const name of ["hermes", "rust", "zig", "go"]) await admitAs(w, name);
     const child = await askFollowUp(w, "t1", "more");
-    expect(w.card(child)).toMatchObject({
-      state: "cancelled",
-      line: "I already have three waiting. Cancel one or ask again later.",
-    });
+    expect(w.card(child)).toMatchObject({ state: "queued", line: null });
     expect(lastRun(w, child)).toBeUndefined();
   });
 });

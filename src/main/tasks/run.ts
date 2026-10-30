@@ -1,9 +1,8 @@
 import type { Findings, TaskId } from "../../shared/cards";
 import type { EngineEvent, ParentResult } from "../../shared/engine";
 import type { Decision } from "./decision";
-import { QUEUE_LIMIT } from "./display";
 import { appendResult } from "./history";
-import { failedLine, fixedLines, stepText } from "./lines";
+import { failedLine, stepText } from "./lines";
 import type { Admission, Change, Input, Model, TaskRecord } from "./record";
 import {
   abandonAttempt,
@@ -97,18 +96,15 @@ function endCancelled(
   change: Change,
   record: TaskRecord,
   findings: Findings | null,
-  line: string | null,
 ): void {
   closeTask(change, record, {
     outcome: "cancelled",
     findings,
     spokenLine: null,
   });
-  record.card.line = line;
+  record.card.line = null;
   clearForLeaving(change, record);
-  const { taskId } = record.card;
-  if (line === null) silence(change, taskId);
-  else say(change, taskId, line, "failure");
+  silence(change, record.card.taskId);
 }
 
 // The record of words that only needed their own line, such as a stop; that line keeps playing.
@@ -196,15 +192,12 @@ export function admit(
   card.parentTaskId = decision.parentTaskId;
   card.canRetry = false;
   card.line = null;
-  // The spoken line shows on the card; the queued line is fixed and shown only.
+  // Its line is already spoken, so work is never refused: a race past the limit queues one extra.
   if (!slotBusy(model) && canStart(model, record)) {
     startTask(change, record, record.admission);
-  } else if (model.queue.length < QUEUE_LIMIT) {
-    card.state = "queued";
-    card.line = fixedLines.queued;
-    model.queue.push(card.taskId);
   } else {
-    endCancelled(change, record, null, fixedLines.queueFull);
+    card.state = "queued";
+    model.queue.push(card.taskId);
   }
   return true;
 }
@@ -255,7 +248,7 @@ export function receiveWhileCancelling(
   if (event.type === "progress") {
     return dropped(change, `progress while cancelling ${event.taskId}`);
   }
-  endCancelled(change, record, event.findings, null);
+  endCancelled(change, record, event.findings);
   return true;
 }
 
@@ -271,7 +264,7 @@ export function receiveUnaskedCancel(
     return dropped(change, `cancelled for ${taskId} in state ${state}`);
   }
   change.log(`the engine cancelled ${taskId} unasked`);
-  endCancelled(change, record, findings, null);
+  endCancelled(change, record, findings);
   return true;
 }
 
@@ -280,14 +273,14 @@ export function cancelTask(change: Change, taskId: TaskId): boolean {
   if (record === undefined) return dropped(change, `cancel ${taskId}`);
   switch (record.card.state) {
     case "queued":
-      endCancelled(change, record, null, null);
+      endCancelled(change, record, null);
       return true;
     case "thinking":
     case "clarifying":
     case "running":
       // A front call in flight is aborted here, so the card is cancelled at once and no late result can change it.
       if (abandonAttempt(change, record) || record.sent === null) {
-        endCancelled(change, record, null, null);
+        endCancelled(change, record, null);
         return true;
       }
       // Before the send, so a throwing send cannot skip it.

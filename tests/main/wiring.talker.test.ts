@@ -9,8 +9,6 @@ import {
 import { replyRoute, workRoute } from "./tasks/harness";
 import { streamFront, wire } from "./wiring.harness";
 
-const zone = process.env.TZ;
-
 function asked() {
   const w = wire();
   w.send(ipcChannels.submitQuestion, { text: "what is 2 + 2?" });
@@ -49,13 +47,13 @@ describe("the front call through the wiring", () => {
 
 describe("the day the talker and the worker are told", () => {
   afterEach(() => {
-    process.env.TZ = zone;
+    vi.unstubAllEnvs();
     vi.useRealTimers();
     closePorts();
   });
 
   it("is the same local day at 00:30 in India", async () => {
-    process.env.TZ = "Asia/Kolkata";
+    vi.stubEnv("TZ", "Asia/Kolkata");
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-31T00:30:00+05:30"));
     const engine = startFakeEngine([unreachable], null);

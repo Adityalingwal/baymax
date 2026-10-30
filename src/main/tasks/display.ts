@@ -4,7 +4,7 @@ import { activeQuestion } from "./record";
 import type { RecentExchange, TaskSummary, WaitingQuestion } from "./talk";
 
 const RUNNING_LIMIT = 1;
-export const QUEUE_LIMIT = 3;
+const QUEUE_LIMIT = 3;
 const RECENT_COUNT = 5;
 const CARD_COUNT = 2;
 const CARD_LIMIT = 1500;

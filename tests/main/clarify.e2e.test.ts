@@ -13,7 +13,8 @@ import type { Wired } from "./wiring.harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-const failureAfterSpeech = "That didn't go through. Ask again.";
+const failureAfterSpeech =
+  "Something went wrong on my side, so nothing started. Ask again.";
 
 const ask = (w: Wired, text: string) =>
   w.send(ipcChannels.submitQuestion, { text });
