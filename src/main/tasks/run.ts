@@ -1,6 +1,7 @@
 import type { Findings, TaskId } from "../../shared/cards";
 import type { EngineEvent, ParentResult } from "../../shared/engine";
 import type { Decision } from "./decision";
+import { QUEUE_LIMIT } from "./display";
 import { appendResult } from "./history";
 import { failedLine, fixedLines, stepText } from "./lines";
 import type { Admission, Change, Input, Model, TaskRecord } from "./record";
@@ -13,8 +14,6 @@ import {
   setTimer,
   silence,
 } from "./record";
-
-const QUEUE_LIMIT = 3;
 
 type RunEvent = Extract<
   EngineEvent,

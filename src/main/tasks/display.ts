@@ -1,8 +1,10 @@
 import type { DisplayState, TaskCard, TaskId } from "../../shared/cards";
-import type { Model } from "./record";
+import type { Model, TaskRecord } from "./record";
 import { shownQuestion } from "./record";
 import type { RecentExchange, TaskSummary, WaitingQuestion } from "./talk";
 
+const RUNNING_LIMIT = 1;
+export const QUEUE_LIMIT = 3;
 const RECENT_COUNT = 5;
 const CARD_COUNT = 2;
 const CARD_LIMIT = 1500;
@@ -68,17 +70,22 @@ export function waitingQuestion(model: Model): WaitingQuestion | null {
   };
 }
 
-const activeStates = new Set(["thinking", "clarifying", "queued", "running"]);
+const isRunningOrQueued = ({ card }: TaskRecord) =>
+  card.state === "running" || card.state === "queued";
 
-// The tasks still running or waiting, apart from the one just asked.
-export function taskSummaries(model: Model, forTaskId: TaskId): TaskSummary[] {
+export function taskSummaries(model: Model): TaskSummary[] {
   return [...model.records.values()]
-    .filter(({ card }) => card.taskId !== forTaskId)
-    .filter(({ card }) => activeStates.has(card.state))
+    .filter(isRunningOrQueued)
     .map(({ card, topic }) => ({
       taskId: card.taskId,
       state: card.state,
       words: card.words,
       topic,
     }));
+}
+
+// A race past the limit queues one extra, so the room left never goes below zero.
+export function roomLeft(model: Model): number {
+  const taken = [...model.records.values()].filter(isRunningOrQueued).length;
+  return Math.max(0, RUNNING_LIMIT + QUEUE_LIMIT - taken);
 }

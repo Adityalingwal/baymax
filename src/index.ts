@@ -150,6 +150,7 @@ async function startEngineAndWiring(): Promise<Wiring> {
     publish: (display) => sendToWindow(ipcChannels.displayState, display),
     openUrl: (url) => shell.openExternal(url),
     timers: { setTimer },
+    now: () => new Date(),
     log: (message) => console.info("[main]", message),
     newTaskId: () => randomUUID(),
     fail: (error) => restart(error, "state failure in a listener"),

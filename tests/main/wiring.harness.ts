@@ -26,6 +26,7 @@ type Options = {
   deepgramKeyPresent?: boolean;
   voiceFails?: boolean; // transcription and synthesis answer a Deepgram failure
   port?: EnginePort; // a real engine; the fake port records around it
+  now?: () => Date; // the wall clock; by default it follows the fake timers
 };
 
 type Pending<T> = { input: string; resolve: (result: T) => void };
@@ -214,6 +215,7 @@ export function wire(options: Options = {}) {
     openUrl: (url) => Promise.resolve(void seen.opened.push(url)),
     log: (message) => seen.logs.push(message),
     timers: { setTimer: clock.setTimer },
+    now: options.now ?? clock.date,
     newTaskId: () => {
       if (options.idFails) throw new Error("no task id");
       ids += 1;

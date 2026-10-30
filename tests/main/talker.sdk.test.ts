@@ -74,6 +74,7 @@ describe("the 30 s whole-call deadline through the SDK", () => {
       }),
       onReply: (_taskId, _attemptId, reply) => replies.push(reply),
       timers: { setTimer: clock.setTimer },
+      now: clock.date,
       log: () => undefined,
     });
     talker.talk(frontRequest());

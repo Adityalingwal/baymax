@@ -28,7 +28,8 @@ export function createClock() {
     }
     now = target;
   };
-  return { setTimer, advance, pending: () => pending.length };
+  const date = () => new Date(Date.UTC(2026, 9, 31, 12) + now);
+  return { setTimer, advance, date, pending: () => pending.length };
 }
 
 export function findings(text: string, urls: string[] = []): Findings {

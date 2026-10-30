@@ -20,6 +20,7 @@ export type WiringDeps = Omit<
   isOwnSender: (sender: RendererSender) => boolean;
   fail: (error: unknown) => void; // the restart path
   voice: Omit<VoiceDeps, "timers" | "fail">;
+  now: () => Date;
 };
 
 export type Wiring = { state: MainState; voice: Voice; close: () => void };
@@ -36,6 +37,7 @@ export function wireMain(deps: WiringDeps): Wiring {
     onReply: (taskId, attemptId, reply) =>
       forwardFailure(fail, () => state.talkerReplied(taskId, attemptId, reply)),
     timers: deps.timers,
+    now: deps.now,
     log: deps.log,
   });
   const talk = (request: TalkRequest): void => {

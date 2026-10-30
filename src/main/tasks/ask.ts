@@ -1,5 +1,5 @@
 import type { TaskId, UtteranceId } from "../../shared/cards";
-import { recentExchanges, taskSummaries } from "./display";
+import { recentExchanges, roomLeft, taskSummaries } from "./display";
 import { openAttempt } from "./front";
 import { conversationHistory } from "./history";
 import type { Change, FrontParts, TaskRecord } from "./record";
@@ -25,7 +25,8 @@ function partsFor(
     words,
     history: conversationHistory(model.exchanges),
     recent: recentExchanges(model, taskId),
-    tasks: taskSummaries(model, taskId),
+    tasks: taskSummaries(model),
+    room: roomLeft(model),
     waiting,
   };
 }

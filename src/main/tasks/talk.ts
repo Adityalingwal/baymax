@@ -41,7 +41,8 @@ export type TalkRequest = {
   words: string;
   history: HistoryTurn[];
   recent: RecentExchange[];
-  tasks: TaskSummary[];
+  tasks: TaskSummary[]; // only the running and queued ones
+  room: number; // how many more tasks fit, running or waiting
   waiting: WaitingQuestion | null;
 };
 
