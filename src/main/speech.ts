@@ -98,6 +98,7 @@ type Speech = {
   holdEnded(): void;
   setMuted(muted: boolean): void;
   cancelTask(taskId: TaskId): void;
+  cutFailure(taskId: TaskId): void;
   playbackFinished(payload: PlaybackFinished): void;
   rendererReset(): void;
 };
@@ -518,6 +519,13 @@ function cancelLines(ctx: SpeechContext, taskId: TaskId): void {
   pump(ctx);
 }
 
+// Not a cancel: the task id stays free, since a retried task's later result must still speak.
+function cutFailure(ctx: SpeechContext, taskId: TaskId): void {
+  const matches: Matches = (l) => l.taskId === taskId && l.kind === "failure";
+  clearSpeech(ctx, { matches, why: "task retried", sendStop: true });
+  pump(ctx);
+}
+
 function finishPlayback(ctx: SpeechContext, payload: PlaybackFinished) {
   if (!endPlaying(ctx, payload.lineId)) return;
   if (payload.outcome === "failed") log("playback failed in the renderer");
@@ -563,6 +571,7 @@ export function createSpeech(deps: SpeechDeps): Speech {
     holdEnded: () => endHold(ctx),
     setMuted: (muted) => changeMuted(ctx, muted),
     cancelTask: (taskId) => cancelLines(ctx, taskId),
+    cutFailure: (taskId) => cutFailure(ctx, taskId),
     playbackFinished: (payload) => finishPlayback(ctx, payload),
     rendererReset: () => forgetRenderer(ctx),
   };

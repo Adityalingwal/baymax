@@ -2,11 +2,27 @@ import type { TaskId } from "../../shared/cards";
 import { recentExchanges, roomLeft, taskSummaries } from "./display";
 import { appendLine, conversationHistory } from "./history";
 import type { Change, FailureCall, Model, TaskRecord } from "./record";
-import { addChat, nextAttemptId, talk } from "./record";
+import { addChat, nextAttemptId, say, talk } from "./record";
 import type { TalkerReply } from "./talk";
 
+function frontCallInFlight(model: Model): boolean {
+  return [...model.records.values()].some(({ attempt }) => attempt !== null);
+}
+
 function failureMayStart(model: Model): boolean {
-  return model.pendingFailures.length > 0 && model.failureCall === null;
+  return (
+    model.pendingFailures.length > 0 &&
+    model.failureCall === null &&
+    model.voiceIdle &&
+    model.questions.length === 0 &&
+    !frontCallInFlight(model)
+  );
+}
+
+// Voice going idle wakes a waiting turn; otherwise nothing shown changed, so nothing is published.
+export function setVoiceIdle(change: Change, idle: boolean): boolean {
+  change.model.voiceIdle = idle;
+  return failureMayStart(change.model);
 }
 
 function titleOf({ topic, card }: TaskRecord): string {
@@ -51,26 +67,39 @@ function openOffer(model: Model, record: TaskRecord): void {
   });
 }
 
-// The decision is read for nothing: whatever route came back, the task stays failed.
+// The decision is read for nothing: whatever route came back, the task stays failed. With no model to speak, the cause is said as written.
 export function receiveFailureTurn(
   change: Change,
-  { taskId }: FailureCall,
+  { taskId, cause }: FailureCall,
   reply: TalkerReply,
 ): boolean {
   const { model } = change;
   model.failureCall = null;
-  const record = model.records.get(taskId);
-  if (reply.kind === "failed" || record === undefined) return true;
-  appendLine(model.exchanges, taskId, reply.text);
+  appendLine(model.exchanges, taskId, reply.text ?? "");
+  if (reply.kind === "failed") {
+    appendLine(model.exchanges, taskId, cause);
+    addChat(change, "baymax", cause);
+    say(change, taskId, cause, "failure");
+    return true;
+  }
   addChat(change, "baymax", reply.text);
-  if (!record.retried) openOffer(model, record);
+  const record = model.records.get(taskId);
+  if (record !== undefined && !record.retried) openOffer(model, record);
   return true;
 }
 
-// The task is running again or gone, so what was waiting to tell its failure no longer holds.
+// The task is running again or gone, so nothing may still tell its failure; its later lines still speak.
 export function forgetFailure(change: Change, taskId: TaskId): void {
-  const { model } = change;
+  const { model, outputs } = change;
   const other = (entry: { taskId: TaskId }) => entry.taskId !== taskId;
   model.pendingFailures = model.pendingFailures.filter(other);
   model.offers = model.offers.filter(other);
+  if (model.failureCall?.taskId === taskId) {
+    outputs.push({
+      kind: "cancelAttempt",
+      attemptId: model.failureCall.attemptId,
+    });
+    model.failureCall = null;
+  }
+  outputs.push({ kind: "cutFailure", taskId });
 }

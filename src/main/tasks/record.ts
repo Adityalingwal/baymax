@@ -56,6 +56,7 @@ export type Model = {
   queue: TaskId[];
   pendingFailures: PendingFailure[]; // in the order they failed
   failureCall: FailureCall | null;
+  voiceIdle: boolean; // no key held, no line playing, no spoken turn pending
   offers: RetryOffer[];
   offersMade: number; // how many were ever made, for their order
   questions: { taskId: TaskId; order: number }[]; // the records holding a question, in the order spoken
@@ -74,6 +75,7 @@ export type Output =
   | { kind: "talk"; request: TalkRequest }
   | { kind: "cancelAttempt"; attemptId: string }
   | { kind: "silence"; taskId: TaskId }
+  | { kind: "cutFailure"; taskId: TaskId }
   | { kind: "timer"; ms: number; fire: Input };
 
 export type Change = {
@@ -95,6 +97,7 @@ export function createModel(): Model {
     queue: [],
     pendingFailures: [],
     failureCall: null,
+    voiceIdle: true,
     offers: [],
     offersMade: 0,
     questions: [],

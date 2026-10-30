@@ -57,6 +57,7 @@ export type Voice = {
   talk(spoken: Spoken): LineFeed;
   submitted(key: string): void; // a typed question: its talker timing starts as at a key release
   silence(taskId: TaskId): void;
+  cutFailure(taskId: TaskId): void;
   rendererReset(): void;
   stop(): void;
 };
@@ -478,6 +479,8 @@ export function createVoice(deps: VoiceDeps): Voice {
     submitted: (key) => flows.timing.released(key, deps.now()),
     silence: (taskId) =>
       contained(deps, "silence", () => speech.cancelTask(taskId)),
+    cutFailure: (taskId) =>
+      contained(deps, "cutFailure", () => speech.cutFailure(taskId)),
     rendererReset: () => forgetRenderer(model, flows),
     stop: () => stopVoice(model, flows),
   };

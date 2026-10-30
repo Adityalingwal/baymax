@@ -3,7 +3,7 @@ import type { EngineCommand, EngineEvent } from "../../shared/engine";
 import type { OpenSource } from "../../shared/ipc";
 import { ask } from "./ask";
 import { buildDisplay, waitingQuestion } from "./display";
-import { receiveFailureTurn, startFailureTurn } from "./failure";
+import { receiveFailureTurn, setVoiceIdle, startFailureTurn } from "./failure";
 import { receiveFront } from "./front";
 import type {
   Change,
@@ -43,6 +43,7 @@ export type MainStateDeps = {
   publish: (state: DisplayState) => void;
   say: (line: SaidLine) => void;
   silence: (taskId: TaskId) => void;
+  cutFailure: (taskId: TaskId) => void;
   talk: (request: TalkRequest) => void;
   cancelAttempt: (attemptId: string) => void;
   openUrl: (url: string) => Promise<void>;
@@ -64,6 +65,7 @@ export type MainState = {
   openSource: (payload: OpenSource) => void;
   setMuted: (muted: boolean) => void;
   setVoiceAvailable: (available: boolean) => void;
+  setVoiceIdle: (idle: boolean) => void;
   showNotice: (notice: Notice) => void;
   talkerReplied: (
     taskId: TaskId,
@@ -87,6 +89,7 @@ export function createMainState(deps: MainStateDeps): MainState {
     setMuted: (muted) => update((c) => setMuted(c, muted)),
     setVoiceAvailable: (available) =>
       update((c) => setVoiceAvailable(c, available)),
+    setVoiceIdle: (idle) => update((c) => setVoiceIdle(c, idle)),
     showNotice: (notice) => update((c) => showNotice(c, notice)),
     talkerReplied: (taskId, attemptId, reply) =>
       update((c) => receiveTalk(c, taskId, attemptId, reply)),
@@ -117,6 +120,8 @@ function flushOutput(
     guard("say", () => deps.say(output.line));
   } else if (output.kind === "silence") {
     guard("silence", () => deps.silence(output.taskId));
+  } else if (output.kind === "cutFailure") {
+    guard("cutFailure", () => deps.cutFailure(output.taskId));
   } else if (output.kind === "talk") {
     guard("talk", () => deps.talk(output.request));
   } else if (output.kind === "cancelAttempt") {
