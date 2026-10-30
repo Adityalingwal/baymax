@@ -36,7 +36,7 @@ type NotchShellProps = {
   muted: boolean; // main's mute
   setMuted: CardActions["setMuted"];
   openSource: CardActions["openSource"];
-  fullReportOpen?: boolean; // the panel takes its full-report size
+  fullReportOpen: boolean; // the panel takes its full-report size
   onOpenResult: () => void; // a click on the answer island's card
   children: (closePanel: () => void) => ReactNode;
 };
@@ -259,7 +259,7 @@ function PanelLayer(props: PanelLayerProps) {
 
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const { frame, phase, tasks, setMuted } = props;
-  const fullReport = props.fullReportOpen ?? false;
+  const fullReport = props.fullReportOpen;
   const { island, dispatch } = useIsland(tasks);
   const voice = usePill(phase, islandSpeaks(island, phase), props.muted);
   const closed = useClosedShape(voice.pill, island, tasks, {
@@ -284,16 +284,14 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
       onKeyDown={panel.onKeyDown}
     >
       <ClosedLayers
-        {...{
-          frame,
-          open,
-          closed,
-          voice,
-          layers,
-          island,
-          onMute,
-          onOpenResult,
-        }}
+        frame={frame}
+        open={open}
+        closed={closed}
+        voice={voice}
+        layers={layers}
+        island={island}
+        onMute={onMute}
+        onOpenResult={onOpenResult}
         openSource={props.openSource}
         onToggleReport={() => dispatch({ kind: "toggle-report" })}
       />
