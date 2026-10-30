@@ -31,7 +31,7 @@ export function isRunning(state: TaskState): boolean {
 export function statusLine(tasks: readonly ListCard[]): string {
   const needsYou = tasks.filter((card) => card.state === "clarifying").length;
   const running = tasks.filter((card) => isRunning(card.state)).length;
-  const done = tasks.filter(
+  const results = tasks.filter(
     (card) => card.state === "done" && !isChatReply(card),
   ).length;
   const parts = [
@@ -39,5 +39,6 @@ export function statusLine(tasks: readonly ListCard[]): string {
     running > 0 ? `${running} running` : null,
   ].filter((part) => part !== null);
   if (parts.length > 0) return parts.join(" · ");
-  return done > 0 ? `${done} done` : "Nothing running";
+  if (results === 0) return "Nothing running";
+  return results === 1 ? "1 result" : `${results} results`;
 }

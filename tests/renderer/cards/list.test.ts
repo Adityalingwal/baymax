@@ -113,7 +113,12 @@ describe("statusLine", () => {
     {
       name: "results only, chat and failed cards not counted",
       tasks: [result, { ...result, id: "r2" }, card("i", "failed"), chat],
-      line: "2 done",
+      line: "2 results",
+    },
+    {
+      name: "one result",
+      tasks: [result],
+      line: "1 result",
     },
     {
       name: "only a failed card",
