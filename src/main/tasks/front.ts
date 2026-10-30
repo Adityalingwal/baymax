@@ -6,10 +6,8 @@ import { addExchange, setExchangeTask } from "./history";
 import { frontFailureLine } from "./lines";
 import type { Attempt, Change, FrontParts, Model, TaskRecord } from "./record";
 import { dropped, say, shownQuestion, talk } from "./record";
-import { admit, endChat, endOutside } from "./run";
+import { admit, cancelTask, endChat, endSpoken } from "./run";
 import type { TalkerReply } from "./talk";
-
-type Admitted = Extract<Decision, { route: "newTask" | "followUp" }>;
 
 // Starts one front call for the record; its id is unique, so a late result of an older call is told apart.
 export function openAttempt(
@@ -32,6 +30,11 @@ function earlierThan(model: Model, taskId: TaskId): ReadonlySet<TaskId> {
     .filter((record) => record.created < created)
     .map((record) => record.card.taskId);
   return new Set(ids);
+}
+
+function canStop(model: Model, taskId: TaskId): boolean {
+  const state = model.records.get(taskId)?.card.state;
+  return state === "running" || state === "queued" || state === "clarifying";
 }
 
 function failFront(
@@ -76,8 +79,8 @@ function claimTarget(
 function clarify(
   change: Change,
   record: TaskRecord,
-  topic: string,
-  question: { text: string; choices: string[] },
+  topic: string | null,
+  text: string,
 ): void {
   const { card } = record;
   const { model } = change;
@@ -88,7 +91,7 @@ function clarify(
   card.line = null;
   card.reply = null;
   card.canRetry = false;
-  const full = { questionId: `${card.taskId}:question`, ...question };
+  const full = { questionId: `${card.taskId}:question`, text };
   if (shownQuestion(model) === null) {
     card.question = { ...full, answered: false };
     return;
@@ -126,25 +129,23 @@ function applyDecision(
   decision: Decision,
   line: string,
 ): boolean {
+  if (decision.route === "stop") {
+    cancelTask(change, decision.taskId);
+    endSpoken(change, record);
+    return true;
+  }
   const target = resolveTarget(change, record, attempt, decision);
   if (target === null) return true;
   setExchangeTask(change.model.exchanges, attempt.order, target.card.taskId);
   switch (decision.route) {
-    case "chat":
+    case "reply":
       endChat(change, target, line);
       return true;
-    case "outsideResearch":
-      endOutside(change, target, line);
+    case "ask":
+      clarify(change, target, decision.topic, line);
       return true;
-    case "clarify":
-      clarify(change, target, decision.topic, {
-        text: line,
-        choices: decision.choices,
-      });
-      return true;
-    case "newTask":
-    case "followUp":
-      return admit(change, target, decision satisfies Admitted, line);
+    case "work":
+      return admit(change, target, decision, line);
   }
 }
 
@@ -177,6 +178,7 @@ export function receiveFront(
     waiting: attempt.parts.waiting,
     taskId,
     earlier: (id: TaskId) => earlierThan(change.model, id),
+    canStop: (id: TaskId) => canStop(change.model, id),
   };
   const check = checkDecision(reply.decision, context);
   if (!check.ok) {

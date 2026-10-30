@@ -9,7 +9,7 @@ import {
   unreachable,
   until,
 } from "./tasks/flow.harness";
-import { newTask } from "./tasks/harness";
+import { workRoute } from "./tasks/harness";
 import { frontFailureLine } from "../../src/main/tasks/lines";
 import { failFront, streamFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
@@ -66,10 +66,10 @@ describe("cancel with the models unreachable: a hanging worker call", () => {
       const engine = startFakeEngine([held.call, unreachable]);
       const w = wire({ ...options, port: engine.port });
       ask(w, "tell me hermes");
-      await streamFront(w, newTask("hermes"));
+      await streamFront(w, workRoute("hermes"));
       await until("the worker call", () => held.seen.started);
       ask(w, "tell me rust");
-      await streamFront(w, newTask("rust"));
+      await streamFront(w, workRoute("rust"));
       await until("the queued card", () => w.card("t2")?.state === "queued");
       cancel(w, "t1");
       expect(w.card("t1")?.state).toBe("cancelling");

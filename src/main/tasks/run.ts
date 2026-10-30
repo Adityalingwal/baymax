@@ -19,7 +19,7 @@ type RunEvent = Extract<
   EngineEvent,
   { type: "progress" } | { type: "result" } | { type: "failed" }
 >;
-type Admitted = Extract<Decision, { route: "newTask" | "followUp" }>;
+type Admitted = Extract<Decision, { route: "work" }>;
 
 const LEAVE_MS = 3000;
 
@@ -114,19 +114,14 @@ function endCancelled(
   else say(change, taskId, line, "failure");
 }
 
-// A request to act outside research: the front call's own line, already said, is the card's reply.
-export function endOutside(
-  change: Change,
-  record: TaskRecord,
-  spoken: string,
-): void {
+// The record of words that only needed their own line, such as a stop; that line keeps playing.
+export function endSpoken(change: Change, record: TaskRecord): void {
   closeTask(change, record, {
     outcome: "cancelled",
     findings: null,
     spokenLine: null,
   });
   record.card.line = null;
-  record.card.reply = spoken;
   clearForLeaving(change, record);
 }
 
@@ -200,8 +195,7 @@ export function admit(
   card.title = record.topic;
   card.sayBack = null;
   card.reply = line;
-  card.parentTaskId =
-    decision.route === "followUp" ? decision.parentTaskId : null;
+  card.parentTaskId = decision.parentTaskId;
   card.question = null;
   card.canRetry = false;
   card.line = null;

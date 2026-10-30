@@ -17,7 +17,7 @@ import type {
   RendererSender,
 } from "../../src/main/renderer-actions";
 import { fakeStream, finished } from "./talker.harness";
-import { createClock, findings, newTask } from "./tasks/harness";
+import { createClock, findings, workRoute } from "./tasks/harness";
 import { wireMain } from "../../src/main/wiring";
 
 type Options = {
@@ -288,7 +288,7 @@ export async function failFront(
 
 export async function admitTask(w: Wired): Promise<void> {
   submit(w);
-  await streamFront(w, newTask("how Hermes works"));
+  await streamFront(w, workRoute("how Hermes works"));
 }
 
 export async function runToDone(w: Wired): Promise<void> {
@@ -303,5 +303,5 @@ export async function runToDone(w: Wired): Promise<void> {
 
 export async function admitAs(w: Wired, topic: string): Promise<void> {
   w.send(ipcChannels.submitQuestion, { text: `tell me ${topic}` });
-  await streamFront(w, newTask(topic), `Checking ${topic}.`);
+  await streamFront(w, workRoute(topic), `Checking ${topic}.`);
 }

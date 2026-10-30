@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EngineCommand } from "../../src/shared/engine";
 import { ipcChannels } from "../../src/shared/ipc";
-import { findings, newTask } from "./tasks/harness";
+import { findings, workRoute } from "./tasks/harness";
 import { runToDone, source, streamFront, submit, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
@@ -19,7 +19,7 @@ const throwRows = [
     },
     act: async (w: Wired) => {
       submit(w);
-      await streamFront(w, newTask("how Hermes works"));
+      await streamFront(w, workRoute("how Hermes works"));
     },
     message: "send runTask broke",
   },
@@ -35,7 +35,11 @@ describe("wireMain typed path", () => {
       "how does Hermes work?",
     );
     expect(w.card("t1")?.state).toBe("thinking");
-    await streamFront(w, newTask("how Hermes works"), "I'll look into Hermes.");
+    await streamFront(
+      w,
+      workRoute("how Hermes works"),
+      "I'll look into Hermes.",
+    );
     expect(w.port.sent.at(-1)).toMatchObject({ type: "runTask", taskId: "t1" });
     expect(w.card("t1")).toMatchObject({
       state: "running",
@@ -98,7 +102,7 @@ describe("wireMain replay, failures and close", () => {
     expect(w.port.listeners()).toBe(0);
     expect(w.port.closes()).toBe(1);
     const published = w.published.length;
-    await streamFront(w, newTask("how Hermes works"));
+    await streamFront(w, workRoute("how Hermes works"));
     w.send(ipcChannels.setMuted, { muted: true });
     expect(w.published).toHaveLength(published);
     expect(w.port.sent).toHaveLength(0);

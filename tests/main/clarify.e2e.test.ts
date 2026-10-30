@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ipcChannels } from "../../src/shared/ipc";
-import {
-  chat,
-  clarify,
-  findings,
-  newTask,
-  outsideResearch,
-} from "./tasks/harness";
+import { replyRoute, askRoute, findings, workRoute } from "./tasks/harness";
 import { admitAs, streamFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
@@ -16,11 +10,11 @@ const ask = (w: Wired, text: string) =>
   w.send(ipcChannels.submitQuestion, { text });
 
 // Asks and answers the front call with a clarifying question; the task is the next t id.
-async function askClarify(w: Wired, words = "about it", choices?: string[]) {
+async function askClarify(w: Wired, words = "about it") {
   ask(w, words);
   const taskId = w.published.at(-1)?.tasks.at(-1)?.taskId ?? "";
   const call = w.talkerCalls.length - 1;
-  await streamFront(w, clarify(choices), `Which one for ${taskId}?`, call);
+  await streamFront(w, askRoute(), `Which one for ${taskId}?`, call);
   return taskId;
 }
 
@@ -59,7 +53,6 @@ describe("the shown question", () => {
       question: {
         questionId: "t1:question",
         text: "Which one for t1?",
-        choices: ["First", "Second", "Third"],
         answered: false,
       },
       answer: null,
@@ -75,23 +68,15 @@ describe("the shown question", () => {
       question: {
         questionId: "t1:question",
         text: "Which one for t1?",
-        choices: ["First", "Second", "Third"],
       },
     });
-  });
-
-  it("shows an open question with no choices", async () => {
-    const w = wire();
-    await askClarify(w, "about it", []);
-    expect(w.card("t1")?.question).toMatchObject({ choices: [] });
-    expect(w.wiring.state.waitingQuestion()?.question.choices).toEqual([]);
   });
 });
 
 type ReleaseRow = { name: string; release: (w: Wired) => Promise<void> };
 
 const answerFirst = async (w: Wired) => {
-  await answerWith(w, "the first one", newTask("about it", "t1:question"));
+  await answerWith(w, "the first one", workRoute("about it", "t1:question"));
 };
 
 const releaseRows: ReleaseRow[] = [
@@ -133,7 +118,7 @@ describe("a second question", () => {
   it("lets words that do not answer go through as a new task while the question stays shown", async () => {
     const w = wire();
     await askClarify(w);
-    await answerWith(w, "something else", newTask("rust"));
+    await answerWith(w, "something else", workRoute("rust"));
     expect(w.card("t2")?.state).toBe("running");
     expect(w.wiring.state.waitingQuestion()).toMatchObject({ taskId: "t1" });
   });
@@ -146,7 +131,7 @@ describe("a spoken answer routed as no task", () => {
     await answerWith(
       w,
       "the first one",
-      { ...chat(), answerTo: "t1:question" },
+      { ...replyRoute(), answerTo: "t1:question" },
       "That works.",
     );
     expect(w.card("t1")).toMatchObject({
@@ -160,26 +145,6 @@ describe("a spoken answer routed as no task", () => {
     await w.playAll();
     expect(w.spoken()).toEqual(["Which one for t1?", "That works."]);
   });
-
-  it("ends the waiting task as outside research, saying nothing more", async () => {
-    const w = wire();
-    await askClarify(w);
-    await answerWith(
-      w,
-      "the first one",
-      { ...outsideResearch(), answerTo: "t1:question" },
-      "I only research.",
-    );
-    expect(w.card("t1")).toMatchObject({
-      state: "cancelled",
-      reply: "I only research.",
-      line: null,
-    });
-    await flush();
-    await w.playAll();
-    expect(w.spoken()).toEqual(["Which one for t1?", "I only research."]);
-    expect(w.stops).toEqual([]);
-  });
 });
 
 describe("a spoken answer", () => {
@@ -190,12 +155,12 @@ describe("a spoken answer", () => {
     "removes the thinking card and routes the waiting task with $admitted tasks admitted",
     async ({ admitted, state }) => {
       const w = wire();
-      await askClarify(w, "find me a laptop", ["Office", "Gaming"]);
+      await askClarify(w, "find me a laptop");
       for (let i = 0; i < admitted; i += 1) await admitAs(w, `task ${i}`);
       const temp = await answerWith(
         w,
         "the second one",
-        newTask("gaming laptops", "t1:question"),
+        workRoute("gaming laptops", "t1:question"),
       );
       expect(w.card(temp)).toBeUndefined();
       expect(w.card("t1")).toMatchObject({ state, question: null });
@@ -221,11 +186,11 @@ describe("spoken answers that compete or are cancelled", () => {
     ask(w, "the second one");
     await streamFront(
       w,
-      { ...chat(), answerTo: "t1:question" },
+      { ...replyRoute(), answerTo: "t1:question" },
       "First wins.",
       1,
     );
-    await streamFront(w, newTask("x", "t1:question"), "Okay.", 2);
+    await streamFront(w, workRoute("x", "t1:question"), "Okay.", 2);
     expect(w.card("t3")).toBeUndefined();
     expect(w.card("t1")).toMatchObject({ state: "done", reply: "First wins." });
     expect(w.port.sent).toEqual([]);
@@ -239,7 +204,7 @@ describe("spoken answers that compete or are cancelled", () => {
     w.wiring.state.talkerReplied("t2", "t2#1", {
       kind: "said",
       text: "ok",
-      decision: newTask("x", "t1:question"),
+      decision: workRoute("x", "t1:question"),
     });
     expect(w.card("t2")?.state).toBe("cancelled");
     expect(w.card("t1")).toMatchObject({
@@ -257,7 +222,7 @@ describe("a clarifying task answered end to end", () => {
     await answerWith(
       w,
       "the cheaper one",
-      newTask("about it", "t1:question"),
+      workRoute("about it", "t1:question"),
       "Checking.",
     );
     // One call for the question and one for the answer; the engine is never asked to route.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TaskCard, TaskId } from "../../src/shared/cards";
 import type { EngineEvent } from "../../src/shared/engine";
 import { ipcChannels } from "../../src/shared/ipc";
-import { clarify, findings, newTask } from "./tasks/harness";
+import { askRoute, findings, workRoute } from "./tasks/harness";
 import { admitAs, failFront, streamFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
@@ -28,7 +28,7 @@ const asked = (w: Wired) =>
 
 const clarifying = async (w: Wired) => {
   asked(w);
-  await streamFront(w, clarify(["Office", "Gaming"]), "Which kind?");
+  await streamFront(w, askRoute(), "Which kind?");
 };
 
 const cancelled = (taskId: TaskId): EngineEvent => ({
@@ -320,7 +320,7 @@ describe("a late front reply for a cancelled card", () => {
     w.wiring.state.talkerReplied("t4", "t4#1", {
       kind: "said",
       text: "Late.",
-      decision: newTask("laptops"),
+      decision: workRoute("laptops"),
     });
     w.wiring.state.talkerReplied("t4", "t4#1", {
       kind: "failed",

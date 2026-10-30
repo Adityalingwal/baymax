@@ -128,7 +128,6 @@ const demoCards: TaskCard[] = [
     question: {
       questionId: "q-1",
       text: "What will you mostly use it for?",
-      choices: ["Programming", "Video editing", "Travel and writing"],
       answered: false,
     },
   }),

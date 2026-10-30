@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { TaskId } from "../../src/shared/cards";
 import type { EngineEvent, ParentResult } from "../../src/shared/engine";
 import { ipcChannels } from "../../src/shared/ipc";
-import { chat, clarify, findings, followUp, newTask } from "./tasks/harness";
+import {
+  replyRoute,
+  askRoute,
+  findings,
+  workOnRoute,
+  workRoute,
+} from "./tasks/harness";
 import type { ModelRequest } from "./tasks/flow.harness";
 import {
   closePorts,
@@ -29,13 +35,13 @@ async function askFollowUp(w: Wired, parent: TaskId, topic: string) {
   ask(w, `and ${topic}`);
   const taskId = lastCard(w);
   const call = w.talkerCalls.length - 1;
-  await streamFront(w, followUp(parent, topic), `Checking ${topic}.`, call);
+  await streamFront(w, workOnRoute(parent, topic), `Checking ${topic}.`, call);
   return taskId;
 }
 
 async function clarifyingParent(w: Wired): Promise<void> {
   ask(w, "about it");
-  await streamFront(w, clarify(), "Which one for t1?");
+  await streamFront(w, askRoute(), "Which one for t1?");
 }
 
 const lastRun = (w: Wired, taskId: TaskId) =>
@@ -178,7 +184,7 @@ describe("follow-up parents", () => {
   it("saves a chat result with no goal and the card's words", async () => {
     const w = wire();
     ask(w, "hello there");
-    await streamFront(w, chat(), "Hello.");
+    await streamFront(w, replyRoute(), "Hello.");
     const child = await askFollowUp(w, "t1", "more");
     expect(parentOf(w, child)).toEqual({
       taskId: "t1",
@@ -212,7 +218,7 @@ describe("invalid parents and the queue", () => {
       const w = wire();
       ask(w, "first");
       setup(w);
-      await streamFront(w, followUp(parentId, "more"), "Okay.", 0);
+      await streamFront(w, workOnRoute(parentId, "more"), "Okay.", 0);
       expect(parentOf(w, "t1")).toBeNull();
       expect(w.card("t1")?.parentTaskId).toBeNull();
       expect(w.logs.some((line) => line.includes(`parent ${parentId}`))).toBe(
@@ -243,7 +249,7 @@ describe("follow-ups that wait for their parent", () => {
     expect(w.card(child)?.state).toBe("queued");
     expect(w.card(later)?.state).toBe("running");
     ask(w, "the first one");
-    await streamFront(w, newTask("about it", "t1:question"));
+    await streamFront(w, workRoute("about it", "t1:question"));
     w.port.emit(result(later));
     expect(w.card("t1")?.state).toBe("running");
     expect(w.card(child)?.state).toBe("queued");
@@ -274,7 +280,7 @@ describe("follow-ups that wait for their parent", () => {
     const answer = lastCard(w);
     const child = await askFollowUp(w, answer, "more");
     expect(w.card(child)?.state).toBe("queued");
-    await streamFront(w, newTask("about it", "t1:question"), "Okay.", 1);
+    await streamFront(w, workRoute("about it", "t1:question"), "Okay.", 1);
     expect(w.card(answer)).toBeUndefined();
     // The answered task runs first; the follow-up starts once the slot frees.
     w.port.emit(result("t1"));
@@ -295,14 +301,14 @@ describe("a follow-up with the real engine", () => {
     ask(w, "How does Hermes agent work inside?");
     await streamFront(
       w,
-      newTask("how Hermes agent works inside"),
+      workRoute("how Hermes agent works inside"),
       "I'll look at how Hermes works.",
     );
     await until("card 1 to end", () => w.card("t1")?.state === "failed");
     ask(w, "How is it different from Claude Code?");
     await streamFront(
       w,
-      followUp("t1", "how Hermes differs from Claude Code"),
+      workOnRoute("t1", "how Hermes differs from Claude Code"),
       "I'll compare them.",
       1,
     );

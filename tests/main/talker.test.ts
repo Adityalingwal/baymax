@@ -24,7 +24,7 @@ describe("the blocks of a front call", () => {
         waiting: {
           taskId: "t4",
           words: evil,
-          question: { questionId: "q", text: evil, choices: [] },
+          question: { questionId: "q", text: evil },
         },
       }),
     );

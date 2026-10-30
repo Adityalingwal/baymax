@@ -10,11 +10,9 @@ export type Source = {
   title: string;
 };
 
-// No choices (an open question) or two to four, the first recommended; the screen adds "something else" itself.
 export type ClarifyingQuestion = {
   questionId: QuestionId;
   text: string;
-  choices: string[];
 };
 
 // What a task found: a done answer, or what a failed or cancelled one had read.

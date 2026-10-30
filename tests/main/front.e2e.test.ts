@@ -3,13 +3,13 @@ import type { ModelFailure } from "../../src/providers/anthropic";
 import { ipcChannels } from "../../src/shared/ipc";
 import { finished } from "./talker.harness";
 import {
-  chat,
-  clarify,
+  replyRoute,
+  askRoute,
   decision,
   findings,
-  followUp,
-  newTask,
-  outsideResearch,
+  stopRoute,
+  workOnRoute,
+  workRoute,
 } from "./tasks/harness";
 import { admitAs, failFront, streamFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
@@ -35,7 +35,7 @@ describe("the routes of a front decision", () => {
   it("chat: the thinking card becomes a done card showing the line, with no worker and nothing more said", async () => {
     const w = wire();
     ask(w, "thanks!");
-    await streamFront(w, chat(), "You're welcome!");
+    await streamFront(w, replyRoute(), "You're welcome!");
     expect(w.card("t1")).toMatchObject({
       state: "done",
       sayBack: null,
@@ -52,7 +52,7 @@ describe("the routes of a front decision", () => {
   it("newTask: the card shows the line, sends the goal and the words, and says nothing more", async () => {
     const w = wire();
     ask(w, "  will it rain?  ");
-    await streamFront(w, newTask("the forecast"), "I'll check the forecast.");
+    await streamFront(w, workRoute("the forecast"), "I'll check the forecast.");
     expect(w.card("t1")).toMatchObject({
       state: "running",
       sayBack: null,
@@ -79,7 +79,7 @@ describe("the routes of a front decision that wait or end", () => {
   it("clarify: the card is clarifying with the line as the question and no reply, say-back or line", async () => {
     const w = wire();
     ask(w, "can you help me?");
-    await streamFront(w, clarify([]), "What would you like me to look into?");
+    await streamFront(w, askRoute(), "What would you like me to look into?");
     expect(w.card("t1")).toMatchObject({
       state: "clarifying",
       sayBack: null,
@@ -87,7 +87,6 @@ describe("the routes of a front decision that wait or end", () => {
       reply: null,
       question: {
         text: "What would you like me to look into?",
-        choices: [],
         answered: false,
       },
     });
@@ -97,21 +96,18 @@ describe("the routes of a front decision that wait or end", () => {
     ]);
   });
 
-  it("outsideResearch: the card ends cancelled with the line, which stays spoken after the card leaves", async () => {
+  it("stop on a running task: the engine gets a cancel and the stop line finishes playing", async () => {
     const w = wire();
-    ask(w, "book me a cab");
-    await streamFront(w, outsideResearch(), "I can't book a cab.");
-    expect(w.card("t1")).toMatchObject({
-      state: "cancelled",
-      reply: "I can't book a cab.",
-      line: null,
-      sayBack: null,
-      canRetry: false,
-    });
-    expect(w.port.sent).toEqual([]);
-    w.advance(3000);
-    expect(w.card("t1")).toBeUndefined();
-    expect(await spokenAll(w)).toEqual(["I can't book a cab."]);
+    await admitAs(w, "hermes");
+    await w.playAll();
+    ask(w, "stop that");
+    await streamFront(w, stopRoute("t1"), "Stopping hermes.");
+    expect(w.port.sent.at(-1)).toEqual({ type: "cancel", taskId: "t1" });
+    expect(w.card("t1")?.state).toBe("cancelling");
+    expect(await spokenAll(w)).toEqual([
+      "Checking hermes.",
+      "Stopping hermes.",
+    ]);
     expect(w.stops).toEqual([]);
   });
 });
@@ -120,7 +116,7 @@ describe("a follow-up of an unknown task", () => {
   it("a follow-up naming an unknown task is admitted as a new task and logged", async () => {
     const w = wire();
     ask(w, "and more");
-    await streamFront(w, followUp("t9", "more"));
+    await streamFront(w, workOnRoute("t9", "more"));
     expect(w.card("t1")).toMatchObject({
       state: "running",
       parentTaskId: null,
@@ -217,6 +213,24 @@ const failures: Fail[] = [
     line: stalledLine,
     spoken: ["Okay.", stalledLine],
   },
+  {
+    name: "route retry, not built yet",
+    fail: (w) => streamFront(w, decision({ route: "retry", taskId: "t1" })),
+    line: stalledLine,
+    spoken: ["Okay.", stalledLine],
+  },
+  {
+    name: "a stop naming no task",
+    fail: (w) => streamFront(w, decision({ route: "stop" })),
+    line: stalledLine,
+    spoken: ["Okay.", stalledLine],
+  },
+  {
+    name: "a stop naming a task that is not running",
+    fail: (w) => streamFront(w, stopRoute("t9")),
+    line: stalledLine,
+    spoken: ["Okay.", stalledLine],
+  },
 ];
 
 const counts = (w: Wired) => [
@@ -272,10 +286,10 @@ describe("the result of a retried front call", () => {
     w.wiring.state.talkerReplied("t1", "t1#1", {
       kind: "said",
       text: "late",
-      decision: chat(),
+      decision: replyRoute(),
     });
     expect(w.card("t1")).toMatchObject({ state: "thinking", reply: null });
-    await streamFront(w, chat(), "It's four.");
+    await streamFront(w, replyRoute(), "It's four.");
     expect(w.card("t1")).toMatchObject({
       state: "done",
       reply: "It's four.",
@@ -361,7 +375,7 @@ const lateRows: LateRow[] = [
       w.wiring.state.talkerReplied("t1", "t1#1", {
         kind: "said",
         text: "again",
-        decision: chat(),
+        decision: replyRoute(),
       }),
   },
   {
@@ -407,7 +421,7 @@ describe("an input that changes nothing", () => {
     w.wiring.state.talkerReplied("t1", "t1#1", {
       kind: "said",
       text: "again",
-      decision: chat(),
+      decision: replyRoute(),
     });
     expect(w.card("t1")).toMatchObject({ state: "running" });
     expect(w.logs.at(-1)).toBe("dropped: front call t1#1 for t1");

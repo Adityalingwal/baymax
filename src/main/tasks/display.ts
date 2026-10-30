@@ -62,11 +62,11 @@ export function waitingQuestion(model: Model): WaitingQuestion | null {
   const record = shownQuestion(model);
   const question = record?.card.question ?? null;
   if (record === null || question === null) return null;
-  const { questionId, text, choices } = question;
+  const { questionId, text } = question;
   return {
     taskId: record.card.taskId,
     words: record.card.words,
-    question: { questionId, text, choices: [...choices] },
+    question: { questionId, text },
   };
 }
 

@@ -6,7 +6,7 @@ import {
   unreachable,
   until,
 } from "./tasks/flow.harness";
-import { chat, newTask } from "./tasks/harness";
+import { replyRoute, workRoute } from "./tasks/harness";
 import { streamFront, wire } from "./wiring.harness";
 
 const zone = process.env.TZ;
@@ -29,7 +29,7 @@ describe("the front call through the wiring", () => {
 
   it("speaks the line as it streams and shows it on a chat card", async () => {
     const w = asked();
-    await streamFront(w, chat(), "It's 4.");
+    await streamFront(w, replyRoute(), "It's 4.");
     await w.playNext();
     expect(w.spoken()).toEqual(["It's 4."]);
     expect(w.card("t1")).toMatchObject({
@@ -44,7 +44,7 @@ describe("the front call through the wiring", () => {
     const w = asked();
     w.advance(5000);
     expect(w.syntheses).toEqual([]);
-    await streamFront(w, chat(), "It's 4.");
+    await streamFront(w, replyRoute(), "It's 4.");
     await w.playAll();
     expect(w.spoken()).toEqual(["It's 4."]);
   });
@@ -64,7 +64,7 @@ describe("the day the talker and the worker are told", () => {
     const engine = startFakeEngine([unreachable], null);
     const w = wire({ port: engine.port, now: () => new Date() });
     w.send(ipcChannels.submitQuestion, { text: "will it rain?" });
-    await streamFront(w, newTask("the forecast"));
+    await streamFront(w, workRoute("the forecast"));
     await until("the worker's call", () => engine.requests.length > 0);
     const talkerTurn = String(
       w.talkerCalls[0].request.messages.at(-1)?.content,
