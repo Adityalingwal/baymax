@@ -55,23 +55,9 @@ describe("islandWidth", () => {
   });
 });
 
-type Card = Pick<TaskCard, "taskId" | "state" | "reply" | "answer">;
+type Card = Pick<TaskCard, "taskId" | "state">;
 
-const done: Card = {
-  taskId: "t1",
-  state: "done",
-  reply: "I'll check.",
-  answer: {
-    cardText: "Hermes runs a loop.",
-    sources: [{ id: "s", url: "https://a.com", title: "A" }],
-  },
-};
-const chat: Card = {
-  taskId: "t1",
-  state: "done",
-  reply: "Hi there.",
-  answer: { cardText: "Hi there.", sources: [] },
-};
+const done: Card = { taskId: "t1", state: "done" };
 
 const speaking = (kind: SpokenKind, taskId: string | null): VoicePhase => ({
   phase: "speaking",
@@ -120,12 +106,6 @@ const answerRows: AnswerRow[] = [
     name: "the front call's line",
     phase: speaking("talk", "t1"),
     tasks: [done],
-    answer: false,
-  },
-  {
-    name: "a chat reply",
-    phase: speaking("answer", "t1"),
-    tasks: [chat],
     answer: false,
   },
   {

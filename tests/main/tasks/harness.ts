@@ -28,7 +28,8 @@ export function createClock() {
     }
     now = target;
   };
-  return { setTimer, advance, pending: () => pending.length };
+  const date = () => new Date(Date.UTC(2026, 9, 31, 12) + now);
+  return { setTimer, advance, date, pending: () => pending.length };
 }
 
 export function findings(text: string, urls: string[] = []): Findings {
@@ -45,30 +46,26 @@ export function findings(text: string, urls: string[] = []): Findings {
 // The decide tool's input: every field present, unused ones empty.
 export function decision(fields: Record<string, unknown>) {
   return {
-    route: "chat",
+    route: "reply",
     topic: null,
-    parentTaskId: null,
-    answerTo: null,
-    choices: [],
     goal: null,
+    taskId: null,
+    answerTo: null,
     ...fields,
   };
 }
 
-export const chat = () => decision({ route: "chat" });
+export const replyRoute = (answerTo: string | null = null) =>
+  decision({ route: "reply", answerTo });
 
-export const outsideResearch = () => decision({ route: "outsideResearch" });
+export const workRoute = (topic: string, answerTo: string | null = null) =>
+  decision({ route: "work", topic, goal: topic, answerTo });
 
-export const newTask = (topic: string, answerTo: string | null = null) =>
-  decision({ route: "newTask", topic, goal: topic, answerTo });
+export const workOnRoute = (taskId: TaskId, topic: string) =>
+  decision({ route: "work", topic, goal: topic, taskId });
 
-export const followUp = (parentTaskId: TaskId, topic: string) =>
-  decision({
-    route: "followUp",
-    topic,
-    parentTaskId,
-    goal: topic,
-  });
+export const askRoute = (topic: string | null = "about it") =>
+  decision({ route: "ask", topic });
 
-export const clarify = (choices = ["First", "Second", "Third"]) =>
-  decision({ route: "clarify", topic: "about it", choices });
+export const stopRoute = (taskId: TaskId) =>
+  decision({ route: "stop", taskId });

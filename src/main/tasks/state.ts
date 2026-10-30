@@ -3,7 +3,7 @@ import type { EngineCommand, EngineEvent } from "../../shared/engine";
 import type { OpenSource } from "../../shared/ipc";
 import { ask } from "./ask";
 import { buildDisplay, waitingQuestion } from "./display";
-import { receiveFront, retryTask } from "./front";
+import { receiveFront } from "./front";
 import type {
   Change,
   Input,
@@ -16,8 +16,8 @@ import type {
 import {
   createModel,
   dropped,
+  reAskOlderQuestion,
   setVoiceAvailable,
-  showNextQuestion,
   showNotice,
 } from "./record";
 import type { TalkRequest, TalkerReply, WaitingQuestion } from "./talk";
@@ -46,7 +46,8 @@ export type MainStateDeps = {
   openUrl: (url: string) => Promise<void>;
   log: (message: string) => void;
   timers: Timers;
-  newTaskId: () => TaskId;
+  now: () => Date;
+  nextTaskId: () => TaskId;
 };
 
 export type MainState = {
@@ -76,10 +77,11 @@ export function createMainState(deps: MainStateDeps): MainState {
   const update = createUpdatePath(model, deps);
   return {
     ask: (words, utteranceId, waiting) =>
-      update((c) => ask(c, deps.newTaskId, { words, utteranceId, waiting })),
+      update((c) => ask(c, deps.nextTaskId, { words, utteranceId, waiting })),
     waitingQuestion: () => waitingQuestion(model),
     cancelTask: (taskId) => update((c) => cancelTask(c, taskId)),
-    retryTask: (taskId) => update((c) => retryTask(c, taskId)),
+    // A failed front call has no card to retry, and no failed task can be retried yet.
+    retryTask: (taskId) => update((c) => dropped(c, `retry ${taskId}`)),
     openSource: (payload) => update((c) => openSource(c, deps, payload)),
     setMuted: (muted) => update((c) => setMuted(c, muted)),
     setVoiceAvailable: (available) =>
@@ -133,10 +135,15 @@ function createUpdatePath(
   const inbox: Input[] = [];
   let running = false;
   const apply = (input: Input): void => {
-    const change: Change = { model, outputs: [], log: deps.log };
+    const change: Change = {
+      model,
+      outputs: [],
+      now: deps.now,
+      log: deps.log,
+    };
     if (!input(change)) return;
     startNext(change);
-    showNextQuestion(change);
+    reAskOlderQuestion(change);
     guarded(deps, "publish", () => deps.publish(buildDisplay(model)));
     change.outputs.forEach((output) => flushOutput(deps, update, output));
   };

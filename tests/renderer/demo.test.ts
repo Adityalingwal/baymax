@@ -34,8 +34,8 @@ const effects: [string, DemoAction, (after: DisplayState) => void][] = [
   ],
   [
     "cancel moves a cancellable card to cancelling",
-    { kind: "cancelTask", payload: { taskId: "demo-9" } },
-    (after) => expect(find(after, "demo-9")?.state).toBe("cancelling"),
+    { kind: "cancelTask", payload: { taskId: "demo-7" } },
+    (after) => expect(find(after, "demo-7")?.state).toBe("cancelling"),
   ],
   [
     "retry sets canRetry false",

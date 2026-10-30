@@ -36,6 +36,7 @@ export function wireMain(deps: WiringDeps): Wiring {
     onReply: (taskId, attemptId, reply) =>
       forwardFailure(fail, () => state.talkerReplied(taskId, attemptId, reply)),
     timers: deps.timers,
+    now: deps.now,
     log: deps.log,
   });
   const talk = (request: TalkRequest): void => {

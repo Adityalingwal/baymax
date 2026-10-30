@@ -3,12 +3,6 @@ import type { TaskId } from "../../src/shared/cards";
 import { admitAs, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
-// The fixed lines as written, so a changed cause or fix in the app fails here.
-const fixedLines = {
-  queued: "Okay, I'll look at that after the current one.",
-  queueFull: "I already have three waiting. Cancel one or ask again later.",
-};
-
 const names = ["hermes", "rust", "zig", "go", "ocaml"];
 
 async function fiveAsked(): Promise<Wired> {
@@ -29,61 +23,29 @@ const finish = (w: Wired, taskId: TaskId) =>
   });
 
 describe("five typed questions through the wiring", () => {
-  it("runs the first, queues the next three and refuses the fifth", async () => {
+  it("runs the first and queues the rest, even past the limit, since each line was already spoken", async () => {
     const w = await fiveAsked();
     expect(runTaskIds(w)).toEqual(["t1"]);
     expect(w.card("t1")).toMatchObject({
       state: "running",
-      reply: "Checking hermes.",
       line: null,
     });
-    for (const taskId of ["t2", "t3", "t4"]) {
-      expect(w.card(taskId)).toMatchObject({
-        state: "queued",
-        line: fixedLines.queued,
-      });
+    for (const taskId of ["t2", "t3", "t4", "t5"]) {
+      expect(w.card(taskId)).toMatchObject({ state: "queued", line: null });
     }
-    expect(w.card("t5")).toMatchObject({
-      state: "cancelled",
-      line: fixedLines.queueFull,
-      canRetry: false,
-    });
     expect(w.failures).toEqual([]);
-  });
-
-  it("takes the refused card away at 3000 ms and leaves the other four", async () => {
-    const w = await fiveAsked();
-    const others = () => ["t1", "t2", "t3", "t4"].map((id) => w.card(id));
-    const before = others();
-    w.advance(2999);
-    expect(w.card("t5")).toBeDefined();
-    w.advance(1);
-    expect(w.card("t5")).toBeUndefined();
-    expect(others()).toEqual(before);
-    expect(w.published.at(-1)?.tasks.map((card) => card.taskId)).toEqual([
-      "t1",
-      "t2",
-      "t3",
-      "t4",
-    ]);
   });
 });
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("speech for five typed questions", () => {
-  it("says each front line and the queue-full line, even after the refused card left; the queued lines show on the cards only", async () => {
+  it("says each front line and no fixed queue line", async () => {
     const w = await fiveAsked();
-    // The refused card leaves at 3000 ms; its line is still said.
-    w.advance(3000);
     await flush();
     await w.playAll();
     expect(w.stops).toEqual([]);
-    expect(w.spoken()).toEqual([
-      ...names.map((name) => `Checking ${name}.`),
-      fixedLines.queueFull,
-    ]);
-    expect(w.card("t2")?.line).toBe(fixedLines.queued);
+    expect(w.spoken()).toEqual(names.map((name) => `Checking ${name}.`));
   });
 });
 
@@ -111,7 +73,6 @@ describe("the queue moving on through the wiring", () => {
     expect(runTaskIds(w)).toEqual(["t1", "t2"]);
     expect(w.card("t2")).toMatchObject({
       state: "running",
-      reply: "Checking rust.",
       line: null,
     });
     expect(w.card("t3")?.state).toBe("queued");

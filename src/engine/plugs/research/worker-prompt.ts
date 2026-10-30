@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ParentResult, TaskAsk } from "../../../shared/engine";
-import { parentResultBlock, taggedText } from "./model-text";
+import { taggedText } from "../../../providers/tagged-text";
+import { parentResultBlock } from "./model-text";
 
 export type ThinkingMode = "off" | "low";
 

@@ -1,5 +1,5 @@
 import type { TaskId, UtteranceId } from "../../shared/cards";
-import { recentExchanges, taskSummaries } from "./display";
+import { recentExchanges, roomLeft, taskSummaries } from "./display";
 import { openAttempt } from "./front";
 import { conversationHistory } from "./history";
 import type { Change, FrontParts, TaskRecord } from "./record";
@@ -25,21 +25,22 @@ function partsFor(
     words,
     history: conversationHistory(model.exchanges),
     recent: recentExchanges(model, taskId),
-    tasks: taskSummaries(model, taskId),
+    tasks: taskSummaries(model),
+    room: roomLeft(model),
     waiting,
   };
 }
 
-// New words get a thinking card and one front call, even while a task runs.
+// New words get one front call, even while a task runs.
 export function ask(
   change: Change,
-  newTaskId: () => TaskId,
+  nextTaskId: () => TaskId,
   { words, utteranceId, waiting }: AskWords,
 ): boolean {
   const trimmed = words.trim();
   if (trimmed === "") return dropped(change, "empty words");
   clearOneOffNotice(change.model);
-  const record = addRecord(change.model, newTaskId(), trimmed);
+  const record = addRecord(change.model, nextTaskId(), trimmed);
   const parts = partsFor(change, record, {
     words: trimmed,
     utteranceId,

@@ -9,9 +9,8 @@ import {
   unreachable,
   until,
 } from "./tasks/flow.harness";
-import { newTask } from "./tasks/harness";
-import { frontFailureLine } from "../../src/main/tasks/lines";
-import { failFront, streamFront, wire } from "./wiring.harness";
+import { workRoute } from "./tasks/harness";
+import { streamFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
 afterEach(closePorts);
@@ -50,7 +49,8 @@ describe("cancel with the models unreachable: a hanging front call", () => {
       ask(w, "how does Hermes work?");
       expect(w.talkerCalls).toHaveLength(1);
       cancel(w, "t1");
-      expect(w.card("t1")?.state).toBe("cancelled");
+      expect(w.talkerCalls[0].aborted).toBe(true);
+      expect(w.published.at(-1)?.tasks).toEqual([]);
       expect(w.port.sent).toEqual([]);
       expect(w.published.at(-1)?.voiceAvailable).toBe(voiceAvailable);
       expect(w.failures).toEqual([]);
@@ -66,10 +66,10 @@ describe("cancel with the models unreachable: a hanging worker call", () => {
       const engine = startFakeEngine([held.call, unreachable]);
       const w = wire({ ...options, port: engine.port });
       ask(w, "tell me hermes");
-      await streamFront(w, newTask("hermes"));
+      await streamFront(w, workRoute("hermes"));
       await until("the worker call", () => held.seen.started);
       ask(w, "tell me rust");
-      await streamFront(w, newTask("rust"));
+      await streamFront(w, workRoute("rust"));
       await until("the queued card", () => w.card("t2")?.state === "queued");
       cancel(w, "t1");
       expect(w.card("t1")?.state).toBe("cancelling");
@@ -92,21 +92,4 @@ describe("cancel with the models unreachable: a hanging worker call", () => {
       expect(w.failures).toEqual([]);
     },
   );
-});
-
-describe("cancel with the models unreachable: a failed front call", () => {
-  it("ends a thinking card whose front call could not reach the models at once", async () => {
-    const w = wire({ port: startFakeEngine([]).port });
-    ask(w, "how does Hermes work?");
-    await failFront(w);
-    expect(w.card("t1")).toMatchObject({
-      state: "thinking",
-      line: frontFailureLine("modelsUnreachable", false),
-      canRetry: true,
-    });
-    cancel(w, "t1");
-    expect(w.card("t1")?.state).toBe("cancelled");
-    expect(w.port.sent).toEqual([]);
-    expect(w.failures).toEqual([]);
-  });
 });

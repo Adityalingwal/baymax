@@ -17,7 +17,7 @@ import type {
   RendererSender,
 } from "../../src/main/renderer-actions";
 import { fakeStream, finished } from "./talker.harness";
-import { createClock, findings, newTask } from "./tasks/harness";
+import { createClock, findings, workRoute } from "./tasks/harness";
 import { wireMain } from "../../src/main/wiring";
 
 type Options = {
@@ -26,6 +26,7 @@ type Options = {
   deepgramKeyPresent?: boolean;
   voiceFails?: boolean; // transcription and synthesis answer a Deepgram failure
   port?: EnginePort; // a real engine; the fake port records around it
+  now?: () => Date; // the wall clock; by default it follows the fake timers
 };
 
 type Pending<T> = { input: string; resolve: (result: T) => void };
@@ -214,7 +215,8 @@ export function wire(options: Options = {}) {
     openUrl: (url) => Promise.resolve(void seen.opened.push(url)),
     log: (message) => seen.logs.push(message),
     timers: { setTimer: clock.setTimer },
-    newTaskId: () => {
+    now: options.now ?? clock.date,
+    nextTaskId: () => {
       if (options.idFails) throw new Error("no task id");
       ids += 1;
       return `t${ids}`;
@@ -239,6 +241,8 @@ export function wire(options: Options = {}) {
     own,
     send,
     card,
+    lastId: () => `t${ids}`, // the record the last words made, shown or not
+    chat: () => seen.published.at(-1)?.chat.map((entry) => entry.text) ?? [],
   };
 }
 
@@ -286,7 +290,7 @@ export async function failFront(
 
 export async function admitTask(w: Wired): Promise<void> {
   submit(w);
-  await streamFront(w, newTask("how Hermes works"));
+  await streamFront(w, workRoute("how Hermes works"));
 }
 
 export async function runToDone(w: Wired): Promise<void> {
@@ -301,5 +305,5 @@ export async function runToDone(w: Wired): Promise<void> {
 
 export async function admitAs(w: Wired, topic: string): Promise<void> {
   w.send(ipcChannels.submitQuestion, { text: `tell me ${topic}` });
-  await streamFront(w, newTask(topic), `Checking ${topic}.`);
+  await streamFront(w, workRoute(topic), `Checking ${topic}.`);
 }

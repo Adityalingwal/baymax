@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Synthesis } from "../../src/providers/deepgram";
 import type { UtteranceId } from "../../src/shared/cards";
 import { ipcChannels } from "../../src/shared/ipc";
-import { failFront, fakeSender, wire } from "./wiring.harness";
+import { admitAs, fakeSender, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
 // The fixed lines as written, so a changed cause or fix in the app fails here.
@@ -79,8 +79,10 @@ describe("the mic audio channel", () => {
     w.transcriptions[0].resolve({ kind: "words", words: "how does it work" });
     await flush();
     expect(w.port.sent).toEqual([]);
-    expect(w.card("t1")).toMatchObject({ words: "how does it work" });
     expect(w.talkerCalls).toHaveLength(1);
+    expect(String(w.talkerCalls[0].request.messages.at(-1)?.content)).toContain(
+      "<words>\nhow does it work\n</words>",
+    );
   });
 });
 
@@ -104,9 +106,7 @@ describe("main's lines and voice", () => {
 
   it("silences a cancelled task's line", async () => {
     const w = wire();
-    w.send(ipcChannels.submitQuestion, { text: "how does hermes work" });
-    await flush();
-    await failFront(w, "error");
+    await admitAs(w, "hermes");
     expect(w.syntheses).toHaveLength(1);
     w.send(ipcChannels.cancelTask, { taskId: "t1" });
     w.syntheses[0].resolve(audio);

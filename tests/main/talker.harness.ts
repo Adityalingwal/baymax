@@ -49,7 +49,7 @@ export function fakeStream(ignoreAbort = false) {
 
 // The talker with its model call, its speech lines and its timer faked; a line is shown as its pushes and its end.
 export function createHarness(
-  options: { noKey?: boolean; ignoreAbort?: boolean } = {},
+  options: { noKey?: boolean; ignoreAbort?: boolean; now?: () => Date } = {},
 ) {
   const { calls, stream } = fakeStream(options.ignoreAbort === true);
   const lines: { taskId: TaskId | null; kind: string; parts: string[] }[] = [];
@@ -71,6 +71,7 @@ export function createHarness(
     onReply: (taskId, attemptId, reply) =>
       replies.push({ taskId, attemptId, reply }),
     timers: { setTimer: clock.setTimer },
+    now: options.now ?? (() => new Date("2026-10-31T12:00:00Z")),
     log: (message) => logs.push(message),
   });
   return {
@@ -98,6 +99,7 @@ export const frontRequest = (
   history: [],
   recent: [],
   tasks: [],
+  room: 4,
   waiting: null,
   ...fields,
 });

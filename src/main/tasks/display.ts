@@ -1,8 +1,10 @@
 import type { DisplayState, TaskCard, TaskId } from "../../shared/cards";
-import type { Model } from "./record";
-import { shownQuestion } from "./record";
+import type { Model, TaskRecord } from "./record";
+import { activeQuestion } from "./record";
 import type { RecentExchange, TaskSummary, WaitingQuestion } from "./talk";
 
+const RUNNING_LIMIT = 1;
+const QUEUE_LIMIT = 3;
 const RECENT_COUNT = 5;
 const CARD_COUNT = 2;
 const CARD_LIMIT = 1500;
@@ -26,6 +28,7 @@ export function buildDisplay(model: Model): DisplayState {
   }
   return {
     tasks,
+    chat: structuredClone(model.chat),
     notice: model.notice,
     muted: model.muted,
     voiceAvailable: model.voiceAvailable,
@@ -57,28 +60,34 @@ export function recentExchanges(
 }
 
 export function waitingQuestion(model: Model): WaitingQuestion | null {
-  const record = shownQuestion(model);
-  const question = record?.card.question ?? null;
+  const record = activeQuestion(model);
+  const question = record?.question ?? null;
   if (record === null || question === null) return null;
-  const { questionId, text, choices } = question;
   return {
     taskId: record.card.taskId,
     words: record.card.words,
-    question: { questionId, text, choices: [...choices] },
+    question: { ...question },
   };
 }
 
-const activeStates = new Set(["thinking", "clarifying", "queued", "running"]);
+const isRunningOrQueued = ({ card }: TaskRecord) =>
+  card.state === "running" || card.state === "queued";
 
-// The tasks still running or waiting, apart from the one just asked.
-export function taskSummaries(model: Model, forTaskId: TaskId): TaskSummary[] {
+export function taskSummaries(model: Model): TaskSummary[] {
   return [...model.records.values()]
-    .filter(({ card }) => card.taskId !== forTaskId)
-    .filter(({ card }) => activeStates.has(card.state))
+    .filter(isRunningOrQueued)
     .map(({ card, topic }) => ({
       taskId: card.taskId,
       state: card.state,
       words: card.words,
       topic,
     }));
+}
+
+// A cancelling task holds the slot until the engine replies; a race past the limit queues one extra, so the room left never goes below zero.
+export function roomLeft(model: Model): number {
+  const taken = [...model.records.values()].filter(
+    ({ card, sent }) => card.state === "queued" || sent?.type === "runTask",
+  ).length;
+  return Math.max(0, RUNNING_LIMIT + QUEUE_LIMIT - taken);
 }

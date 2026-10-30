@@ -1,15 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { TaskId } from "../../src/shared/cards";
 import { ipcChannels } from "../../src/shared/ipc";
-import { frontFailureLine } from "../../src/main/tasks/lines";
-import { failFront, wire } from "./wiring.harness";
+import { admitAs, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
-const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-// Each task's spoken line here is its fixed failure line.
-const firstLine = frontFailureLine("modelsUnreachable", false);
-const secondLine = frontFailureLine("keyRejected", false);
+// Each task's spoken line here is its front call's line.
+const firstLine = "Checking hermes.";
+const secondLine = "Checking rust.";
 
 type SpeechRow = {
   name: string;
@@ -56,11 +53,8 @@ const rows: SpeechRow[] = [
 
 async function twoAsked(): Promise<Wired> {
   const w = wire();
-  w.send(ipcChannels.submitQuestion, { text: "how does hermes work" });
-  w.send(ipcChannels.submitQuestion, { text: "what is new in rust" });
-  await flush();
-  await failFront(w, "unreachable", 0);
-  await failFront(w, "keyRejected", 1);
+  await admitAs(w, "hermes");
+  await admitAs(w, "rust");
   return w;
 }
 

@@ -171,6 +171,6 @@ export function waitingQuestion(questionId: string): WaitingQuestion {
   return {
     taskId: "t1",
     words: "find me a laptop",
-    question: { questionId, text: `${questionId}?`, choices: ["a", "b"] },
+    question: { questionId, text: `${questionId}?` },
   };
 }

@@ -1,26 +1,22 @@
-import type { QuestionId, TaskId } from "../../shared/cards";
+import type { TaskId } from "../../shared/cards";
 import type { TaskAsk } from "../../shared/engine";
-import type { WaitingQuestion } from "./talk";
+import type { QuestionId, WaitingQuestion } from "./talk";
 
 type Route =
-  | { route: "chat" | "outsideResearch" }
-  | { route: "clarify"; topic: string; choices: string[] }
-  | { route: "newTask"; topic: string; ask: TaskAsk }
-  | {
-      route: "followUp";
-      topic: string;
-      ask: TaskAsk;
-      parentTaskId: TaskId;
-    };
+  | { route: "reply" }
+  | { route: "ask"; topic: string | null }
+  | { route: "work"; topic: string; ask: TaskAsk; parentTaskId: TaskId | null }
+  | { route: "stop"; taskId: TaskId };
 
 // The front call's decision after the checks; answerTo is the waiting question it answers.
 export type Decision = Route & { answerTo: QuestionId | null };
 
 export type DecisionContext = {
   words: string;
-  waiting: WaitingQuestion | null; // the question shown when the words were asked
+  waiting: WaitingQuestion | null; // the question active when the words were asked
   earlier: (taskId: TaskId) => ReadonlySet<TaskId>; // tasks created before the given task
   taskId: TaskId; // the task the words were asked as
+  canStop: (taskId: TaskId) => boolean; // the task is running, queued or holding a waiting question
 };
 
 export type DecisionCheck =
@@ -29,13 +25,7 @@ export type DecisionCheck =
 
 type Fields = Record<string, unknown>;
 
-const routes = [
-  "chat",
-  "clarify",
-  "newTask",
-  "followUp",
-  "outsideResearch",
-] as const;
+const routes = ["reply", "ask", "work", "stop", "retry"] as const;
 
 const fail = (reason: string): DecisionCheck => ({ ok: false, reason });
 
@@ -52,20 +42,7 @@ function filled(value: unknown): string | null {
 function readRoute(value: unknown): (typeof routes)[number] | null {
   if (typeof value !== "string") return null;
   const lower = value.trim().toLowerCase();
-  return routes.find((route) => route.toLowerCase() === lower) ?? null;
-}
-
-// Zero choices is an open question; otherwise two to four.
-function readChoices(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null;
-  if (value.length === 1 || value.length > 4) return null;
-  const choices: string[] = [];
-  for (const item of value) {
-    const choice = filled(item);
-    if (choice === null) return null;
-    choices.push(choice);
-  }
-  return choices;
+  return routes.find((route) => route === lower) ?? null;
 }
 
 // The ask carries the words as the user said them; an answer adds the question and the reply.
@@ -80,7 +57,7 @@ type AnswerCheck =
 
 function readAnswerTo(
   raw: Fields,
-  route: (typeof routes)[number],
+  route: "reply" | "ask" | "work",
   waiting: WaitingQuestion | null,
 ): AnswerCheck {
   const value = raw.answerTo ?? null;
@@ -90,8 +67,50 @@ function readAnswerTo(
   if (value !== waiting.question.questionId) {
     return { ok: false, reason: "answerToWrongQuestion" };
   }
-  if (route === "clarify") return { ok: false, reason: "clarifyAfterAnswer" };
+  if (route === "ask") return { ok: false, reason: "askAfterAnswer" };
   return { ok: true, answerTo: value };
+}
+
+function checkWork(
+  raw: Fields,
+  context: DecisionContext,
+  answerTo: QuestionId | null,
+): DecisionCheck {
+  const topic = filled(raw.topic);
+  if (topic === null) return fail("missingTopic");
+  const goal = filled(raw.goal);
+  if (goal === null) return fail("missingGoal");
+  const ask = { goal, userWords: userWordsFor(context, answerTo !== null) };
+  const work = (parentTaskId: TaskId | null): Decision => ({
+    route: "work",
+    topic,
+    ask,
+    parentTaskId,
+    answerTo,
+  });
+  const named = filled(raw.taskId);
+  if (named === null) return { ok: true, decision: work(null), note: null };
+  const target =
+    answerTo !== null && context.waiting
+      ? context.waiting.taskId
+      : context.taskId;
+  if (context.earlier(target).has(named)) {
+    return { ok: true, decision: work(named), note: null };
+  }
+  const note = `${target} names parent ${named}; admitted as a new task`;
+  return { ok: true, decision: work(null), note };
+}
+
+// Words that drop a question may also name it as answered; what is stopped is the task, so answerTo is not read.
+function checkStop(raw: Fields, context: DecisionContext): DecisionCheck {
+  const taskId = filled(raw.taskId);
+  if (taskId === null) return fail("missingTaskId");
+  if (!context.canStop(taskId)) return fail("cannotStop");
+  return {
+    ok: true,
+    decision: { route: "stop", taskId, answerTo: null },
+    note: null,
+  };
 }
 
 // Checks the decide tool's raw input before main starts, binds or ends anything; no model is asked.
@@ -102,43 +121,15 @@ export function checkDecision(
   if (!isFields(raw)) return fail("notAnObject");
   const route = readRoute(raw.route);
   if (route === null) return fail("unknownRoute");
+  if (route === "retry") return fail("retryNotBuilt");
+  if (route === "stop") return checkStop(raw, context);
   const answer = readAnswerTo(raw, route, context.waiting);
   if (!answer.ok) return fail(answer.reason);
   const { answerTo } = answer;
-  if (route === "chat" || route === "outsideResearch") {
-    return { ok: true, decision: { route, answerTo }, note: null };
-  }
-  const topic = filled(raw.topic);
-  if (topic === null) return fail("missingTopic");
-  if (route === "clarify") {
-    const choices = readChoices(raw.choices);
-    if (choices === null) return fail("badChoices");
-    return {
-      ok: true,
-      decision: { route, topic, choices, answerTo },
-      note: null,
-    };
-  }
-  const goal = filled(raw.goal);
-  if (goal === null) return fail("missingGoal");
-  const ask = { goal, userWords: userWordsFor(context, answerTo !== null) };
-  if (route === "newTask") {
-    return {
-      ok: true,
-      decision: { route, topic, ask, answerTo },
-      note: null,
-    };
-  }
-  const target =
-    answerTo !== null && context.waiting
-      ? context.waiting.taskId
-      : context.taskId;
-  const parentTaskId = filled(raw.parentTaskId);
-  if (parentTaskId !== null && context.earlier(target).has(parentTaskId)) {
-    const decision: Decision = { route, topic, ask, parentTaskId, answerTo };
-    return { ok: true, decision, note: null };
-  }
-  const note = `${target} names parent ${String(raw.parentTaskId)}; admitted as a new task`;
-  const decision: Decision = { route: "newTask", topic, ask, answerTo };
-  return { ok: true, decision, note };
+  if (route === "work") return checkWork(raw, context, answerTo);
+  const decision: Decision =
+    route === "ask"
+      ? { route, topic: filled(raw.topic), answerTo }
+      : { route, answerTo };
+  return { ok: true, decision, note: null };
 }

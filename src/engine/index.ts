@@ -2,6 +2,7 @@ import { createModelCall } from "../providers/anthropic";
 import type { ModelCall } from "../providers/anthropic";
 import { readPageContents, searchWeb } from "../providers/exa";
 import type { ContentsFn, SearchFn } from "../providers/exa";
+import { localDate } from "../providers/local-date";
 import type { Findings } from "../shared/cards";
 import type {
   EngineCommand,
@@ -128,7 +129,7 @@ export function startEngine(
     deps,
     holds: createHolds(log, side),
     access: { search, contents, lookup: fakes.lookup, connect: fakes.connect },
-    today: fakes.today ?? (() => new Date().toISOString().slice(0, 10)),
+    today: fakes.today ?? (() => localDate(new Date())),
   };
   return side.port;
 }

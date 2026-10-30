@@ -1,10 +1,9 @@
-import type {
-  ClarifyingQuestion,
-  TaskId,
-  TaskState,
-  UtteranceId,
-} from "../../shared/cards";
+import type { TaskId, TaskState, UtteranceId } from "../../shared/cards";
 import type { FailureKind } from "../../shared/engine";
+
+export type QuestionId = string;
+
+export type ClarifyingQuestion = { questionId: QuestionId; text: string };
 
 // A task the front call hears about, so its line and route fit what is already running or waiting.
 export type TaskSummary = {
@@ -23,7 +22,7 @@ export type RecentExchange = {
   cardText: string | null;
 };
 
-// The clarifying question shown when the words were asked, with the request it belongs to.
+// The question active when the words were asked, with the request it belongs to; only context for the call.
 export type WaitingQuestion = {
   taskId: TaskId;
   words: string; // the request's original words
@@ -37,11 +36,12 @@ export type TalkRequest = {
   kind: "front";
   attemptId: string; // unique per call, so a late result of an older call is ignored
   taskId: TaskId;
-  utteranceId: UtteranceId | null; // null for a typed question or a card answer
+  utteranceId: UtteranceId | null; // null for typed words
   words: string;
   history: HistoryTurn[];
   recent: RecentExchange[];
-  tasks: TaskSummary[];
+  tasks: TaskSummary[]; // only the running and queued ones
+  room: number; // how many more tasks fit, running or waiting
   waiting: WaitingQuestion | null;
 };
 

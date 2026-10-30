@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { TaskId } from "../../src/shared/cards";
 import type { EngineEvent, ParentResult } from "../../src/shared/engine";
 import { ipcChannels } from "../../src/shared/ipc";
-import { chat, clarify, findings, followUp, newTask } from "./tasks/harness";
+import {
+  replyRoute,
+  askRoute,
+  findings,
+  stopRoute,
+  workOnRoute,
+  workRoute,
+} from "./tasks/harness";
 import type { ModelRequest } from "./tasks/flow.harness";
 import {
   closePorts,
@@ -18,24 +25,17 @@ afterEach(closePorts);
 const ask = (w: Wired, text: string) =>
   w.send(ipcChannels.submitQuestion, { text });
 
-// The id of the card the last ask added: new cards are shown last.
-const lastCard = (w: Wired): TaskId => {
-  const taskId = w.published.at(-1)?.tasks.at(-1)?.taskId;
-  if (taskId === undefined) throw new Error("no card");
-  return taskId;
-};
-
 async function askFollowUp(w: Wired, parent: TaskId, topic: string) {
   ask(w, `and ${topic}`);
-  const taskId = lastCard(w);
+  const taskId = w.lastId();
   const call = w.talkerCalls.length - 1;
-  await streamFront(w, followUp(parent, topic), `Checking ${topic}.`, call);
+  await streamFront(w, workOnRoute(parent, topic), `Checking ${topic}.`, call);
   return taskId;
 }
 
 async function clarifyingParent(w: Wired): Promise<void> {
   ask(w, "about it");
-  await streamFront(w, clarify(), "Which one for t1?");
+  await streamFront(w, askRoute(), "Which one for t1?");
 }
 
 const lastRun = (w: Wired, taskId: TaskId) =>
@@ -178,7 +178,7 @@ describe("follow-up parents", () => {
   it("saves a chat result with no goal and the card's words", async () => {
     const w = wire();
     ask(w, "hello there");
-    await streamFront(w, chat(), "Hello.");
+    await streamFront(w, replyRoute(), "Hello.");
     const child = await askFollowUp(w, "t1", "more");
     expect(parentOf(w, child)).toEqual({
       taskId: "t1",
@@ -212,7 +212,7 @@ describe("invalid parents and the queue", () => {
       const w = wire();
       ask(w, "first");
       setup(w);
-      await streamFront(w, followUp(parentId, "more"), "Okay.", 0);
+      await streamFront(w, workOnRoute(parentId, "more"), "Okay.", 0);
       expect(parentOf(w, "t1")).toBeNull();
       expect(w.card("t1")?.parentTaskId).toBeNull();
       expect(w.logs.some((line) => line.includes(`parent ${parentId}`))).toBe(
@@ -221,14 +221,11 @@ describe("invalid parents and the queue", () => {
     },
   );
 
-  it("refuses a fourth waiting follow-up like a new task", async () => {
+  it("queues a fourth waiting follow-up like new work", async () => {
     const w = wire();
     for (const name of ["hermes", "rust", "zig", "go"]) await admitAs(w, name);
     const child = await askFollowUp(w, "t1", "more");
-    expect(w.card(child)).toMatchObject({
-      state: "cancelled",
-      line: "I already have three waiting. Cancel one or ask again later.",
-    });
+    expect(w.card(child)).toMatchObject({ state: "queued", line: null });
     expect(lastRun(w, child)).toBeUndefined();
   });
 });
@@ -239,11 +236,11 @@ describe("follow-ups that wait for their parent", () => {
     await clarifyingParent(w);
     const child = await askFollowUp(w, "t1", "more");
     await admitAs(w, "rust");
-    const later = lastCard(w);
+    const later = w.lastId();
     expect(w.card(child)?.state).toBe("queued");
     expect(w.card(later)?.state).toBe("running");
     ask(w, "the first one");
-    await streamFront(w, newTask("about it", "t1:question"));
+    await streamFront(w, workRoute("about it", "t1:question"));
     w.port.emit(result(later));
     expect(w.card("t1")?.state).toBe("running");
     expect(w.card(child)?.state).toBe("queued");
@@ -251,12 +248,13 @@ describe("follow-ups that wait for their parent", () => {
     expect(parentOf(w, child)).toMatchObject({ taskId: "t1", outcome: "done" });
   });
 
-  it("starts a waiting follow-up when its clarifying parent is cancelled with the slot free", async () => {
+  it("starts a waiting follow-up when its clarifying parent is stopped with the slot free", async () => {
     const w = wire();
     await clarifyingParent(w);
     const child = await askFollowUp(w, "t1", "more");
     expect(w.card(child)?.state).toBe("queued");
-    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    ask(w, "never mind that");
+    await streamFront(w, stopRoute("t1"), "Dropping it.", 2);
     expect(parentOf(w, child)).toEqual({
       taskId: "t1",
       outcome: "cancelled",
@@ -271,10 +269,10 @@ describe("follow-ups that wait for their parent", () => {
     const w = wire();
     await clarifyingParent(w);
     ask(w, "the first one");
-    const answer = lastCard(w);
+    const answer = w.lastId();
     const child = await askFollowUp(w, answer, "more");
     expect(w.card(child)?.state).toBe("queued");
-    await streamFront(w, newTask("about it", "t1:question"), "Okay.", 1);
+    await streamFront(w, workRoute("about it", "t1:question"), "Okay.", 1);
     expect(w.card(answer)).toBeUndefined();
     // The answered task runs first; the follow-up starts once the slot frees.
     w.port.emit(result("t1"));
@@ -295,14 +293,14 @@ describe("a follow-up with the real engine", () => {
     ask(w, "How does Hermes agent work inside?");
     await streamFront(
       w,
-      newTask("how Hermes agent works inside"),
+      workRoute("how Hermes agent works inside"),
       "I'll look at how Hermes works.",
     );
     await until("card 1 to end", () => w.card("t1")?.state === "failed");
     ask(w, "How is it different from Claude Code?");
     await streamFront(
       w,
-      followUp("t1", "how Hermes differs from Claude Code"),
+      workOnRoute("t1", "how Hermes differs from Claude Code"),
       "I'll compare them.",
       1,
     );
@@ -313,7 +311,6 @@ describe("a follow-up with the real engine", () => {
     expect(shown).toMatchObject({
       parentTaskId: "t1",
       line: null,
-      reply: "I'll compare them.",
     });
     expect(lastRun(w, "t2")).toMatchObject({
       parent: { taskId: "t1", outcome: "failed", findings: null },

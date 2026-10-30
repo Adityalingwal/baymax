@@ -10,7 +10,7 @@ import {
   wire,
 } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
-import { findings, newTask } from "./tasks/harness";
+import { findings, workRoute } from "./tasks/harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -188,8 +188,8 @@ describe("a card's title", () => {
   it("is the topic once the front call gave one, and the words stay as asked", async () => {
     const w = wire();
     w.send(ipcChannels.submitQuestion, { text: "tell me hermes" });
-    expect(w.card("t1")).toMatchObject({ title: null });
-    await streamFront(w, newTask("how Hermes works"), "Checking.");
+    expect(w.card("t1")).toBeUndefined();
+    await streamFront(w, workRoute("how Hermes works"), "Checking.");
     expect(w.card("t1")).toMatchObject({
       title: "how Hermes works",
       words: "tell me hermes",

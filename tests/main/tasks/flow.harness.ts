@@ -56,15 +56,18 @@ export async function until(what: string, done: () => boolean): Promise<void> {
 
 const ports: EnginePort[] = [];
 
-// The real engine with only the model faked; closePorts ends it after the test.
-export function startFakeEngine(steps: Step[]) {
+// The real engine with only the model faked; closePorts ends it after the test. A null today leaves the engine's own clock.
+export function startFakeEngine(
+  steps: Step[],
+  today: (() => string) | null = () => "2026-10-27",
+) {
   const { model, requests } = fakeModel(steps);
   const port = startEngine(
     { anthropicKey: "test-key", searchKey: "" },
     {
       model,
       contents: async () => ({ ok: false, cause: "noUsableText" }),
-      today: () => "2026-10-27",
+      today: today ?? undefined,
       now: () => 0,
       log: () => undefined,
     },

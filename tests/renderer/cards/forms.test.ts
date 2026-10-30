@@ -10,8 +10,6 @@ import {
 } from "../../../src/renderer/cards/forms";
 
 const formCases: [TaskState, string][] = [
-  ["thinking", "pill"],
-  ["clarifying", "question"],
   ["queued", "pill"],
   ["running", "pill"],
   ["cancelling", "pill"],
@@ -27,8 +25,6 @@ describe("cardForm", () => {
 });
 
 const stateCases: [TaskState, boolean, string][] = [
-  ["thinking", true, "Thinking"],
-  ["clarifying", true, "Clarifying"],
   ["queued", true, "Queued"],
   ["running", true, "Running"],
   ["cancelling", false, "Cancelling"],

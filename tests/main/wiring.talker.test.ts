@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ipcChannels } from "../../src/shared/ipc";
-import { chat } from "./tasks/harness";
+import {
+  closePorts,
+  startFakeEngine,
+  unreachable,
+  until,
+} from "./tasks/flow.harness";
+import { replyRoute, workRoute } from "./tasks/harness";
 import { streamFront, wire } from "./wiring.harness";
 
 function asked() {
@@ -19,15 +25,12 @@ describe("the front call through the wiring", () => {
     );
   });
 
-  it("speaks the line as it streams and shows it on a chat card", async () => {
+  it("speaks the line as it streams and adds it to the Chat list", async () => {
     const w = asked();
-    await streamFront(w, chat(), "It's 4.");
+    await streamFront(w, replyRoute(), "It's 4.");
     await w.playNext();
     expect(w.spoken()).toEqual(["It's 4."]);
-    expect(w.card("t1")).toMatchObject({
-      state: "done",
-      answer: { cardText: "It's 4." },
-    });
+    expect(w.published.at(-1)?.chat.at(-1)?.text).toBe("It's 4.");
     w.advance(1500);
     expect(w.syntheses.map((call) => call.input)).toEqual(["It's 4."]);
   });
@@ -36,8 +39,34 @@ describe("the front call through the wiring", () => {
     const w = asked();
     w.advance(5000);
     expect(w.syntheses).toEqual([]);
-    await streamFront(w, chat(), "It's 4.");
+    await streamFront(w, replyRoute(), "It's 4.");
     await w.playAll();
     expect(w.spoken()).toEqual(["It's 4."]);
+  });
+});
+
+describe("the day the talker and the worker are told", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+    closePorts();
+  });
+
+  it("is the same local day at 00:30 in India", async () => {
+    vi.stubEnv("TZ", "Asia/Kolkata");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-31T00:30:00+05:30"));
+    const engine = startFakeEngine([unreachable], null);
+    const w = wire({ port: engine.port, now: () => new Date() });
+    w.send(ipcChannels.submitQuestion, { text: "will it rain?" });
+    await streamFront(w, workRoute("the forecast"));
+    await until("the worker's call", () => engine.requests.length > 0);
+    const talkerTurn = String(
+      w.talkerCalls[0].request.messages.at(-1)?.content,
+    );
+    expect(talkerTurn).toContain("date: Saturday, 2026-10-31\n");
+    expect(String(engine.requests[0].messages[0].content)).toContain(
+      "Today's date: 2026-10-31.",
+    );
   });
 });
