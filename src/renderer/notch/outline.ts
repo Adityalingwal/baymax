@@ -35,7 +35,6 @@ export const pillShape: Silhouette = {
   ry: 18,
 };
 const ringWing = 18;
-const hoverMargin = 12;
 // The curves' control points, as in the selected ears preview.
 const earPull = 0.3;
 const cornerPull = 0.35;
@@ -149,15 +148,14 @@ export function rimLine(side: "left" | "right", boxWidth: number) {
   };
 }
 
-// The hover sensor that opens the panel: the notch and a margin past it, since the notch has no pixels to point at.
+// The hover sensor that opens the panel: only the notch itself, so the wings beside it and the menu bar never open it.
 export function notchZone(geometry: OutlineGeometry): HitZone {
   const { shape, width } = geometry;
-  const left = (width - shape.notchWidth) / 2;
   const rect = {
-    x: left - hoverMargin,
+    x: (width - shape.notchWidth) / 2,
     y: 0,
-    width: shape.notchWidth + 2 * hoverMargin,
-    height: shape.notchHeight + hoverMargin,
+    width: shape.notchWidth,
+    height: shape.notchHeight,
   };
   return { kind: "rect", rect };
 }

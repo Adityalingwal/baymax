@@ -44,6 +44,12 @@ function evaluate(tracker: Tracker): void {
   });
 }
 
+function forgetPointer(tracker: Tracker): void {
+  tracker.point = null;
+  tracker.dispatch({ kind: "pointer-gone" });
+  evaluate(tracker);
+}
+
 function setMouseDown(tracker: Tracker, down: boolean): void {
   if (tracker.mouseDown === down) return;
   tracker.mouseDown = down;
@@ -63,10 +69,12 @@ function listen(tracker: Tracker): () => void {
     const inside =
       x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
     if (inside) return;
-    tracker.point = null;
-    tracker.dispatch({ kind: "pointer-gone" });
-    evaluate(tracker);
+    forgetPointer(tracker);
   };
+  // A leave can report a point inside, or never come, so main watches the cursor while the page holds the mouse.
+  const stopOutside = window.baymax.onPointerOutside(() =>
+    forgetPointer(tracker),
+  );
   // Only a captured window gets the press, so it always started inside the shape.
   const down = () => setMouseDown(tracker, true);
   const up = () => setMouseDown(tracker, false);
@@ -76,6 +84,7 @@ function listen(tracker: Tracker): () => void {
   window.addEventListener("mouseup", up);
   window.addEventListener("blur", up);
   return () => {
+    stopOutside();
     document.removeEventListener("mousemove", move);
     document.removeEventListener("mouseleave", leave);
     document.removeEventListener("mousedown", down);
@@ -128,11 +137,7 @@ export function usePointer(
   );
   useEffect(() => dispatch({ kind: "draft", text: draft }), [draft]);
   // A new window shape means the window moved: whatever the pointer was over is gone.
-  useEffect(() => {
-    tracker.point = null;
-    dispatch({ kind: "pointer-gone" });
-    evaluate(tracker);
-  }, [tracker, shapeKey]);
+  useEffect(() => forgetPointer(tracker), [tracker, shapeKey]);
   useTimer(state.dwell, panelDelays.dwellMs, "dwell-elapsed", dispatch);
   useTimer(state.leave, panelDelays.leaveMs, "leave-elapsed", dispatch);
   useTimer(

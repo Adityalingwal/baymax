@@ -236,10 +236,10 @@ describe("the open panel's size", () => {
 });
 
 describe("notchZone", () => {
-  it("reaches 12 points past the notch left, right and below", () => {
+  it("is the notch itself, with no margin", () => {
     expect(notchZone(notched)).toEqual({
       kind: "rect",
-      rect: { x: 262.5, y: 0, width: 163, height: 37 },
+      rect: { x: 274.5, y: 0, width: 139, height: 25 },
     });
   });
 });

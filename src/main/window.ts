@@ -40,11 +40,43 @@ function createPanel(bounds: Electron.Rectangle): BrowserWindow {
   });
 }
 
-// Clicks pass through; mouse moves are still forwarded so the page can find its shape.
-function releaseMouse(browserWindow: BrowserWindow): void {
-  if (!browserWindow.isDestroyed()) {
-    browserWindow.setIgnoreMouseEvents(true, { forward: true });
-  }
+const cursorWatchMs = 100;
+
+type MouseHold = { capture: () => void; release: () => void };
+
+// While the page holds the mouse, a pointer that leaves the window may send it no last move, and a mouse-leave can report a point inside; only main sees the real cursor.
+function createMouseHold(browserWindow: BrowserWindow): MouseHold {
+  let watch: ReturnType<typeof setInterval> | null = null;
+  const stopWatch = () => {
+    if (watch !== null) clearInterval(watch);
+    watch = null;
+  };
+  const checkCursor = () => {
+    if (browserWindow.isDestroyed()) {
+      stopWatch();
+      return;
+    }
+    const { x, y } = screen.getCursorScreenPoint();
+    const area = browserWindow.getBounds();
+    const inX = x >= area.x && x < area.x + area.width;
+    const inY = y >= area.y && y < area.y + area.height;
+    if (inX && inY) return;
+    stopWatch();
+    browserWindow.webContents.send(ipcChannels.pointerOutside, null);
+  };
+  return {
+    capture: () => {
+      if (browserWindow.isDestroyed()) return;
+      browserWindow.setIgnoreMouseEvents(false);
+      if (watch === null) watch = setInterval(checkCursor, cursorWatchMs);
+    },
+    // Clicks pass through; mouse moves are still forwarded so the page can find its shape.
+    release: () => {
+      stopWatch();
+      if (browserWindow.isDestroyed()) return;
+      browserWindow.setIgnoreMouseEvents(true, { forward: true });
+    },
+  };
 }
 
 function isMouseCapture(payload: unknown): payload is { captured: boolean } {
@@ -60,6 +92,7 @@ function isMouseCapture(payload: unknown): payload is { captured: boolean } {
 function connectWindowChannels(
   browserWindow: BrowserWindow,
   currentShape: () => WindowShape | null,
+  mouse: MouseHold,
 ): () => void {
   const { ipc } = browserWindow.webContents;
   const replayShape = (event: IpcMainEvent) => {
@@ -67,9 +100,9 @@ function connectWindowChannels(
     if (shape !== null) event.sender.send(ipcChannels.windowShape, shape);
   };
   const setMouseCapture = (_event: IpcMainEvent, payload: unknown) => {
-    if (!isMouseCapture(payload) || browserWindow.isDestroyed()) return;
-    if (payload.captured) browserWindow.setIgnoreMouseEvents(false);
-    else releaseMouse(browserWindow);
+    if (!isMouseCapture(payload)) return;
+    if (payload.captured) mouse.capture();
+    else mouse.release();
   };
   ipc.on(ipcChannels.getWindowShape, replayShape);
   ipc.on(ipcChannels.setMouseCapture, setMouseCapture);
@@ -153,7 +186,7 @@ function followDisplays(
   };
 }
 
-function guardPage(browserWindow: BrowserWindow): void {
+function guardPage(browserWindow: BrowserWindow, mouse: MouseHold): void {
   const contents = browserWindow.webContents;
   // The renderer only shows main's state; a source link opens through main's typed action, never in this window.
   contents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -161,22 +194,28 @@ function guardPage(browserWindow: BrowserWindow): void {
     if (details.url !== MAIN_WINDOW_WEBPACK_ENTRY) details.preventDefault();
   });
   // A page that reloads or crashes while it held the mouse must not leave a block that swallows clicks.
-  contents.on("did-start-loading", () => releaseMouse(browserWindow));
-  contents.on("render-process-gone", () => releaseMouse(browserWindow));
+  contents.on("did-start-loading", mouse.release);
+  contents.on("render-process-gone", mouse.release);
 }
 
 export function createMainWindow(): BrowserWindow {
   const bounds = panelBounds(chosenDisplay());
   const browserWindow = createPanel(bounds);
-  releaseMouse(browserWindow);
+  const mouse = createMouseHold(browserWindow);
+  mouse.release();
   browserWindow.setAlwaysOnTop(true, "screen-saver");
   browserWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  guardPage(browserWindow);
+  guardPage(browserWindow, mouse);
   const shape = trackShape(browserWindow);
-  const stopChannels = connectWindowChannels(browserWindow, shape.current);
+  const stopChannels = connectWindowChannels(
+    browserWindow,
+    shape.current,
+    mouse,
+  );
   const stopDisplays = followDisplays(browserWindow, bounds, shape.refresh);
   shape.refresh();
   browserWindow.on("closed", () => {
+    mouse.release();
     stopChannels();
     stopDisplays();
   });

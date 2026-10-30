@@ -80,6 +80,11 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { open: true, leaving: true },
   },
   {
+    name: "a pointer gone from the window with its last point on the panel closes in 300 ms",
+    steps: [...opened, onPanel, gone, leave],
+    expected: { open: false, closing: true },
+  },
+  {
     name: "the pointer leaving during the grow starts the close timer",
     steps: [...opened, onUndrawn, away],
     expected: { open: true, leaving: true },
