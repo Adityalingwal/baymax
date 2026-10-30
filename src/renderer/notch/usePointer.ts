@@ -75,6 +75,10 @@ function listen(tracker: Tracker): () => void {
   const stopOutside = window.baymax.onPointerOutside(() =>
     forgetPointer(tracker),
   );
+  // A Space change closes like Esc: the text stays, and a pointer still on the notch waits to leave first.
+  const stopSpace = window.baymax.onSpaceChanged(() =>
+    tracker.dispatch({ kind: "escape" }),
+  );
   // Only a captured window gets the press, so it always started inside the shape.
   const down = () => setMouseDown(tracker, true);
   const up = () => setMouseDown(tracker, false);
@@ -85,6 +89,7 @@ function listen(tracker: Tracker): () => void {
   window.addEventListener("blur", up);
   return () => {
     stopOutside();
+    stopSpace();
     document.removeEventListener("mousemove", move);
     document.removeEventListener("mouseleave", leave);
     document.removeEventListener("mousedown", down);

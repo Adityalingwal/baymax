@@ -195,6 +195,13 @@ const subscriptionRows: SubscriptionRow[] = [
     replay: [],
   },
   {
+    name: "onSpaceChanged",
+    subscribe: (callback) => api.onSpaceChanged(() => callback(null)),
+    channel: ipcChannels.spaceChanged,
+    payload: null,
+    replay: [],
+  },
+  {
     name: "onVoicePhase",
     subscribe: (callback) => api.onVoicePhase(callback),
     channel: ipcChannels.voicePhase,

@@ -4,7 +4,7 @@ import { ipcChannels } from "../shared/ipc";
 import type { WindowShape } from "../shared/ipc";
 import { panelBounds, pickDisplay, windowShape } from "./panel-geometry";
 import type { NotchSizes } from "./panel-geometry";
-import { panelWindowType, readNotchSizes } from "./platform";
+import { onSpaceChange, panelWindowType, readNotchSizes } from "./platform";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -214,8 +214,12 @@ export function createMainWindow(): BrowserWindow {
   );
   const stopDisplays = followDisplays(browserWindow, bounds, shape.refresh);
   shape.refresh();
+  const stopSpaces = onSpaceChange(() => {
+    browserWindow.webContents.send(ipcChannels.spaceChanged, null);
+  });
   browserWindow.on("closed", () => {
     mouse.release();
+    stopSpaces();
     stopChannels();
     stopDisplays();
   });

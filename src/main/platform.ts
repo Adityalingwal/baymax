@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { systemPreferences } from "electron";
 import { UiohookKey } from "uiohook-napi";
 import type { NotchSizes } from "./panel-geometry";
 
@@ -79,6 +80,16 @@ function notchSizesFrom(output: string): NotchSizes {
     }
   }
   return sizes;
+}
+
+// Calls back when the active Space changes; Spaces exist only on a Mac.
+export function onSpaceChange(callback: () => void): () => void {
+  if (!isMac) return () => undefined;
+  const id = systemPreferences.subscribeWorkspaceNotification(
+    "NSWorkspaceActiveSpaceDidChangeNotification",
+    callback,
+  );
+  return () => systemPreferences.unsubscribeWorkspaceNotification(id);
 }
 
 // The real notch of every screen that has one, by display id; empty when the call fails or no screen has a notch.

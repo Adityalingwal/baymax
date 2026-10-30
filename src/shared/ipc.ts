@@ -21,6 +21,7 @@ export const ipcChannels = {
   getWindowShape: "get-window-shape",
   setMouseCapture: "set-mouse-capture",
   pointerOutside: "pointer-outside",
+  spaceChanged: "space-changed",
   voicePhase: "voice-phase",
   getVoicePhase: "get-voice-phase",
 } as const;
@@ -124,6 +125,7 @@ export type MainToRenderer = {
   [ipcChannels.stopPlayback]: StopPlayback;
   [ipcChannels.windowShape]: WindowShape;
   [ipcChannels.pointerOutside]: null;
+  [ipcChannels.spaceChanged]: null;
   [ipcChannels.voicePhase]: VoicePhase;
 };
 
@@ -146,5 +148,6 @@ export type BaymaxApi = {
   onWindowShape: (callback: (shape: WindowShape) => void) => () => void;
   setMouseCapture: (payload: SetMouseCapture) => void;
   onPointerOutside: (callback: () => void) => () => void;
+  onSpaceChanged: (callback: () => void) => () => void;
   onVoicePhase: (callback: (phase: VoicePhase) => void) => () => void;
 };

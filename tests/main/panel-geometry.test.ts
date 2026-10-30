@@ -6,6 +6,7 @@ import {
 } from "../../src/main/panel-geometry";
 import { readNotchSizes } from "../../src/main/platform";
 
+vi.mock("electron", () => ({ systemPreferences: {} }));
 vi.mock("uiohook-napi", () => ({
   UiohookKey: { Alt: 1, Ctrl: 2, Meta: 3 },
 }));

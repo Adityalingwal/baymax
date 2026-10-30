@@ -72,6 +72,7 @@ const api: BaymaxApi = {
   setMouseCapture: (payload) => send(ipcChannels.setMouseCapture, payload),
   onPointerOutside: (callback) =>
     subscribe(ipcChannels.pointerOutside, callback),
+  onSpaceChanged: (callback) => subscribe(ipcChannels.spaceChanged, callback),
   onVoicePhase: (callback) =>
     subscribeWithReplay(
       ipcChannels.voicePhase,
