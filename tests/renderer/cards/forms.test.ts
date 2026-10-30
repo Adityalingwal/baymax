@@ -39,72 +39,76 @@ const nothing: CardContents = {
 };
 const withPage = { cardText: "", sources: [page] };
 
+type CardRow = {
+  name: string;
+  fields: Partial<TaskCard>;
+  shows: Partial<CardContents>;
+};
+
+const cardRows: CardRow[] = [
+  {
+    name: "running: label with a dot, the live line and stop",
+    fields: { step: "reading a.com" },
+    shows: {
+      label: "Running",
+      pulse: true,
+      live: "reading a.com",
+      stop: true,
+    },
+  },
+  {
+    name: "queued: label and stop, no live line",
+    fields: { state: "queued" },
+    shows: { label: "Queued", stop: true },
+  },
+  {
+    name: "cancelling keeps its label, with no live line and no stop",
+    fields: { state: "cancelling", step: "reading a.com" },
+    shows: { label: "Cancelling" },
+  },
+  {
+    name: "cancelled keeps its label",
+    fields: { state: "cancelled" },
+    shows: { label: "Cancelled" },
+  },
+  {
+    name: "a done card with a report: no label, the summary and the report, its sources on the page",
+    fields: {
+      state: "done",
+      spokenLine: "It runs a loop.",
+      answer: { cardText: "A long report.", sources: [page] },
+    },
+    shows: { line: "It runs a loop.", report: "A long report." },
+  },
+  {
+    name: "a short answer: no button, its sources under the summary",
+    fields: { state: "done", spokenLine: "24 degrees.", answer: withPage },
+    shows: { line: "24 degrees.", sources: [page] },
+  },
+  {
+    name: "a failed card that can retry: no label, the cause, its pages and Retry",
+    fields: {
+      state: "failed",
+      line: "Search isn't working.",
+      canRetry: true,
+      answer: { cardText: "- A page", sources: [page] },
+    },
+    shows: { line: "Search isn't working.", retry: true, sources: [page] },
+  },
+  {
+    name: "a failed card with nothing and no Retry",
+    fields: { state: "failed", line: "Search isn't working." },
+    shows: { line: "Search isn't working." },
+  },
+  {
+    name: "Retry never shows on a card that is not failed",
+    fields: { state: "done", canRetry: true, spokenLine: "Done." },
+    shows: { line: "Done." },
+  },
+];
+
 describe("what each kind of card shows", () => {
-  it.each<{
-    name: string;
-    fields: Partial<TaskCard>;
-    shows: Partial<CardContents>;
-  }>([
-    {
-      name: "running: label with a dot, the live line and stop",
-      fields: { step: "reading a.com" },
-      shows: {
-        label: "Running",
-        pulse: true,
-        live: "reading a.com",
-        stop: true,
-      },
-    },
-    {
-      name: "queued: label and stop, no live line",
-      fields: { state: "queued" },
-      shows: { label: "Queued", stop: true },
-    },
-    {
-      name: "cancelling keeps its label, with no live line and no stop",
-      fields: { state: "cancelling", step: "reading a.com" },
-      shows: { label: "Cancelling" },
-    },
-    {
-      name: "cancelled keeps its label",
-      fields: { state: "cancelled" },
-      shows: { label: "Cancelled" },
-    },
-    {
-      name: "a done card with a report: no label, the summary and the report, its sources on the page",
-      fields: {
-        state: "done",
-        spokenLine: "It runs a loop.",
-        answer: { cardText: "A long report.", sources: [page] },
-      },
-      shows: { line: "It runs a loop.", report: "A long report." },
-    },
-    {
-      name: "a short answer: no button, its sources under the summary",
-      fields: { state: "done", spokenLine: "24 degrees.", answer: withPage },
-      shows: { line: "24 degrees.", sources: [page] },
-    },
-    {
-      name: "a failed card that can retry: no label, the cause, its pages and Retry",
-      fields: {
-        state: "failed",
-        line: "Search isn't working.",
-        canRetry: true,
-        answer: { cardText: "- A page", sources: [page] },
-      },
-      shows: { line: "Search isn't working.", retry: true, sources: [page] },
-    },
-    {
-      name: "a failed card with nothing and no Retry",
-      fields: { state: "failed", line: "Search isn't working." },
-      shows: { line: "Search isn't working." },
-    },
-    {
-      name: "Retry never shows on a card that is not failed",
-      fields: { state: "done", canRetry: true, spokenLine: "Done." },
-      shows: { line: "Done." },
-    },
-  ])("$name", ({ fields, shows }) => {
+  it.each(cardRows)("$name", ({ fields, shows }) => {
     expect(cardContents(card(fields))).toEqual({ ...nothing, ...shows });
   });
 });

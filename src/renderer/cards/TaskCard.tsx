@@ -1,22 +1,38 @@
-import type { TaskCard as Card } from "../../shared/cards";
+import type { TaskCard as Card, TaskId } from "../../shared/cards";
 import type { CardActions } from "../actions";
 import { CardShell, LabelLine, RetryButton, StopButton } from "./CardFrame";
+import { ReportButton } from "./Chevron";
 import { cardContents, cardTitle } from "./forms";
 import { SourcesRow } from "./SourcesRow";
 
-type TaskCardProps = { card: Card; actions: CardActions };
+type TaskCardProps = {
+  card: Card;
+  actions: CardActions;
+  onOpenReport: (taskId: TaskId) => void;
+};
 
 // One card of the Tasks list; forms.ts decides what each kind shows.
-export function TaskCard({ card, actions }: TaskCardProps) {
+export function TaskCard({ card, actions, onOpenReport }: TaskCardProps) {
   const shows = cardContents(card);
   return (
     <CardShell card={card}>
       {shows.label !== null && (
         <LabelLine pulse={shows.pulse}>{shows.label}</LabelLine>
       )}
-      <h3 className={`type-title truncate ${shows.stop ? "pr-9" : ""}`}>
-        {cardTitle(card)}
-      </h3>
+      <div className="flex items-start gap-3">
+        <h3
+          className={`type-title min-w-0 flex-1 truncate ${shows.stop ? "pr-9" : ""}`}
+        >
+          {cardTitle(card)}
+        </h3>
+        {shows.report !== null && (
+          <ReportButton
+            direction="right"
+            label="Open the full report"
+            onClick={() => onOpenReport(card.taskId)}
+          />
+        )}
+      </div>
       {shows.live !== null && (
         <p className="type-body shimmer truncate">{shows.live}</p>
       )}

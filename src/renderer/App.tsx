@@ -1,12 +1,14 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import type { Dispatch } from "react";
 import type { DisplayState } from "../shared/cards";
 import type { VoicePhase } from "../shared/ipc";
 import type { CardActions } from "./actions";
-import { orderCards } from "./cards/list";
-import { TaskCard } from "./cards/TaskCard";
+import { ReportPage } from "./cards/ReportPage";
+import { TasksList } from "./cards/TasksList";
 import { startMicrophone } from "./microphone";
 import { NotchShell } from "./notch/NotchShell";
-import { initialView, viewReducer } from "./panel-contents";
+import { initialView, panelContent, viewReducer } from "./panel-contents";
+import type { PanelContent, PanelViewEvent } from "./panel-contents";
 import { startPlayback } from "./playback";
 import { TextBox } from "./TextBox";
 import { TopBar } from "./TopBar";
@@ -59,13 +61,40 @@ function ChatList({ chat }: { chat: DisplayState["chat"] }) {
   );
 }
 
-export function App() {
-  const { accessibility, holdKeyLabel, display, phase } = useMainState();
-  const actions: CardActions = window.baymax;
-  const [draft, setDraft] = useState("");
-  const [view, changeView] = useReducer(viewReducer, initialView);
-  const cards = orderCards(display.tasks);
+type PanelBodyProps = {
+  content: PanelContent;
+  actions: CardActions;
+  changeView: Dispatch<PanelViewEvent>;
+};
 
+function PanelBody({ content, actions, changeView }: PanelBodyProps) {
+  const keptScroll = useRef(0);
+  switch (content.kind) {
+    case "chat":
+      return <ChatList chat={content.entries} />;
+    case "tasks":
+      return (
+        <TasksList
+          cards={content.cards}
+          actions={actions}
+          keptScroll={keptScroll}
+          onOpenReport={(taskId) => changeView({ kind: "open-report", taskId })}
+        />
+      );
+    case "report":
+      return (
+        <ReportPage
+          key={content.card.taskId}
+          card={content.card}
+          report={content.report}
+          openSource={actions.openSource}
+          onBack={() => changeView({ kind: "back" })}
+        />
+      );
+  }
+}
+
+function useAudio() {
   useEffect(() => {
     const stopMicrophone = startMicrophone(window.baymax);
     const stopPlayback = startPlayback(window.baymax);
@@ -74,6 +103,15 @@ export function App() {
       stopPlayback();
     };
   }, []);
+}
+
+export function App() {
+  const { accessibility, holdKeyLabel, display, phase } = useMainState();
+  const actions: CardActions = window.baymax;
+  const [draft, setDraft] = useState("");
+  const [view, changeView] = useReducer(viewReducer, initialView);
+  const content = panelContent(view, display);
+  useAudio();
 
   return (
     <NotchShell
@@ -83,6 +121,7 @@ export function App() {
       tasks={display.tasks}
       muted={display.muted}
       setMuted={actions.setMuted}
+      fullReportOpen={content.kind === "report"}
       onOpenResult={() => changeView({ kind: "open-result" })}
     >
       {(closePanel) => (
@@ -98,17 +137,11 @@ export function App() {
               window.baymax.openAccessibilitySettings()
             }
           />
-          {view.tab === "chat" && <ChatList chat={display.chat} />}
-          {view.tab === "tasks" && cards.length === 0 && (
-            <p className="type-empty">No tasks right now</p>
-          )}
-          {view.tab === "tasks" && cards.length > 0 && (
-            <section className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto">
-              {cards.map((card) => (
-                <TaskCard key={card.taskId} card={card} actions={actions} />
-              ))}
-            </section>
-          )}
+          <PanelBody
+            content={content}
+            actions={actions}
+            changeView={changeView}
+          />
           <TextBox
             submitQuestion={actions.submitQuestion}
             onDraft={setDraft}
