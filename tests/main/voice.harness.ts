@@ -129,8 +129,12 @@ export function hold(h: Harness, outcome: HoldOutcome = "accept"): UtteranceId {
 }
 
 // Without a Flux socket the held audio goes to the batch call, which the test settles.
-export function sendAudio(h: Harness, utteranceId: UtteranceId): void {
-  const pcm = new ArrayBuffer(4);
+export function sendAudio(
+  h: Harness,
+  utteranceId: UtteranceId,
+  level: "speech" | "silence" = "speech",
+): void {
+  const pcm = new Uint8Array([0, level === "speech" ? 0x40 : 0]).buffer;
   h.voice.micAudio({ type: "frames", utteranceId, pcm });
   h.voice.micAudio({ type: "end", utteranceId });
 }

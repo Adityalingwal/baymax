@@ -76,13 +76,14 @@ function createFakeBridge(holder: Holder, reports: PlaybackFinished[]) {
   return { bridge, unsubscribeSpeech, unsubscribeStop };
 }
 
-export function createHarness() {
+// With a real player the test drives it through its output; otherwise the fake player records what it was told.
+export function createHarness(realPlayer?: Player) {
   const holder: Holder = {};
   const reports: PlaybackFinished[] = [];
   const { player, plays, queued, drain } = createFakePlayer();
   const fake = createFakeBridge(holder, reports);
   const { bridge, unsubscribeSpeech, unsubscribeStop } = fake;
-  const cleanup = startPlayback(bridge, player);
+  const cleanup = startPlayback(bridge, realPlayer ?? player);
   const speak = (lineId: string, bytes = [1]) =>
     holder.onSpeech?.({
       lineId,

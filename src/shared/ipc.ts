@@ -87,6 +87,9 @@ export type SpeechChunk = {
 };
 export type SpeechEnd = { lineId: LineId };
 
+// A streamed line plays this long after its first chunk: Aura's first burst is 200 ms, then a gap of up to 314 ms measured.
+export const speechStartBufferMs = 350;
+
 export type SubmitQuestion = { text: string };
 export type TaskAction = { taskId: TaskId };
 // Main opens the URL only if it is one of that task's read sources.
