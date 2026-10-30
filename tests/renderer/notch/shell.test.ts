@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { initialPanel, panelReducer } from "../../../src/renderer/notch/shell";
+import {
+  initialPanel,
+  panelDelays,
+  panelReducer,
+} from "../../../src/renderer/notch/shell";
 import type { PanelEvent, PanelState } from "../../../src/renderer/notch/shell";
 
 type Step = PanelEvent | ((state: PanelState) => PanelEvent);
@@ -275,6 +279,10 @@ describe("panelReducer", () => {
       token: before.draftLeave ?? -1,
     };
     expect(panelReducer(after, stale).open).toBe(true);
+  });
+
+  it("holds the locked delays", () => {
+    expect(panelDelays).toEqual({ dwellMs: 200, leaveMs: 300, draftMs: 3000 });
   });
 
   it("returns the same state when nothing changes", () => {

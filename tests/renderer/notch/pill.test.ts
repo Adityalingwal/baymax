@@ -3,6 +3,7 @@ import type { VoicePhase } from "../../../src/shared/ipc";
 import {
   initialPill,
   islandShown,
+  pillDelays,
   pillReducer,
 } from "../../../src/renderer/notch/pill";
 import type {
@@ -185,6 +186,10 @@ describe("pillReducer", () => {
     );
     const unmuted = pillReducer(twice, { kind: "main-muted", muted: false });
     expect(pillReducer(unmuted, mute).clearLabel).toBe("Muted");
+  });
+
+  it("holds the locked delays", () => {
+    expect(pillDelays).toEqual({ thresholdMs: 50, holdMs: 800 });
   });
 
   it("counts the mute hold from the click, not from the speech end", () => {
