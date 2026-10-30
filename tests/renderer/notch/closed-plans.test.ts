@@ -126,18 +126,6 @@ describe("the island's close and the ring", () => {
     expect(motionEnd(motion)).toBe(closedTiming.ringMs + 200);
   });
 
-  it("draws nothing at rest on a notched Mac, and stays drawn until its close ends", () => {
-    const hidden = { ...notch, hidden: true };
-    expect(restingFrame(hidden, "notch").shade).toBe(0);
-    expect(restingFrame(notch, "notch").shade).toBe(1);
-    const close = to(restingFrame(ring, "ring"), "notch", hidden);
-    expect(sample(close, 1).shade).toBe(1);
-    expect(sample(close, 419).shade).toBe(1);
-    expect(sample(close, 420).shade).toBe(0);
-    const grow = to(restingFrame(hidden, "notch"), "ring", ring);
-    expect(sample(grow, 1).shade).toBe(1);
-  });
-
   it("with reduced motion swaps at once", () => {
     const motion = planClosed(
       restingFrame(pill, "pill"),
@@ -146,4 +134,29 @@ describe("the island's close and the ring", () => {
     );
     expect(sample(motion, 0)).toEqual(restingFrame(island, "island"));
   });
+});
+
+describe("the hidden notch on a notched Mac", () => {
+  const hidden = { ...notch, hidden: true };
+  const atRest = restingFrame(hidden, "notch");
+
+  it("draws nothing at rest, and a plain notch does", () => {
+    expect(atRest.shade).toBe(0);
+    expect(restingFrame(notch, "notch").shade).toBe(1);
+  });
+
+  it("keeps a shape drawn until its close ends, and from the start of a grow", () => {
+    const close = to(restingFrame(ring, "ring"), "notch", hidden);
+    expect(sample(close, 1).shade).toBe(1);
+    expect(sample(close, 419).shade).toBe(1);
+    expect(sample(close, 420).shade).toBe(0);
+    expect(sample(to(atRest, "ring", ring), 1).shade).toBe(1);
+  });
+
+  it.each([0, 1, 419, 420])(
+    "draws nothing at %i ms when startup plans hidden to hidden",
+    (at) => {
+      expect(sample(to(atRest, "notch", hidden), at).shade).toBe(0);
+    },
+  );
 });

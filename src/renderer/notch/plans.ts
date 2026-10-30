@@ -59,6 +59,12 @@ function openness(current: Frame, keys: PanelKeys): number {
   return (current.height - keys.collapsed.height) / span;
 }
 
+// A shape closing onto the hidden notch stays drawn until its last frame; going from hidden to hidden it never draws.
+export function whileMoving(current: Frame, target: Frame): Frame {
+  const hidden = current.shade === 0 && target.shade === 0;
+  return { ...target, shade: hidden ? 0 : 1 };
+}
+
 // A fade from the current value: skip is the part already done, so a turned-around fade keeps its pace.
 export function fade(
   duration: number,
@@ -129,7 +135,7 @@ function planClose(current: Frame, keys: PanelKeys, now: number): Motion {
     fade(t.landingMs, from, to, landing);
   return makeMotion(
     current,
-    { ...target, shade: 1 },
+    whileMoving(current, target),
     {
       shape: { delay: fadeLeft, duration: t.closeMs, skip, ease: t.closeEase },
       content: fade(t.closeContentMs, current.content, 0),

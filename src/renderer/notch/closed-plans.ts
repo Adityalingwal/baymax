@@ -2,7 +2,7 @@ import { easeOutCubic, instant, makeMotion, smootherstep } from "./motion";
 import type { Frame, Motion, Timing } from "./motion";
 import type { Silhouette } from "./outline";
 import type { PillClose } from "./pill";
-import { fade, panelTiming, restingFrame } from "./plans";
+import { fade, panelTiming, restingFrame, whileMoving } from "./plans";
 import type { ClosedView } from "./views";
 
 // Timings from the locked design: "Voice pill", "Closed-panel voice pill: Soft close", "Running task: spinning ring",
@@ -81,8 +81,7 @@ function planSoft(
     card: layer(current.card, target.card, t.wordMs, late),
     ring: layer(current.ring, target.ring, t.ringMs, late),
   };
-  // A shape closing onto the hidden notch stays drawn until its last frame.
-  return makeMotion(current, { ...target, shade: 1 }, timings, {
+  return makeMotion(current, whileMoving(current, target), timings, {
     now,
     end: target,
   });
