@@ -18,7 +18,7 @@ export type DecisionContext = {
   earlier: (taskId: TaskId) => ReadonlySet<TaskId>; // tasks created before the given task
   taskId: TaskId; // the task the words were asked as
   canStop: (taskId: TaskId) => boolean; // the task is running, queued or holding a waiting question
-  canRetry: (taskId: TaskId) => boolean; // the task is failed and was admitted
+  canRetry: (taskId: TaskId) => boolean; // the task is failed, was admitted, and failed before this call started
 };
 
 export type DecisionCheck =

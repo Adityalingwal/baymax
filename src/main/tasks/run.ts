@@ -84,6 +84,7 @@ function endFailed(
   record.card.answer = findings;
   record.card.line = line;
   record.card.canRetry = record.admission !== null;
+  record.failedAt = change.model.exchangeOrder;
   change.model.pendingFailures.push({
     taskId: record.card.taskId,
     cause: line,

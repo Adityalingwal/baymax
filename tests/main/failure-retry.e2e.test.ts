@@ -283,6 +283,21 @@ describe("a yes routed retry", () => {
   });
 });
 
+describe("a yes whose call started before the task's latest failure", () => {
+  it("is rejected and does not run the newer failure again", async () => {
+    const w = wire();
+    await failedTask(w);
+    ask(w, "yes");
+    w.send(ipcChannels.retryTask, { taskId: "t1" });
+    failTask(w);
+    const sent = w.port.sent.length;
+    await streamFront(w, retryRoute("t1"), "Trying again.");
+    expect(w.logs).toContain("decision rejected for t2: cannotRetry");
+    expect(w.port.sent).toHaveLength(sent);
+    expect(w.card("t1")?.state).toBe("failed");
+  });
+});
+
 describe("Retry on the card", () => {
   it("runs the task again and speaks nothing", async () => {
     const w = wire();

@@ -54,8 +54,10 @@ function canSayMore(model: Model, taskId: TaskId): boolean {
   );
 }
 
-function canRetry(model: Model, taskId: TaskId): boolean {
-  return model.records.get(taskId)?.card.canRetry === true;
+// A call that started before the task's latest failure was about an older run, so its yes is stale.
+function canRetry(model: Model, taskId: TaskId, order: number): boolean {
+  const record = model.records.get(taskId);
+  return record?.card.canRetry === true && record.failedAt < order;
 }
 
 function addChatTurn(change: Change, words: string, line: string): void {
@@ -177,7 +179,7 @@ export function receiveFront(
     taskId,
     earlier: (id: TaskId) => earlierThan(change.model, id),
     canStop: (id: TaskId) => canStop(change.model, id),
-    canRetry: (id: TaskId) => canRetry(change.model, id),
+    canRetry: (id: TaskId) => canRetry(change.model, id, attempt.order),
   };
   const check = checkDecision(reply.decision, context);
   if (!check.ok) {

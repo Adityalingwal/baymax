@@ -45,6 +45,7 @@ export type TaskRecord = {
   attempts: number;
   sent: EngineCommand | null;
   retried: boolean; // limits only what the talker offers, never the card's Retry
+  failedAt: number; // the exchange order when it last failed
 };
 
 export type Model = {
@@ -141,6 +142,7 @@ export function addRecord(
     attempts: 0,
     sent: null,
     retried: false,
+    failedAt: 0,
   };
   model.records.set(taskId, record);
   return record;
