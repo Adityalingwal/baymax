@@ -89,7 +89,7 @@ function listen(tracker: Tracker): () => void {
 function useTimer(
   token: number | null,
   ms: number,
-  kind: "dwell-elapsed" | "leave-elapsed",
+  kind: "dwell-elapsed" | "leave-elapsed" | "draft-leave-elapsed",
   dispatch: Dispatch<PanelEvent>,
 ): void {
   useEffect(() => {
@@ -107,7 +107,7 @@ export type PanelPointer = {
 
 export function usePointer(
   zones: PointerZones,
-  holds: { needsAccess: boolean; draft: boolean; shapeKey: unknown },
+  holds: { needsAccess: boolean; draft: string; shapeKey: unknown },
 ): PanelPointer {
   const [state, dispatch] = useReducer(panelReducer, initialPanel);
   const [tracker] = useState<Tracker>(() => ({
@@ -126,7 +126,7 @@ export function usePointer(
     () => dispatch({ kind: "access", needed: needsAccess }),
     [needsAccess],
   );
-  useEffect(() => dispatch({ kind: "draft", draft }), [draft]);
+  useEffect(() => dispatch({ kind: "draft", text: draft }), [draft]);
   // A new window shape means the window moved: whatever the pointer was over is gone.
   useEffect(() => {
     tracker.point = null;
@@ -135,5 +135,11 @@ export function usePointer(
   }, [tracker, shapeKey]);
   useTimer(state.dwell, panelDelays.dwellMs, "dwell-elapsed", dispatch);
   useTimer(state.leave, panelDelays.leaveMs, "leave-elapsed", dispatch);
+  useTimer(
+    state.draftLeave,
+    panelDelays.draftMs,
+    "draft-leave-elapsed",
+    dispatch,
+  );
   return { state, dispatch, frameChanged: () => evaluate(tracker) };
 }

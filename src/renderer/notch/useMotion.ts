@@ -4,8 +4,10 @@ import { planClosed } from "./closed-plans";
 import { motionEnd, sample } from "./motion";
 import type { Frame, Motion } from "./motion";
 import { silhouettePath } from "./outline";
+import type { PillClose } from "./pill";
 import { panelTiming, planPanel, planResize, restingFrame } from "./plans";
 import type { PanelKeys } from "./plans";
+import type { ClosedView } from "./views";
 import type { VoiceLayers } from "./VoicePill";
 
 type Runner = {
@@ -14,6 +16,7 @@ type Runner = {
   motion: Motion | null;
   raf: number | null;
   open: boolean; // the open state the last motion was planned for
+  view: ClosedView; // the closed view the last motion was planned for
 };
 
 export type Layers = VoiceLayers & {
@@ -31,6 +34,7 @@ export type ShellMotion = {
 type MotionInput = {
   open: boolean;
   keys: PanelKeys;
+  pillClose: PillClose;
   windowWidth: number;
   onFrame: () => void;
   onSettled: (open: boolean) => void;
@@ -77,12 +81,15 @@ function plan(runner: Runner, input: MotionInput): Motion {
   const { open, keys } = input;
   const how = { reduced: prefersReducedMotion(), now: performance.now() };
   const wasOpen = runner.open;
+  // The pill's close applies only to the pill: the state keeps it after it is used.
+  const close = runner.view === "pill" ? input.pillClose : "soft";
   runner.open = open;
+  runner.view = keys.view;
   if (open && wasOpen && !how.reduced) {
     return planResize(runner.frame, keys, how.now);
   }
   if (open || wasOpen) return planPanel(runner.frame, keys, { ...how, open });
-  const target = { view: keys.view, shape: keys.collapsed };
+  const target = { view: keys.view, shape: keys.collapsed, close };
   return planClosed(runner.frame, target, how);
 }
 
@@ -112,6 +119,7 @@ export function useShellMotion(input: MotionInput): ShellMotion {
     motion: null,
     raf: null,
     open: false,
+    view: keys.view,
   }));
 
   useLayoutEffect(() => {

@@ -9,11 +9,14 @@ import type { PillEvent, PillState } from "./pill";
 export function usePill(
   phase: VoicePhase,
   answer: boolean,
+  muted: boolean,
 ): {
   pill: PillState;
   dispatch: Dispatch<PillEvent>;
 } {
   const [pill, dispatch] = useReducer(pillReducer, initialPill);
+  // Its own event, and first: resending the phase on a mute change would restart the pill's word and timers.
+  useEffect(() => dispatch({ kind: "main-muted", muted }), [muted]);
   useEffect(() => dispatch({ kind: "phase", phase, answer }), [phase, answer]);
   const wait = pill.wait;
   const token = wait?.token ?? null;

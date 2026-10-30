@@ -123,7 +123,7 @@ describe("the island's close and the ring", () => {
       width: 175,
       ring: 0,
     });
-    expect(motionEnd(motion)).toBe(closedTiming.ringMs + 420);
+    expect(motionEnd(motion)).toBe(closedTiming.ringMs + 200);
   });
 
   it("draws nothing at rest on a notched Mac, and stays drawn until its close ends", () => {

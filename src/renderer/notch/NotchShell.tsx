@@ -27,9 +27,10 @@ import { VoicePill } from "./VoicePill";
 
 type NotchShellProps = {
   needsAccess: boolean;
-  draft: boolean; // the field holds text, which keeps the panel open when the pointer leaves
+  draft: string; // the field's text: with text, the panel closes 3 s after the pointer leaves instead of 300 ms
   phase: VoicePhase;
   tasks: TaskCard[];
+  muted: boolean; // main's mute
   setMuted: CardActions["setMuted"];
   fullReportOpen?: boolean; // the panel takes its full-report size
   children: ReactNode;
@@ -127,6 +128,7 @@ function usePanel(input: PanelInput) {
   const motion = useShellMotion({
     open: pointer.state.open,
     keys: shapes.keys,
+    pillClose: closed.pillClose,
     windowWidth: frame.width,
     onFrame: pointer.frameChanged,
     onSettled: (settledOpen) => {
@@ -217,7 +219,7 @@ function ClosedLayers(props: ClosedLayersProps) {
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const { frame, children, phase, tasks, setMuted } = props;
   const fullReport = props.fullReportOpen ?? false;
-  const voice = usePill(phase, isAnswerLine(phase, tasks));
+  const voice = usePill(phase, isAnswerLine(phase, tasks), props.muted);
   const closed = useClosedShape(voice.pill, tasks, {
     shape: frame.shape,
     wide: panelLimits.reportWidth,

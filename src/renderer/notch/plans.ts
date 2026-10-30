@@ -30,14 +30,14 @@ export function restingFrame(
   };
 }
 
-// Timings from the locked design: notch-design-locked.md, "Panel close and motion".
+// Timings from the locked design: notch-design-locked.md, "Panel close and motion", with design-lock-timing.md's close.
 export const panelTiming = {
   openMs: 360,
   openEase: cubicBezier(0.22, 1, 0.36, 1),
   contentDelayMs: 90,
   contentMs: 180,
   closeContentMs: 80,
-  closeMs: 220,
+  closeMs: 260, // shared with the pill's silent close
   closeEase: cubicBezier(0.4, 0, 1, 1),
   resizeMs: 260,
   reducedInMs: 120,

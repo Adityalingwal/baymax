@@ -1,10 +1,13 @@
 import type { LineId, SpeakingLine, VoicePhase } from "../../shared/ipc";
 
 // The closed-panel voice pill and the answer island it grows into. Rules and timings: notch-design-locked.md,
-// "Voice pill", the pill close and mute sections, and "Task finish".
-export const pillDelays = { thresholdMs: 300, holdMs: 800 } as const;
+// "Voice pill", the pill close and mute sections, and "Task finish", with design-lock-timing.md's updates.
+export const pillDelays = { thresholdMs: 50, holdMs: 800 } as const;
 
 export type PillWord = "Listening" | "Thinking" | "Speaking";
+
+// How the pill's next close moves: soft after speech or under mute, silent when a hold ended with nothing said.
+export type PillClose = "soft" | "silent";
 
 // wait holds the token of the running timer, so a timer that fires after its reason is gone does nothing.
 export type PillState = {
@@ -15,6 +18,8 @@ export type PillState = {
   shown: boolean;
   word: PillWord;
   muted: boolean; // the Clear label after a mute click; it stays until the pill closes
+  mainMuted: boolean; // main's mute
+  close: PillClose;
   session: number; // counts pill openings, so the corner lines draw in once per opening
   wait: { kind: "threshold" | "hold"; token: number } | null;
   tokens: number;
@@ -22,6 +27,7 @@ export type PillState = {
 
 export type PillEvent =
   | { kind: "phase"; phase: VoicePhase; answer: boolean }
+  | { kind: "main-muted"; muted: boolean }
   | { kind: "threshold-elapsed"; token: number }
   | { kind: "hold-elapsed"; token: number }
   | { kind: "mute-clicked" }
@@ -35,6 +41,8 @@ export const initialPill: PillState = {
   shown: false,
   word: "Listening",
   muted: false,
+  mainMuted: false,
+  close: "soft",
   session: 0,
   wait: null,
   tokens: 0,
@@ -53,21 +61,32 @@ function startWait(state: PillState, kind: "threshold" | "hold"): PillState {
 
 function show(state: PillState, word: PillWord): PillState {
   const session = state.shown ? state.session : state.session + 1;
-  return { ...state, shown: true, word, muted: false, session, wait: null };
+  return {
+    ...state,
+    shown: true,
+    word,
+    muted: false,
+    close: "soft",
+    session,
+    wait: null,
+  };
 }
 
-// After speech: the pill holds 800 ms, the island closes at once. A turn that ends in Thinking has no line to hold after.
+// After speech: the pill holds 800 ms, the island closes at once.
+// A hold that ends in Listening or Thinking has no line to hold after: it closes at once, faster unless muted.
 function speechEnded(state: PillState, next: PillState): PillState {
   if (!state.shown) return { ...next, wait: null };
-  if (islandShown(state) || state.phase === "thinking") {
-    return { ...next, shown: false, wait: null };
+  if (islandShown(state)) return { ...next, shown: false, wait: null };
+  if (state.phase === "thinking" || state.word === "Listening") {
+    const close = state.mainMuted ? "soft" : "silent";
+    return { ...next, shown: false, close, wait: null };
   }
   // A mute confirmation already counts its 800 ms from the click.
   if (state.wait?.kind === "hold") return next;
   return startWait(next, "hold");
 }
 
-// A hold under 300 ms is a tap and never shows the pill; once it is longer, Listening shows.
+// A hold under 50 ms never shows the pill; once it is longer, Listening shows.
 function receivePhase(
   state: PillState,
   voice: VoicePhase,
@@ -104,6 +123,8 @@ export function pillReducer(state: PillState, event: PillEvent): PillState {
   switch (event.kind) {
     case "phase":
       return receivePhase(state, event.phase, event.answer);
+    case "main-muted":
+      return { ...state, mainMuted: event.muted };
     case "threshold-elapsed":
       if (state.wait?.token !== event.token || state.phase !== "listening") {
         return state;

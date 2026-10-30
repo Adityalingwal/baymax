@@ -62,13 +62,13 @@ describe("planPanel", () => {
     expect(sample(motion, 1360)).toEqual(openFrame);
   });
 
-  it("closes: the content fades out in 80 ms, then the shape shrinks in 220 ms", () => {
+  it("closes: the content fades out in 80 ms, then the shape shrinks in 260 ms", () => {
     const motion = plan(openFrame, false);
     expect(sample(motion, 1040).content).toBeCloseTo(0.5);
     expect(sample(motion, 1080)).toMatchObject({ content: 0, height: 300 });
     expect(sample(motion, 1190).height).toBeGreaterThan(25);
-    expect(motionEnd(motion)).toBe(1300);
-    expect(sample(motion, 1300)).toEqual(closedFrame);
+    expect(motionEnd(motion)).toBe(1340);
+    expect(sample(motion, 1340)).toEqual(closedFrame);
   });
 
   it.each([

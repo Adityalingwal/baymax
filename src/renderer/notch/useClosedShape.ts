@@ -10,7 +10,7 @@ import {
 } from "./outline";
 import type { Silhouette } from "./outline";
 import { islandShown } from "./pill";
-import type { PillState } from "./pill";
+import type { PillClose, PillState } from "./pill";
 import { closedView, islandLayout, islandWidth, runningCount } from "./views";
 import type { ClosedView } from "./views";
 
@@ -20,6 +20,7 @@ export type ClosedShape = {
   view: ClosedView;
   shape: Silhouette;
   running: number;
+  pillClose: PillClose;
   island: { card: IslandCard | null; width: number };
   onIslandSize: (size: IslandSize) => void;
 };
@@ -84,6 +85,7 @@ export function useClosedShape(
     view,
     shape: silhouette,
     running,
+    pillClose: pill.close,
     island: { card: last.current, width },
     onIslandSize,
   };
