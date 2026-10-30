@@ -181,7 +181,7 @@ There is no separate intake model call: the front call's `decide` tool is the in
 - **The answer.** One model output with four fields: `report` (Markdown for the screen, no links or source ids, empty when the answer fits in the line), `line` (one or two short sentences, spoken once and also shown as the card's summary, with no fixed wording), `sourceIds` (the read pages that back them) and `nothingFound` (null, or one plain sentence on why nothing helped, with the report and the line empty). There is no separate writer and no separate model call for the line. The report is never read out. A near match is never called a full match: with no exact match it names the closest ones and what they miss.
 - **Prompt cache.** The prompt start (instructions and tool list) stays fixed during a run.
 - **Context.** If the prompt fills up despite the capped page text, the run stops at a limit and ends as below.
-- **How a run ends.** One result event or one failed event, or cancelled when the user cancels. A valid answer ends as a result. An answer that means nothing found ends failed, cause `nothingFound`, with its sentence as the reason. A limit or an error with no valid answer, including a second bad answer, ends failed with that cause and the pages read as a list, or nothing when no page was read. A limit or an error after a valid answer was kept still ends as a result, with that answer and its own line. No line, spoken or shown, says done, incomplete or "found little".
+- **How a run ends.** One result event or one failed event, or cancelled when the user cancels. A valid answer ends as a result. An answer that means nothing found ends failed, cause `nothingFound`, with its sentence as the reason and the pages read as a list, or nothing when no page was read. A limit or an error with no valid answer, including a second bad answer, ends failed with that cause and the pages read as a list, or nothing when no page was read. A limit or an error after a valid answer was kept still ends as a result, with that answer and its own line. No line, spoken or shown, says done, incomplete or "found little".
 
 ### Done check
 
@@ -245,7 +245,7 @@ It checks the answer's form and its source ids, not whether the pages back the r
 | Front call failed, key rejected / no credit | The key or credit line above, with retry; no task starts |
 | Front call failed or timed out with nothing spoken | "Sorry, I missed that. Ask again." with retry; no task starts |
 | Front call failed or timed out after it spoke, or its decision failed the check | "That didn't go through. Ask again." with retry; no task starts |
-| Nothing found | The worker's own sentence on why, spoken and shown |
+| Nothing found | The worker's own sentence on why, spoken and shown. The pages read stay on the card |
 | Limit hit with no valid answer | "I ran out of time on that one before I had an answer." The pages read stay on the card |
 | Error with no valid answer, including a second bad answer | "I hit an error on that question. Try again." The pages read stay on the card |
 | Uncaught failure | "Baymax hit a problem and is restarting." |

@@ -42,6 +42,13 @@ const failedRows: FailedRow[] = [
     line: "No page mentions a Hermes 9.",
   },
   {
+    name: "nothing found after reading, its pages on the card",
+    cause: "nothingFound",
+    reason: "No page mentions a Hermes 9.",
+    answer: found,
+    line: "No page mentions a Hermes 9.",
+  },
+  {
     name: "a limit with pages",
     cause: "limitHit",
     answer: found,

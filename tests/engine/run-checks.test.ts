@@ -102,6 +102,27 @@ describe("runTask nothing found", () => {
       taskId: "task-1",
       cause: "nothingFound",
       reason: "No page mentions a Hermes 9.",
+      findings: {
+        cardText: "- Page one\n- Page two",
+        sources: [one, two],
+      },
+    });
+  });
+
+  it("carries no findings when no page was read", async () => {
+    const event = await finalEvent([
+      workerAnswer({
+        report: "",
+        line: "",
+        sourceIds: [],
+        nothingFound: "Nothing helped.",
+      }),
+    ]);
+    expect(event).toEqual({
+      type: "failed",
+      taskId: "task-1",
+      cause: "nothingFound",
+      reason: "Nothing helped.",
       findings: null,
     });
   });

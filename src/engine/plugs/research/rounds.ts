@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Findings, TaskId } from "../../../shared/cards";
 import type { EngineEvent, FailureCause } from "../../../shared/engine";
 import type { DispatchDeps } from "../../core/dispatch";
-import { checkAnswer, parseAnswer } from "./answer";
+import { checkAnswer, foundFindings, parseAnswer } from "./answer";
 import type { ReadPage } from "./page-text";
 import { rewriteMessage } from "./worker-prompt";
 import type { AnswerFault } from "./worker-prompt";
@@ -59,7 +59,7 @@ function checkedTurn(rounds: Rounds, json: string): RoundEnd {
       taskId,
       cause: "nothingFound",
       reason,
-      findings: null,
+      findings: foundFindings(null, rounds.pages()),
     };
     return { kind: "event", event };
   }
