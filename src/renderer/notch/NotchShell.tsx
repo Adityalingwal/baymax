@@ -231,8 +231,35 @@ function ClosedLayers(props: ClosedLayersProps) {
   );
 }
 
+type PanelLayerProps = {
+  panel: ReturnType<typeof usePanel>;
+  windowHeight: number;
+  fullReport: boolean;
+  children: NotchShellProps["children"];
+};
+
+// The panel's content inside the shape; it hands its children the close control's action.
+function PanelLayer(props: PanelLayerProps) {
+  const { panel, windowHeight, fullReport, children } = props;
+  return (
+    <main
+      ref={panel.contentElement}
+      className="panel-type absolute inset-x-0 top-0 mx-auto flex w-fit flex-col"
+      style={{
+        ...panelBox(windowHeight, fullReport),
+        gap: rowGap,
+        padding: `${panelShape.strip + rowGap}px ${sidePadding}px ${sidePadding}px`,
+      }}
+      aria-hidden={!panel.open}
+      inert={!panel.open}
+    >
+      {children(() => panel.dispatch({ kind: "close-control" }))}
+    </main>
+  );
+}
+
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
-  const { frame, children, phase, tasks, setMuted } = props;
+  const { frame, phase, tasks, setMuted } = props;
   const fullReport = props.fullReportOpen ?? false;
   const { island, dispatch } = useIsland(tasks);
   const voice = usePill(phase, islandSpeaks(island, phase), props.muted);
@@ -246,7 +273,6 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const scrollTo = useScrollTo(open);
   const onMute = () =>
     clickMute(voice.pill, { dispatch: voice.dispatch, setMuted });
-  // The explicit open-result event: it opens the panel, which ends the island, and scrolls to the result.
   const onOpenResult = (taskId: TaskId) => {
     panel.dispatch({ kind: "open-result" });
     props.onOpenResult();
@@ -272,19 +298,13 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
         openSource={props.openSource}
         onToggleReport={() => dispatch({ kind: "toggle-report" })}
       />
-      <main
-        ref={panel.contentElement}
-        className="panel-type absolute inset-x-0 top-0 mx-auto flex w-fit flex-col"
-        style={{
-          ...panelBox(frame.height, fullReport),
-          gap: rowGap,
-          padding: `${panelShape.strip + rowGap}px ${sidePadding}px ${sidePadding}px`,
-        }}
-        aria-hidden={!open}
-        inert={!open}
+      <PanelLayer
+        panel={panel}
+        windowHeight={frame.height}
+        fullReport={fullReport}
       >
-        {children(() => panel.dispatch({ kind: "close-control" }))}
-      </main>
+        {props.children}
+      </PanelLayer>
     </div>
   );
 }
