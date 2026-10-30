@@ -152,7 +152,7 @@ async function startEngineAndWiring(): Promise<Wiring> {
     timers: { setTimer },
     now: () => new Date(),
     log: (message) => console.info("[main]", message),
-    newTaskId: () => randomUUID(),
+    nextTaskId: () => randomUUID(),
     fail: (error) => restart(error, "state failure in a listener"),
     voice: voiceDeps(keys.deepgramKey),
   });

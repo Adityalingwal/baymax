@@ -1,6 +1,6 @@
 import type { DisplayState, TaskCard, TaskId } from "../../shared/cards";
 import type { Model, TaskRecord } from "./record";
-import { shownQuestion } from "./record";
+import { activeQuestion } from "./record";
 import type { RecentExchange, TaskSummary, WaitingQuestion } from "./talk";
 
 const RUNNING_LIMIT = 1;
@@ -28,6 +28,7 @@ export function buildDisplay(model: Model): DisplayState {
   }
   return {
     tasks,
+    chat: structuredClone(model.chat),
     notice: model.notice,
     muted: model.muted,
     voiceAvailable: model.voiceAvailable,
@@ -59,14 +60,13 @@ export function recentExchanges(
 }
 
 export function waitingQuestion(model: Model): WaitingQuestion | null {
-  const record = shownQuestion(model);
-  const question = record?.card.question ?? null;
+  const record = activeQuestion(model);
+  const question = record?.question ?? null;
   if (record === null || question === null) return null;
-  const { questionId, text } = question;
   return {
     taskId: record.card.taskId,
     words: record.card.words,
-    question: { questionId, text },
+    question: { ...question },
   };
 }
 

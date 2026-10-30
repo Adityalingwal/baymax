@@ -1,6 +1,5 @@
 import type { TaskCard } from "../../shared/cards";
 import type { VoicePhase } from "../../shared/ipc";
-import { isChatReply } from "../cards/forms";
 import { isRunning } from "../cards/list";
 
 // What the notch shows with the panel closed. Sizes and rules: notch-design-locked.md,
@@ -27,13 +26,13 @@ export function runningCount(tasks: readonly Pick<TaskCard, "state">[]) {
 // Only a done task's own result line grows into the island; a chat reply, a failed line, a question or a notice uses the pill.
 export function isAnswerLine(
   phase: VoicePhase,
-  tasks: readonly Pick<TaskCard, "taskId" | "state" | "reply" | "answer">[],
+  tasks: readonly Pick<TaskCard, "taskId" | "state">[],
 ): boolean {
   if (phase.phase !== "speaking") return false;
   const { kind, taskId } = phase.line;
   if (kind !== "answer" || taskId === null) return false;
   const card = tasks.find((task) => task.taskId === taskId);
-  return card !== undefined && card.state === "done" && !isChatReply(card);
+  return card !== undefined && card.state === "done";
 }
 
 export const islandLayout = {

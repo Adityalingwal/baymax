@@ -188,7 +188,7 @@ describe("a card's title", () => {
   it("is the topic once the front call gave one, and the words stay as asked", async () => {
     const w = wire();
     w.send(ipcChannels.submitQuestion, { text: "tell me hermes" });
-    expect(w.card("t1")).toMatchObject({ title: null });
+    expect(w.card("t1")).toBeUndefined();
     await streamFront(w, workRoute("how Hermes works"), "Checking.");
     expect(w.card("t1")).toMatchObject({
       title: "how Hermes works",

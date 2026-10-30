@@ -1,6 +1,6 @@
-import type { QuestionId, TaskId } from "../../shared/cards";
+import type { TaskId } from "../../shared/cards";
 import type { TaskAsk } from "../../shared/engine";
-import type { WaitingQuestion } from "./talk";
+import type { QuestionId, WaitingQuestion } from "./talk";
 
 type Route =
   | { route: "reply" }
@@ -13,7 +13,7 @@ export type Decision = Route & { answerTo: QuestionId | null };
 
 export type DecisionContext = {
   words: string;
-  waiting: WaitingQuestion | null; // the question shown when the words were asked
+  waiting: WaitingQuestion | null; // the question active when the words were asked
   earlier: (taskId: TaskId) => ReadonlySet<TaskId>; // tasks created before the given task
   taskId: TaskId; // the task the words were asked as
   canStop: (taskId: TaskId) => boolean; // the task is running, queued or holding a waiting question

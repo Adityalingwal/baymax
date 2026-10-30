@@ -32,14 +32,3 @@ export function ResultCard({ card, actions }: ResultCardProps) {
     </CardShell>
   );
 }
-
-export function ChatCard({ card }: { card: TaskCard }) {
-  return (
-    <article
-      id={`card-${card.taskId}`}
-      className="glass self-start rounded-[20px] px-4 py-2.5"
-    >
-      <p className="type-body">{card.reply}</p>
-    </article>
-  );
-}

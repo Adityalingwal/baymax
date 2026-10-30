@@ -8,6 +8,7 @@ import type { Admission, Change, Input, Model, TaskRecord } from "./record";
 import {
   abandonAttempt,
   dropped,
+  dropQuestion,
   hold,
   say,
   sendCancel,
@@ -37,11 +38,9 @@ function closeTask(change: Change, record: TaskRecord, ending: Ending): void {
     ...ending,
   });
   model.queue = model.queue.filter((id) => id !== taskId);
-  model.questions = model.questions.filter((id) => id !== taskId);
+  dropQuestion(model, record);
   record.sent = null;
   record.attempt = null;
-  record.failedAttempt = null;
-  record.hiddenQuestion = null;
   record.card.state = ending.outcome;
   record.card.step = null;
 }
@@ -63,14 +62,13 @@ function endDone(
   say(change, taskId, spokenLine, "answer");
 }
 
-// The front call's line was the whole answer, so the card shows it as a done answer.
+// The front call's line was the whole answer: the record is kept for later words and never gets a card.
 export function endChat(change: Change, record: TaskRecord, text: string) {
   const findings: Findings = { cardText: text, sources: [] };
   closeTask(change, record, { outcome: "done", findings, spokenLine: text });
   record.spokenLine = text;
   record.card.spokenLine = text;
   record.card.reply = text;
-  record.card.question = null;
   record.card.answer = findings;
   record.card.line = null;
 }
@@ -90,10 +88,9 @@ function endFailed(
 
 function clearForLeaving(change: Change, record: TaskRecord): void {
   const { card } = record;
-  card.question = null;
   card.answer = null;
   card.canRetry = false;
-  setTimer(change, LEAVE_MS, leave(card.taskId));
+  if (record.shown) setTimer(change, LEAVE_MS, leave(card.taskId));
 }
 
 function endCancelled(
@@ -190,13 +187,13 @@ export function admit(
 ): boolean {
   const { model } = change;
   const { card } = record;
+  dropQuestion(model, record);
+  record.shown = true;
   record.admission = { ask: decision.ask };
   record.topic = decision.topic;
   card.title = record.topic;
-  card.sayBack = null;
   card.reply = line;
   card.parentTaskId = decision.parentTaskId;
-  card.question = null;
   card.canRetry = false;
   card.line = null;
   // The spoken line shows on the card; the queued line is fixed and shown only.

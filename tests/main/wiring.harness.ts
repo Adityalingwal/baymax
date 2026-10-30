@@ -216,7 +216,7 @@ export function wire(options: Options = {}) {
     log: (message) => seen.logs.push(message),
     timers: { setTimer: clock.setTimer },
     now: options.now ?? clock.date,
-    newTaskId: () => {
+    nextTaskId: () => {
       if (options.idFails) throw new Error("no task id");
       ids += 1;
       return `t${ids}`;
@@ -241,6 +241,8 @@ export function wire(options: Options = {}) {
     own,
     send,
     card,
+    lastId: () => `t${ids}`, // the record the last words made, shown or not
+    chat: () => seen.published.at(-1)?.chat.map((entry) => entry.text) ?? [],
   };
 }
 

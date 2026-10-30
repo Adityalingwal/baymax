@@ -20,7 +20,6 @@ function demoCard(taskId: TaskId, fields: Partial<TaskCard>): TaskCard {
     spokenLine: null,
     step: null,
     sourcesRead: 0,
-    question: null,
     answer: null,
     canRetry: false,
     ...fields,
@@ -75,7 +74,6 @@ const demoCards: TaskCard[] = [
     sourcesRead: 4,
     answer: { cardText: hermesAnswer, sources: hermesSources },
   }),
-  // A chat reply: main ends small talk as a done card whose answer is the spoken line itself.
   demoCard("demo-2", {
     state: "done",
     words: "Thanks, that helps",
@@ -125,11 +123,6 @@ const demoCards: TaskCard[] = [
     state: "clarifying",
     words: "Find me a good laptop",
     sayBack: "a good laptop",
-    question: {
-      questionId: "q-1",
-      text: "What will you mostly use it for?",
-      answered: false,
-    },
   }),
   demoCard("demo-9", {
     state: "thinking",
@@ -145,6 +138,7 @@ const demoCards: TaskCard[] = [
 
 export const demoDisplayState: DisplayState = {
   tasks: demoCards,
+  chat: [],
   notice: "This is the demo display state. Press Cmd+Shift+D to leave it.",
   // Muted, so the top strip's toggle shows its muted look; a click unmutes.
   muted: true,

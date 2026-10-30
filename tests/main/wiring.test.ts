@@ -34,7 +34,7 @@ describe("wireMain typed path", () => {
     expect(JSON.stringify(w.talkerCalls[0].request.messages)).toContain(
       "how does Hermes work?",
     );
-    expect(w.card("t1")?.state).toBe("thinking");
+    expect(w.card("t1")).toBeUndefined();
     await streamFront(
       w,
       workRoute("how Hermes works"),

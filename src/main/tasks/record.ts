@@ -1,20 +1,20 @@
-import type { ClarifyingQuestion, TaskCard, TaskId } from "../../shared/cards";
+import type { ChatEntry, TaskCard, TaskId } from "../../shared/cards";
 import type { EngineCommand, ParentResult, TaskAsk } from "../../shared/engine";
 import type { SpokenKind } from "../../shared/ipc";
 import type { Exchange } from "./history";
 import { fixedLines } from "./lines";
-import type { TalkRequest } from "./talk";
+import type { ClarifyingQuestion, QuestionId, TalkRequest } from "./talk";
 
-// Main's state says fixed lines (failure, notice, queue), results and the waiting question as given; the front call says the rest.
+// Main's state says fixed lines (failure, notice), results and a re-asked question as given; the front call says the rest.
 export type SaidKind = SpokenKind;
 export type SaidLine = { taskId: TaskId | null; text: string; kind: SaidKind };
 
 export type Admission = { ask: TaskAsk };
 
-// Everything a front call is asked except its id; a retry makes a fresh call from the same parts.
+// Everything a front call is asked except its id.
 export type FrontParts = Omit<TalkRequest, "kind" | "attemptId">;
 
-// One front call in flight or failed.
+// One front call in flight.
 export type Attempt = {
   id: string;
   order: number; // the exchange's place in the conversation, fixed when the call starts
@@ -28,9 +28,8 @@ export type TaskRecord = {
   admission: Admission | null;
   topic: string | null; // the front call's short name for the request; the card shows it as its title
   spokenLine: string | null;
-  hiddenQuestion: ClarifyingQuestion | null;
+  question: ClarifyingQuestion | null; // held in state clarifying until it is answered or stopped
   attempt: Attempt | null;
-  failedAttempt: Attempt | null;
   attempts: number;
   sent: EngineCommand | null;
 };
@@ -42,7 +41,10 @@ export type Model = {
   exchanges: Exchange[];
   exchangeOrder: number;
   queue: TaskId[];
-  questions: TaskId[];
+  questions: TaskId[]; // the records holding a question, in the order spoken
+  askedQuestion: QuestionId | null; // the question the user last heard as the active one
+  chat: ChatEntry[];
+  chatEntries: number; // how many were ever added, for their ids
   notice: string | null;
   muted: boolean;
   voiceAvailable: boolean;
@@ -60,6 +62,7 @@ export type Output =
 export type Change = {
   model: Model;
   outputs: Output[];
+  now: () => Date;
   log: (message: string) => void;
 };
 
@@ -74,12 +77,16 @@ export function createModel(): Model {
     exchangeOrder: 0,
     queue: [],
     questions: [],
+    askedQuestion: null,
+    chat: [],
+    chatEntries: 0,
     notice: null,
     muted: false,
     voiceAvailable: true,
   };
 }
 
+// New words are a record with no card; only work becomes a shown card.
 export function addRecord(
   model: Model,
   taskId: TaskId,
@@ -99,18 +106,16 @@ export function addRecord(
       spokenLine: null,
       step: null,
       sourcesRead: 0,
-      question: null,
       answer: null,
       canRetry: false,
     },
-    shown: true,
+    shown: false,
     created: model.created,
     admission: null,
     topic: null,
     spokenLine: null,
-    hiddenQuestion: null,
+    question: null,
     attempt: null,
-    failedAttempt: null,
     attempts: 0,
     sent: null,
   };
@@ -170,27 +175,51 @@ export function dropped(change: Change, reason: string): false {
   return false;
 }
 
-export function shownQuestion(model: Model): TaskRecord | null {
-  for (const record of model.records.values()) {
-    if (record.card.question?.answered === false) return record;
-  }
-  return null;
+const CHAT_LIMIT = 200;
+
+export function addChat(
+  change: Change,
+  from: ChatEntry["from"],
+  text: string,
+): void {
+  const { model } = change;
+  model.chatEntries += 1;
+  const at = change.now().getTime();
+  model.chat.push({ id: `c${model.chatEntries}`, from, text, at });
+  if (model.chat.length > CHAT_LIMIT) model.chat.shift();
 }
 
-// Runs after every accepted change, so a hidden question shows whatever made the shown one go; it is said as given.
-export function showNextQuestion(change: Change): void {
+// The latest question spoken is the active one; an older one stays pending.
+export function activeQuestion(model: Model): TaskRecord | null {
+  const taskId = model.questions.at(-1);
+  return taskId === undefined ? null : (model.records.get(taskId) ?? null);
+}
+
+export function holdQuestion(change: Change, record: TaskRecord, text: string) {
   const { model } = change;
-  if (shownQuestion(model) !== null) return;
-  for (const taskId of [...model.questions]) {
-    model.questions = model.questions.filter((id) => id !== taskId);
-    const record = model.records.get(taskId);
-    const question = record?.hiddenQuestion ?? null;
-    if (record?.card.state !== "clarifying" || question === null) continue;
-    record.card.question = { ...question, answered: false };
-    record.hiddenQuestion = null;
-    say(change, taskId, question.text, "question");
-    return;
-  }
+  const { taskId } = record.card;
+  const questionId = `${taskId}:question`;
+  record.question = { questionId, text };
+  model.questions.push(taskId);
+  model.askedQuestion = questionId;
+}
+
+export function dropQuestion(model: Model, record: TaskRecord): void {
+  record.question = null;
+  model.questions = model.questions.filter((id) => id !== record.card.taskId);
+}
+
+// Runs after every accepted change: when the active question went away, the older one is asked again in its stored words.
+export function reAskOlderQuestion(change: Change): void {
+  const { model } = change;
+  const record = activeQuestion(model);
+  const question = record?.question ?? null;
+  const questionId = question?.questionId ?? null;
+  if (questionId === model.askedQuestion) return;
+  model.askedQuestion = questionId;
+  if (record === null || question === null) return;
+  say(change, record.card.taskId, question.text, "question");
+  addChat(change, "baymax", question.text);
 }
 
 export type Notice =

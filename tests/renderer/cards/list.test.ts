@@ -1,68 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type { Findings, TaskCard, TaskState } from "../../../src/shared/cards";
-import { isChatReply, isPending } from "../../../src/renderer/cards/forms";
+import type { TaskCard, TaskState } from "../../../src/shared/cards";
+import { isPending } from "../../../src/renderer/cards/forms";
 import { orderCards, statusLine } from "../../../src/renderer/cards/list";
 
-type Card = Pick<TaskCard, "state" | "reply" | "answer" | "canRetry"> & {
-  id: string;
-};
+type Card = Pick<TaskCard, "state"> & { id: string };
 
-const findings = (cardText: string, sources = 0): Findings => ({
-  cardText,
-  sources: Array.from({ length: sources }, (_, index) => ({
-    id: `s${index}`,
-    url: `https://example.com/${index}`,
-    title: `Page ${index}`,
-  })),
-});
+const card = (id: string, state: TaskState): Card => ({ id, state });
 
-const card = (id: string, state: TaskState, fields: Partial<Card> = {}) => ({
-  id,
-  state,
-  reply: null,
-  answer: null,
-  canRetry: false,
-  ...fields,
-});
-
-const chat = card("chat", "done", {
-  reply: "Glad it helped.",
-  answer: findings("Glad it helped."),
-});
-const result = card("result", "done", {
-  reply: "I'll check.",
-  answer: findings("Hermes runs a loop.", 2),
-});
-
-describe("isChatReply", () => {
-  it.each([
-    { name: "a done card whose answer is its reply", card: chat, chat: true },
-    { name: "a research result", card: result, chat: false },
-    {
-      name: "a result with no sources that is not the reply",
-      card: card("x", "done", {
-        reply: "I'll check.",
-        answer: findings("No pages."),
-      }),
-      chat: false,
-    },
-    {
-      name: "a failed card",
-      card: { ...chat, state: "failed" as const },
-      chat: false,
-    },
-  ])("$name: $chat", ({ card: given, chat: expected }) => {
-    expect(isChatReply(given)).toBe(expected);
-  });
-});
+const result = card("result", "done");
 
 describe("isPending", () => {
   it.each<[TaskState, boolean, boolean]>([
-    ["thinking", false, true],
-    ["thinking", true, false],
     ["queued", false, true],
+    ["queued", true, false],
     ["running", false, true],
-    ["clarifying", false, false],
     ["cancelling", false, false],
     ["done", false, false],
   ])("%s with Retry %s: %s", (state, canRetry, pending) => {
@@ -71,21 +22,17 @@ describe("isPending", () => {
 });
 
 describe("orderCards", () => {
-  it("puts cards that need you first, then work in flight, then results, keeping main's order", () => {
+  it("puts work in flight first, then results, keeping main's order", () => {
     const tasks = [
       result,
       card("run", "running"),
-      card("ask", "clarifying"),
-      chat,
       card("wait", "queued"),
       card("gone", "cancelled"),
     ];
     expect(orderCards(tasks).map((task) => task.id)).toEqual([
-      "ask",
       "run",
       "wait",
       "result",
-      "chat",
       "gone",
     ]);
   });
@@ -94,7 +41,6 @@ describe("orderCards", () => {
 describe("statusLine", () => {
   it.each<{ name: string; tasks: Card[]; line: string }>([
     { name: "no tasks", tasks: [], line: "Nothing running" },
-    { name: "only a chat reply", tasks: [chat], line: "Nothing running" },
     {
       name: "one running",
       tasks: [card("a", "running"), result],
@@ -106,13 +52,8 @@ describe("statusLine", () => {
       line: "2 running",
     },
     {
-      name: "a question and a running task",
-      tasks: [card("a", "clarifying"), card("b", "running")],
-      line: "1 needs you · 1 running",
-    },
-    {
-      name: "results only, chat and failed cards not counted",
-      tasks: [result, { ...result, id: "r2" }, card("i", "failed"), chat],
+      name: "results only, failed cards not counted",
+      tasks: [result, { ...result, id: "r2" }, card("i", "failed")],
       line: "2 results",
     },
     {

@@ -3,12 +3,10 @@ import { ipcChannels } from "../../src/shared/ipc";
 import { findings } from "./tasks/harness";
 import {
   admitAs,
-  failFront,
   fakeSender,
   admitTask,
   runToDone,
   source,
-  submit,
   wire,
 } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
@@ -29,19 +27,6 @@ const actionRows: ActionRow[] = [
     payload: { taskId: "t1" },
     check: (w) =>
       expect(w.port.sent.at(-1)).toEqual({ type: "cancel", taskId: "t1" }),
-  },
-  {
-    name: "retry asks the front call again after a failed one",
-    prepare: async (w) => {
-      submit(w);
-      await failFront(w);
-    },
-    channel: ipcChannels.retryTask,
-    payload: { taskId: "t1" },
-    check: (w) => {
-      expect(w.talkerCalls).toHaveLength(2);
-      expect(w.port.sent).toEqual([]);
-    },
   },
   {
     name: "open source opens a listed source",

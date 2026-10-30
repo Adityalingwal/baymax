@@ -13,6 +13,7 @@ import { TopBar } from "./TopBar";
 
 const emptyState: DisplayState = {
   tasks: [],
+  chat: [],
   notice: null,
   muted: false,
   voiceAvailable: true,
@@ -84,6 +85,19 @@ function useShownState(display: DisplayState) {
   return { demo, state, actions };
 }
 
+function ChatList({ chat }: { chat: DisplayState["chat"] }) {
+  if (chat.length === 0) return null;
+  return (
+    <section className="flex min-h-0 shrink flex-col gap-1 overflow-y-auto">
+      {chat.map((entry) => (
+        <p key={entry.id} className="type-body">
+          {entry.text}
+        </p>
+      ))}
+    </section>
+  );
+}
+
 export function App() {
   const { accessibility, holdKeyLabel, display, phase } = useMainState();
   const { demo, state, actions } = useShownState(display);
@@ -116,6 +130,7 @@ export function App() {
           window.baymax.openAccessibilitySettings()
         }
       />
+      <ChatList chat={state.chat} />
       {cards.length > 0 && (
         <section className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto">
           {cards.map((card) => (

@@ -6,6 +6,7 @@ import {
   replyRoute,
   askRoute,
   findings,
+  stopRoute,
   workOnRoute,
   workRoute,
 } from "./tasks/harness";
@@ -24,16 +25,9 @@ afterEach(closePorts);
 const ask = (w: Wired, text: string) =>
   w.send(ipcChannels.submitQuestion, { text });
 
-// The id of the card the last ask added: new cards are shown last.
-const lastCard = (w: Wired): TaskId => {
-  const taskId = w.published.at(-1)?.tasks.at(-1)?.taskId;
-  if (taskId === undefined) throw new Error("no card");
-  return taskId;
-};
-
 async function askFollowUp(w: Wired, parent: TaskId, topic: string) {
   ask(w, `and ${topic}`);
-  const taskId = lastCard(w);
+  const taskId = w.lastId();
   const call = w.talkerCalls.length - 1;
   await streamFront(w, workOnRoute(parent, topic), `Checking ${topic}.`, call);
   return taskId;
@@ -245,7 +239,7 @@ describe("follow-ups that wait for their parent", () => {
     await clarifyingParent(w);
     const child = await askFollowUp(w, "t1", "more");
     await admitAs(w, "rust");
-    const later = lastCard(w);
+    const later = w.lastId();
     expect(w.card(child)?.state).toBe("queued");
     expect(w.card(later)?.state).toBe("running");
     ask(w, "the first one");
@@ -257,12 +251,13 @@ describe("follow-ups that wait for their parent", () => {
     expect(parentOf(w, child)).toMatchObject({ taskId: "t1", outcome: "done" });
   });
 
-  it("starts a waiting follow-up when its clarifying parent is cancelled with the slot free", async () => {
+  it("starts a waiting follow-up when its clarifying parent is stopped with the slot free", async () => {
     const w = wire();
     await clarifyingParent(w);
     const child = await askFollowUp(w, "t1", "more");
     expect(w.card(child)?.state).toBe("queued");
-    w.send(ipcChannels.cancelTask, { taskId: "t1" });
+    ask(w, "never mind that");
+    await streamFront(w, stopRoute("t1"), "Dropping it.", 2);
     expect(parentOf(w, child)).toEqual({
       taskId: "t1",
       outcome: "cancelled",
@@ -277,7 +272,7 @@ describe("follow-ups that wait for their parent", () => {
     const w = wire();
     await clarifyingParent(w);
     ask(w, "the first one");
-    const answer = lastCard(w);
+    const answer = w.lastId();
     const child = await askFollowUp(w, answer, "more");
     expect(w.card(child)?.state).toBe("queued");
     await streamFront(w, workRoute("about it", "t1:question"), "Okay.", 1);

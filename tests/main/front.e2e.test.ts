@@ -16,6 +16,8 @@ import type { Wired } from "./wiring.harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+const clockStart = Date.UTC(2026, 9, 31, 12);
+
 const ask = (w: Wired, text: string) =>
   w.send(ipcChannels.submitQuestion, { text });
 
@@ -26,39 +28,47 @@ async function spokenAll(w: Wired): Promise<string[]> {
   return w.spoken();
 }
 
-const answerOf = (text: string) => ({
-  cardText: text,
-  sources: [],
-});
+const tasksShown = (w: Wired) => w.published.at(-1)?.tasks ?? [];
 
 describe("the routes of a front decision", () => {
-  it("chat: the thinking card becomes a done card showing the line, with no worker and nothing more said", async () => {
+  it("reply: the line is spoken, with no card and no worker, and the words and line join Chat", async () => {
     const w = wire();
     ask(w, "thanks!");
+    w.advance(5);
     await streamFront(w, replyRoute(), "You're welcome!");
-    expect(w.card("t1")).toMatchObject({
-      state: "done",
-      sayBack: null,
-      line: null,
-      reply: "You're welcome!",
-      question: null,
-      answer: answerOf("You're welcome!"),
-    });
+    expect(tasksShown(w)).toEqual([]);
+    expect(w.published.at(-1)?.chat).toEqual([
+      { id: "c1", from: "user", text: "thanks!", at: clockStart + 5 },
+      { id: "c2", from: "baymax", text: "You're welcome!", at: clockStart + 5 },
+    ]);
     expect(w.port.sent).toEqual([]);
     expect(await spokenAll(w)).toEqual(["You're welcome!"]);
     expect(w.talkerCalls).toHaveLength(1);
   });
 
-  it("newTask: the card shows the line, sends the goal and the words, and says nothing more", async () => {
+  it("reply: the Chat list keeps the 200 latest entries", async () => {
+    const w = wire();
+    for (let i = 0; i < 101; i += 1) {
+      ask(w, `hi ${i}`);
+      await streamFront(w, replyRoute(), `Hello ${i}.`);
+    }
+    const chat = w.published.at(-1)?.chat ?? [];
+    expect(chat).toHaveLength(200);
+    expect(chat[0]).toMatchObject({ id: "c3", text: "hi 1" });
+    expect(chat.at(-1)).toMatchObject({ id: "c202", text: "Hello 100." });
+  });
+
+  it("work: a running card with the topic, the goal and words go to the engine, and nothing more is said", async () => {
     const w = wire();
     ask(w, "  will it rain?  ");
+    expect(tasksShown(w)).toEqual([]);
     await streamFront(w, workRoute("the forecast"), "I'll check the forecast.");
     expect(w.card("t1")).toMatchObject({
       state: "running",
+      title: "the forecast",
       sayBack: null,
       line: null,
       reply: "I'll check the forecast.",
-      question: null,
       parentTaskId: null,
     });
     expect(w.port.sent).toEqual([
@@ -71,32 +81,25 @@ describe("the routes of a front decision", () => {
         parent: null,
       },
     ]);
+    expect(w.chat()).toEqual([]);
     expect(await spokenAll(w)).toEqual(["I'll check the forecast."]);
   });
 });
 
-describe("the routes of a front decision that wait or end", () => {
-  it("clarify: the card is clarifying with the line as the question and no reply, say-back or line", async () => {
+describe("the routes of a front decision while work runs", () => {
+  it("reply: words that can be answered at once leave the running task alone and queue nothing", async () => {
     const w = wire();
-    ask(w, "can you help me?");
-    await streamFront(w, askRoute(), "What would you like me to look into?");
-    expect(w.card("t1")).toMatchObject({
-      state: "clarifying",
-      sayBack: null,
-      line: null,
-      reply: null,
-      question: {
-        text: "What would you like me to look into?",
-        answered: false,
-      },
-    });
-    expect(w.port.sent).toEqual([]);
-    expect(await spokenAll(w)).toEqual([
-      "What would you like me to look into?",
-    ]);
+    await admitAs(w, "hermes");
+    const sent = w.port.sent.length;
+    ask(w, "book a cab");
+    await streamFront(w, replyRoute(), "I can't book cabs.");
+    expect(tasksShown(w).map((card) => card.taskId)).toEqual(["t1"]);
+    expect(w.card("t1")?.state).toBe("running");
+    expect(w.port.sent).toHaveLength(sent);
+    expect(w.chat()).toEqual(["book a cab", "I can't book cabs."]);
   });
 
-  it("stop on a running task: the engine gets a cancel and the stop line finishes playing", async () => {
+  it("stop on a running task: the engine gets a cancel, the stop line finishes playing and no card is left", async () => {
     const w = wire();
     await admitAs(w, "hermes");
     await w.playAll();
@@ -104,11 +107,51 @@ describe("the routes of a front decision that wait or end", () => {
     await streamFront(w, stopRoute("t1"), "Stopping hermes.");
     expect(w.port.sent.at(-1)).toEqual({ type: "cancel", taskId: "t1" });
     expect(w.card("t1")?.state).toBe("cancelling");
+    expect(tasksShown(w).map((card) => card.taskId)).toEqual(["t1"]);
     expect(await spokenAll(w)).toEqual([
       "Checking hermes.",
       "Stopping hermes.",
     ]);
     expect(w.stops).toEqual([]);
+    expect(w.chat()).toEqual([]);
+  });
+
+  it("stop on a queued task: it ends at once and the running one carries on", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await admitAs(w, "rust");
+    ask(w, "drop rust");
+    await streamFront(w, stopRoute("t2"), "Dropping rust.");
+    expect(w.card("t2")?.state).toBe("cancelled");
+    expect(w.card("t1")?.state).toBe("running");
+    expect(w.port.sent.map((command) => command.type)).toEqual(["runTask"]);
+  });
+});
+
+describe("the tasks block", () => {
+  it("lists only running and queued tasks with the room left", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    await admitAs(w, "rust");
+    ask(w, "what do you think?");
+    await streamFront(w, askRoute(), "About what?");
+    ask(w, "hello");
+    await streamFront(w, replyRoute(), "Hello.", 3);
+    ask(w, "next");
+    expect(String(w.talkerCalls[4].request.messages.at(-1)?.content)).toContain(
+      "<running_and_waiting_tasks>\n- task t1 (running) | title: hermes | words: tell me hermes\n- task t2 (queued) | title: rust | words: tell me rust\n1 running, 1 waiting, room for 2 more\n</running_and_waiting_tasks>",
+    );
+  });
+
+  it.each([
+    { tasks: 0, line: "0 running, 0 waiting, room for 4 more" },
+    { tasks: 4, line: "1 running, 3 waiting, no room" },
+  ])("with $tasks tasks says $line", async ({ tasks, line }) => {
+    const w = wire();
+    for (let i = 0; i < tasks; i += 1) await admitAs(w, `task ${i}`);
+    ask(w, "next");
+    const turn = String(w.talkerCalls.at(-1)?.request.messages.at(-1)?.content);
+    expect(turn).toContain(`${line}\n</running_and_waiting_tasks>`);
   });
 });
 
@@ -242,73 +285,37 @@ const counts = (w: Wired) => [
 
 describe("a front call that fails", () => {
   it.each(failures)(
-    "$name shows the line for its cause with retry and starts no worker",
+    "$name says the line for its cause, shows no card and starts no worker",
     async ({ fail, line, spoken }) => {
       const w = wire();
       ask(w, "what is 2 + 2?");
       await fail(w);
-      expect(w.card("t1")).toMatchObject({
-        state: "thinking",
-        line,
-        canRetry: true,
-        reply: null,
-      });
+      expect(tasksShown(w)).toEqual([]);
+      expect(w.chat()).toEqual(["what is 2 + 2?", line]);
       expect(await spokenAll(w)).toEqual(spoken);
       expect(w.port.sent).toEqual([]);
     },
   );
 
-  it.each(failures)(
-    "retry after $name re-runs the same request as a fresh call, once",
-    async ({ fail }) => {
-      const w = wire();
-      ask(w, "what is 2 + 2?");
-      await fail(w);
-      const published = w.published.length;
-      w.send(ipcChannels.retryTask, { taskId: "t1" });
-      expect(w.talkerCalls).toHaveLength(2);
-      expect(w.talkerCalls[1].request).toEqual(w.talkerCalls[0].request);
-      expect(w.published.length).toBe(published + 1);
-      expect(w.card("t1")).toMatchObject({ line: null, canRetry: false });
-      const before = counts(w);
-      w.send(ipcChannels.retryTask, { taskId: "t1" });
-      expect(counts(w)).toEqual(before);
-    },
-  );
-});
-
-describe("the result of a retried front call", () => {
-  it("takes only the retry's own result: the failed call's late result is dropped", async () => {
+  it("has nothing to retry", async () => {
     const w = wire();
     ask(w, "what is 2 + 2?");
     await failFront(w, "error");
-    w.send(ipcChannels.retryTask, { taskId: "t1" });
-    w.wiring.state.talkerReplied("t1", "t1#1", {
-      kind: "said",
-      text: "late",
-      decision: replyRoute(),
-    });
-    expect(w.card("t1")).toMatchObject({ state: "thinking", reply: null });
-    await streamFront(w, replyRoute(), "It's four.");
-    expect(w.card("t1")).toMatchObject({
-      state: "done",
-      reply: "It's four.",
-      line: null,
-      canRetry: false,
-    });
-  });
-
-  it("drops a retry after the card was cancelled, and a retry of a call that is still in flight", async () => {
-    const w = wire();
-    ask(w, "hi");
     const before = counts(w);
     w.send(ipcChannels.retryTask, { taskId: "t1" });
     expect(counts(w)).toEqual(before);
-    await failFront(w, "error");
-    w.send(ipcChannels.cancelTask, { taskId: "t1" });
-    const ended = counts(w);
-    w.send(ipcChannels.retryTask, { taskId: "t1" });
-    expect(counts(w)).toEqual(ended);
+  });
+
+  it("speaks the models line once when first words are late twice", async () => {
+    const w = wire();
+    ask(w, "what is 2 + 2?");
+    w.advance(10_000);
+    await flush();
+    w.advance(10_000);
+    await flush();
+    expect(w.talkerCalls).toHaveLength(2);
+    expect(tasksShown(w)).toEqual([]);
+    expect(await spokenAll(w)).toEqual([missedLine]);
   });
 });
 

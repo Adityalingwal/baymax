@@ -1,7 +1,6 @@
 // Types both links carry: renderer <-> main (ipc.ts) and main <-> engine (engine.ts).
 
 export type TaskId = string;
-export type QuestionId = string;
 export type UtteranceId = string;
 
 export type Source = {
@@ -10,18 +9,13 @@ export type Source = {
   title: string;
 };
 
-export type ClarifyingQuestion = {
-  questionId: QuestionId;
-  text: string;
-};
-
 // What a task found: a done answer, or what a failed or cancelled one had read.
 export type Findings = {
   cardText: string; // Markdown with no links, empty when the worker's line was the whole answer; sources[] lists the pages the card relies on, opened through openSource (ids serve the done check)
   sources: Source[];
 };
 
-// "cancelled" also covers a card refused at the queue limit or for a request outside research; main sets its line.
+// "thinking" and "clarifying" are records main keeps without a card; a card appears once there is work.
 export type TaskState =
   | "thinking"
   | "clarifying"
@@ -41,17 +35,25 @@ export type TaskCard = {
   parentTaskId: TaskId | null;
   sayBack: string | null; // always null since the front call's spoken line replaced the say-back
   line: string | null; // a fixed status or failure line
-  reply: string | null; // the front call's spoken line, so what was said is also on screen
+  reply: string | null; // the front call's spoken line
   spokenLine: string | null; // a done task's result line as spoken (the answer island shows it), else null
   step: string | null; // latest progress, e.g. "searching: how Hermes works"
   sourcesRead: number;
-  question: (ClarifyingQuestion & { answered: boolean }) | null;
   answer: Findings | null; // may be partial when state is "failed"
   canRetry: boolean;
 };
 
+// One side of the conversation: what the user said, or what Baymax said that was no task's card.
+export type ChatEntry = {
+  id: string;
+  from: "user" | "baymax";
+  text: string;
+  at: number; // milliseconds since the epoch
+};
+
 export type DisplayState = {
   tasks: TaskCard[]; // in the order shown
+  chat: ChatEntry[]; // oldest first
   notice: string | null; // a line tied to no card: words not caught, voice unavailable, restarting
   muted: boolean;
   voiceAvailable: boolean;

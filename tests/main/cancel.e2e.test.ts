@@ -2,17 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { TaskCard, TaskId } from "../../src/shared/cards";
 import type { EngineEvent } from "../../src/shared/engine";
 import { ipcChannels } from "../../src/shared/ipc";
-import { askRoute, findings, workRoute } from "./tasks/harness";
-import { admitAs, failFront, streamFront, wire } from "./wiring.harness";
+import { findings, workRoute } from "./tasks/harness";
+import { admitAs, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
+// After t1 runs and t2, t3 wait.
 type CancelRow = {
   name: string;
-  prepare: (w: Wired) => void | Promise<void>; // after t1 runs and t2, t3 wait
   taskId: TaskId;
   ending: EngineEvent | null; // the engine's reply that ends the step; null when nothing is in flight
   starts: TaskId | null; // the queued task that runs once the ending arrives
-  aborts: boolean; // the cancel aborts a front call in flight
 };
 
 const answerSpoken = "Hermes runs a loop.";
@@ -26,11 +25,6 @@ async function background(w: Wired): Promise<void> {
 const asked = (w: Wired) =>
   w.send(ipcChannels.submitQuestion, { text: "find me a laptop" });
 
-const clarifying = async (w: Wired) => {
-  asked(w);
-  await streamFront(w, askRoute(), "Which kind?");
-};
-
 const cancelled = (taskId: TaskId): EngineEvent => ({
   type: "cancelled",
   taskId,
@@ -40,61 +34,18 @@ const cancelled = (taskId: TaskId): EngineEvent => ({
 const rows: CancelRow[] = [
   {
     name: "queued",
-    prepare: () => undefined,
     taskId: "t2",
     ending: null,
     starts: null,
-    aborts: false,
-  },
-  {
-    name: "clarifying, question shown and not answered",
-    prepare: clarifying,
-    taskId: "t4",
-    ending: null,
-    starts: null,
-    aborts: false,
-  },
-  {
-    name: "thinking after a front call failure",
-    prepare: async (w) => {
-      asked(w);
-      await failFront(w);
-    },
-    taskId: "t4",
-    ending: null,
-    starts: null,
-    aborts: false,
-  },
-  {
-    name: "thinking, front call in flight",
-    prepare: asked,
-    taskId: "t4",
-    ending: null,
-    starts: null,
-    aborts: true,
-  },
-  {
-    name: "clarifying, a typed answer's front call in flight",
-    prepare: async (w) => {
-      await clarifying(w);
-      w.send(ipcChannels.submitQuestion, { text: "Office" });
-    },
-    taskId: "t4",
-    ending: null,
-    starts: null,
-    aborts: false,
   },
   {
     name: "running",
-    prepare: () => undefined,
     taskId: "t1",
     ending: cancelled("t1"),
     starts: "t2",
-    aborts: false,
   },
   {
     name: "running, a result arrives instead",
-    prepare: () => undefined,
     taskId: "t1",
     ending: {
       type: "result",
@@ -103,11 +54,9 @@ const rows: CancelRow[] = [
       findings: findings(answerSpoken),
     },
     starts: "t2",
-    aborts: false,
   },
   {
     name: "running, a failure arrives instead",
-    prepare: () => undefined,
     taskId: "t1",
     ending: {
       type: "failed",
@@ -117,7 +66,6 @@ const rows: CancelRow[] = [
       findings: findings("Part."),
     },
     starts: "t2",
-    aborts: false,
   },
 ];
 
@@ -131,16 +79,15 @@ const done = (taskId: TaskId): EngineEvent => ({
 const others = (w: Wired, taskId: TaskId): TaskCard[] =>
   w.published.at(-1)?.tasks.filter((card) => card.taskId !== taskId) ?? [];
 
-async function prepared(row: CancelRow): Promise<Wired> {
+async function prepared(): Promise<Wired> {
   const w = wire();
   await background(w);
-  await row.prepare(w);
   return w;
 }
 
 // Cancels by the renderer action and delivers the ending reply, if the row has one.
 async function cancelToEnd(row: CancelRow): Promise<Wired> {
-  const w = await prepared(row);
+  const w = await prepared();
   w.send(ipcChannels.cancelTask, { taskId: row.taskId });
   if (row.ending !== null) w.port.emit(row.ending);
   return w;
@@ -151,7 +98,7 @@ const cancellingRows = rows.filter((row) => row.ending !== null);
 
 describe("cancel by the renderer action, nothing in flight", () => {
   it.each(immediateRows)("ends $name at once", async (row) => {
-    const w = await prepared(row);
+    const w = await prepared();
     const sentBefore = w.port.sent.length;
     const othersBefore = others(w, row.taskId);
     w.send(ipcChannels.cancelTask, { taskId: row.taskId });
@@ -159,13 +106,9 @@ describe("cancel by the renderer action, nothing in flight", () => {
       state: "cancelled",
       line: null,
       step: null,
-      question: null,
       answer: null,
       canRetry: false,
     });
-    expect(w.talkerCalls.filter((call) => call.aborted)).toHaveLength(
-      row.aborts ? 1 : 0,
-    );
     expect(w.port.sent).toHaveLength(sentBefore);
     expect(others(w, row.taskId)).toEqual(othersBefore);
     expect(w.failures).toEqual([]);
@@ -176,7 +119,7 @@ describe("cancel by the renderer action, a step in flight", () => {
   it.each(cancellingRows)(
     "shows $name cancelling until the ending reply",
     async (row) => {
-      const w = await prepared(row);
+      const w = await prepared();
       const sentBefore = w.port.sent.length;
       const othersBefore = others(w, row.taskId);
       const before = w.card(row.taskId);
@@ -328,7 +271,7 @@ describe("a late front reply for a cancelled card", () => {
     });
     expect(w.published).toHaveLength(published);
     expect(w.port.sent).toHaveLength(sent);
-    expect(w.card("t4")).toMatchObject({ state: "cancelled", reply: null });
+    expect(w.card("t4")).toBeUndefined();
   });
 });
 
@@ -382,20 +325,5 @@ describe("a cancel the engine sends unasked", () => {
     w.port.emit(cancelled("t1"));
     expect(w.card("t1")?.state).toBe("cancelled");
     expect(w.card("t2")?.state).toBe("running");
-  });
-});
-
-describe("cancelling a clarifying task", () => {
-  it("ends it at once when no answer is in flight and shows the next question", async () => {
-    const w = wire();
-    await clarifying(w);
-    await clarifying(w);
-    w.send(ipcChannels.cancelTask, { taskId: "t1" });
-    expect(w.card("t1")?.state).toBe("cancelled");
-    expect(w.port.sent).toEqual([]);
-    expect(w.card("t2")?.question).toMatchObject({
-      questionId: "t2:question",
-      answered: false,
-    });
   });
 });

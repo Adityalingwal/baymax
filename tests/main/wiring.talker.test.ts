@@ -27,15 +27,12 @@ describe("the front call through the wiring", () => {
     );
   });
 
-  it("speaks the line as it streams and shows it on a chat card", async () => {
+  it("speaks the line as it streams and adds it to the Chat list", async () => {
     const w = asked();
     await streamFront(w, replyRoute(), "It's 4.");
     await w.playNext();
     expect(w.spoken()).toEqual(["It's 4."]);
-    expect(w.card("t1")).toMatchObject({
-      state: "done",
-      answer: { cardText: "It's 4." },
-    });
+    expect(w.published.at(-1)?.chat.at(-1)?.text).toBe("It's 4.");
     w.advance(1500);
     expect(w.syntheses.map((call) => call.input)).toEqual(["It's 4."]);
   });

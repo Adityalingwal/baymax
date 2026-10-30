@@ -5,9 +5,16 @@ import type { Decision } from "./decision";
 import { addExchange, setExchangeTask } from "./history";
 import { frontFailureLine } from "./lines";
 import type { Attempt, Change, FrontParts, Model, TaskRecord } from "./record";
-import { dropped, say, shownQuestion, talk } from "./record";
+import {
+  activeQuestion,
+  addChat,
+  dropped,
+  holdQuestion,
+  say,
+  talk,
+} from "./record";
 import { admit, cancelTask, endChat, endSpoken } from "./run";
-import type { TalkerReply } from "./talk";
+import type { QuestionId, TalkerReply } from "./talk";
 
 // Starts one front call for the record; its id is unique, so a late result of an older call is told apart.
 export function openAttempt(
@@ -23,7 +30,7 @@ export function openAttempt(
   talk(change, { kind: "front", attemptId: id, ...parts });
 }
 
-// Tasks created before the given one: a follow-up names a parent only from these.
+// Tasks created before the given one: work names a parent only from these.
 function earlierThan(model: Model, taskId: TaskId): ReadonlySet<TaskId> {
   const created = model.records.get(taskId)?.created ?? 0;
   const ids = [...model.records.values()]
@@ -37,91 +44,51 @@ function canStop(model: Model, taskId: TaskId): boolean {
   return state === "running" || state === "queued" || state === "clarifying";
 }
 
+function addChatTurn(change: Change, words: string, line: string): void {
+  addChat(change, "user", words);
+  addChat(change, "baymax", line);
+}
+
+// Nothing shows and nothing is kept: the record goes, and work that named it as a parent runs without one.
 function failFront(
   change: Change,
   record: TaskRecord,
   attempt: Attempt,
   failure: { kind: FailureKind; spoke: boolean },
 ): boolean {
-  record.failedAttempt = attempt;
+  const { taskId } = record.card;
+  change.model.records.delete(taskId);
   const line = frontFailureLine(failure.kind, failure.spoke);
-  record.card.line = line;
-  record.card.canRetry = true;
-  say(change, record.card.taskId, line, "failure");
+  addChatTurn(change, attempt.parts.words, line);
+  say(change, taskId, line, "failure");
   return true;
 }
 
-// The question the answer is for, claimed now; null when it is stale or another answer already took it.
-function claimTarget(
-  change: Change,
-  record: TaskRecord,
-  attempt: Attempt,
-  answerTo: string,
-): TaskRecord | null {
-  const waiting = attempt.parts.waiting;
-  const target =
-    waiting === null ? undefined : change.model.records.get(waiting.taskId);
-  const question = target?.card.question ?? null;
-  if (
-    target === undefined ||
-    target.card.state !== "clarifying" ||
-    question === null ||
-    question.questionId !== answerTo
-  ) {
-    return null;
-  }
-  if (question.answered) return null;
-  question.answered = true;
-  return target;
+// The record the words answer, if its question is still the active one; a call's waiting question was only context.
+function claimTarget(change: Change, answerTo: QuestionId): TaskRecord | null {
+  const target = activeQuestion(change.model);
+  return target?.question?.questionId === answerTo ? target : null;
 }
 
-// The question appears at once when none is shown, else it waits hidden and is said when it shows.
-function clarify(
-  change: Change,
-  record: TaskRecord,
-  topic: string | null,
-  text: string,
-): void {
-  const { card } = record;
-  const { model } = change;
-  record.topic = topic;
-  card.title = record.topic;
-  card.state = "clarifying";
-  card.sayBack = null;
-  card.line = null;
-  card.reply = null;
-  card.canRetry = false;
-  const full = { questionId: `${card.taskId}:question`, text };
-  if (shownQuestion(model) === null) {
-    card.question = { ...full, answered: false };
-    return;
-  }
-  card.question = null;
-  record.hiddenQuestion = full;
-  model.questions.push(card.taskId);
-}
-
-// The record the decision is for: the asking record, or the waiting one the words answer; null when the answer lost.
+// The record the decision is for: the record of the words, or the waiting one they answer; null when the answer is stale.
 function resolveTarget(
   change: Change,
   record: TaskRecord,
-  attempt: Attempt,
   decision: Decision,
 ): TaskRecord | null {
   if (decision.answerTo === null) return record;
-  const claimed = claimTarget(change, record, attempt, decision.answerTo);
-  if (claimed === null) {
-    change.log(`answer ${decision.answerTo} for ${record.card.taskId} lost`);
-    // A spoken answer's temporary card goes; a stale answer starts nothing.
-    change.model.records.delete(record.card.taskId);
-    return null;
+  // Words that answer a question are not a task of their own.
+  change.model.records.delete(record.card.taskId);
+  const target = claimTarget(change, decision.answerTo);
+  if (target === null) {
+    change.log(
+      `answer ${decision.answerTo} for ${record.card.taskId} is stale`,
+    );
   }
-  // Words that answer the waiting question are not a task, so their thinking card goes at once.
-  if (claimed !== record) change.model.records.delete(record.card.taskId);
-  return claimed;
+  return target;
 }
 
-// Applies a checked decision. The spoken line is already out; the card shows it unless a route says otherwise.
+// Applies a checked decision. The spoken line is already out, so even a stale answer's line joins the Chat list.
 function applyDecision(
   change: Change,
   record: TaskRecord,
@@ -134,7 +101,10 @@ function applyDecision(
     endSpoken(change, record);
     return true;
   }
-  const target = resolveTarget(change, record, attempt, decision);
+  if (decision.route !== "work" || decision.answerTo !== null) {
+    addChatTurn(change, attempt.parts.words, line);
+  }
+  const target = resolveTarget(change, record, decision);
   if (target === null) return true;
   setExchangeTask(change.model.exchanges, attempt.order, target.card.taskId);
   switch (decision.route) {
@@ -142,7 +112,10 @@ function applyDecision(
       endChat(change, target, line);
       return true;
     case "ask":
-      clarify(change, target, decision.topic, line);
+      target.topic = decision.topic;
+      target.card.title = decision.topic;
+      target.card.state = "clarifying";
+      holdQuestion(change, target, line);
       return true;
     case "work":
       return admit(change, target, decision, line);
@@ -187,24 +160,4 @@ export function receiveFront(
   }
   if (check.note !== null) change.log(check.note);
   return applyDecision(change, record, attempt, check.decision, reply.text);
-}
-
-export function retryTask(change: Change, taskId: TaskId): boolean {
-  const record = change.model.records.get(taskId);
-  const state = record?.card.state;
-  const failed = record?.failedAttempt ?? null;
-  if (
-    record === undefined ||
-    (state !== "thinking" && state !== "clarifying") ||
-    !record.card.canRetry ||
-    failed === null ||
-    record.attempt !== null
-  ) {
-    return dropped(change, `retry ${taskId}`);
-  }
-  record.card.canRetry = false;
-  record.card.line = null;
-  record.failedAttempt = null;
-  openAttempt(change, record, failed.parts);
-  return true;
 }
