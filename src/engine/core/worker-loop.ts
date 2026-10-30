@@ -1,8 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { ModelFailure } from "../../providers/anthropic";
+import type { FailureKind } from "../../shared/engine";
 import { dispatch } from "./dispatch";
 import type { DispatchDeps, DispatchJob, DispatchOutcome } from "./dispatch";
 import { taskLimits } from "./limits";
-import { failureKindOf } from "./model-failure";
 import type { LoopEnding, ToolTurn } from "./tool-batch";
 
 // The fixed prompt start (system and tools) plus the fields that stay the same on every step of a run.
@@ -32,6 +33,22 @@ const failed = {
   kind: "end",
   ending: { kind: "error", cause: "error" },
 } as const;
+
+// What the user is told for a failed model call; null for a cancelled call, which says nothing.
+function failureKindOf(failure: ModelFailure): FailureKind | null {
+  switch (failure) {
+    case "aborted":
+      return null;
+    case "keyRejected":
+      return "keyRejected";
+    case "noCredit":
+      return "noCredit";
+    case "unreachable":
+      return "modelsUnreachable";
+    case "error":
+      return "error";
+  }
+}
 
 function dispatchEnding(
   outcome: Exclude<DispatchOutcome, { ok: true }>,
