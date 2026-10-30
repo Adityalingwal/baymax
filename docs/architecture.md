@@ -342,6 +342,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/providers/flux.ts` | The Flux socket: the listen URL, its messages, the silence keep-alive and ending a turn |
 | `src/providers/aura.ts` | The Aura-2 speak socket: its URL, `Speak`, `Flush` and `Clear`, and its messages |
 | `src/providers/wav.ts` | A WAV header in front of held PCM for the batch call |
+| `tests/` | Tests and harnesses, at the same relative path as the code they cover; imported by nothing in `src/` |
 
 - A plug is its tools, its prompts and its done condition; a new kind of work adds a plug folder and leaves the core alone. No `Plug` interface until a second plug exists. The core imports no concrete plug; only the engine entry wires in `plugs/index.ts`.
 - `src/engine/` imports nothing from `src/main/`, `src/renderer/` or `electron`. `src/main/` imports the engine only through `src/engine/index.ts`. The renderer never imports `src/shared/engine.ts` or the engine.
