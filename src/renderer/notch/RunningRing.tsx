@@ -1,19 +1,9 @@
 import type { RefObject } from "react";
 import type { WindowShape } from "../../shared/ipc";
-import type { Silhouette } from "./outline";
+import { ringLayout, ringSilhouette } from "./outline";
 
-// Sizes from the locked design: notch-design-locked.md, "Running task: spinning ring".
-const wing = 18;
-
-export function ringSilhouette(shape: WindowShape): Silhouette {
-  return {
-    width: shape.notchWidth + 2 * wing,
-    height: shape.notchHeight,
-    ear: 6,
-    rx: 10,
-    ry: 10,
-  };
-}
+// The count mirrors the ring: its centre is as far from the left edge as the ring's is from the right.
+const countCentre = ringLayout.edge + ringLayout.size / 2;
 
 type RunningRingProps = {
   count: number;
@@ -21,6 +11,21 @@ type RunningRingProps = {
   windowWidth: number;
   ringRef: RefObject<HTMLDivElement | null>;
 };
+
+function Count({ count, height }: { count: number; height: number }) {
+  return (
+    <span
+      className="panel-type absolute flex -translate-x-1/2 items-center text-[11px] font-bold"
+      style={{
+        left: countCentre,
+        height,
+        color: "rgb(255 255 255 / 75%)",
+      }}
+    >
+      {count}
+    </span>
+  );
+}
 
 // An 11 pt ring in the right wing, a white quarter arc turning once every 1.6 s; with two or more tasks, the count on the left.
 export function RunningRing({
@@ -37,19 +42,12 @@ export function RunningRing({
       className="absolute top-0"
       style={{ left: (windowWidth - width) / 2, width, height }}
     >
-      {count >= 2 && (
-        <span
-          className="panel-type absolute left-3 flex items-center text-[11px] font-bold"
-          style={{ height, color: "rgb(255 255 255 / 75%)" }}
-        >
-          {count}
-        </span>
-      )}
+      {count >= 2 && <Count count={count} height={height} />}
       <svg
-        className="absolute right-[9px]"
-        style={{ top: (height - 11) / 2 }}
-        width={11}
-        height={11}
+        className="absolute"
+        style={{ right: ringLayout.edge, top: (height - ringLayout.size) / 2 }}
+        width={ringLayout.size}
+        height={ringLayout.size}
         viewBox="0 0 11 11"
       >
         <circle

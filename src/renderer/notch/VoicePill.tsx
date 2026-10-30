@@ -1,8 +1,8 @@
 import type { RefObject } from "react";
+import { pillShape, rimLine } from "./outline";
 import type { PillState } from "./pill";
 
-// Sizes from the locked design: notch-design-locked.md, "Voice pill".
-export const pillShape = { width: 360, height: 32, ear: 6, rx: 24, ry: 26 };
+const rimBox = { width: 80, height: pillShape.height };
 
 export type VoiceLayers = {
   voice: RefObject<HTMLDivElement | null>; // sized to the drawn shape each frame, so the word and mute follow its edges
@@ -18,8 +18,7 @@ type VoicePillProps = {
   onMute: () => void;
 };
 
-// One corner line, as in the locked preview: from under the ear, round the corner, then along the bottom.
-// The path is keyed by the pill's opening, so it draws in once per opening.
+// One corner line; its path is keyed by the pill's opening, so it draws in once per opening.
 function Corner({
   side,
   session,
@@ -27,22 +26,19 @@ function Corner({
   side: "left" | "right";
   session: number;
 }) {
-  const left = side === "left";
-  const x = left ? 1 : 79;
-  const along = (by: number) => (left ? x + by : x - by);
-  const path = `M${x},6 V8 Q${x},31 ${along(24)},31 H${along(78)}`;
+  const { x, end, path } = rimLine(side, rimBox.width);
   return (
     <svg
       aria-hidden="true"
-      className={`absolute bottom-0 overflow-visible ${left ? "left-0" : "right-0"}`}
-      width={80}
-      height={32}
+      className={`absolute bottom-0 overflow-visible ${side === "left" ? "left-0" : "right-0"}`}
+      width={rimBox.width}
+      height={rimBox.height}
     >
       <linearGradient
         id={`pill-rim-${side}`}
         gradientUnits="userSpaceOnUse"
         x1={x}
-        x2={along(78)}
+        x2={end}
         y1={0}
         y2={0}
       >
@@ -88,44 +84,40 @@ export function SpeakerIcon({ crossed }: { crossed: boolean }) {
   );
 }
 
-// Both labels share one grid cell, so swapping them moves nothing.
+const labelClass = (shows: boolean) =>
+  `pill-label col-start-1 row-start-1 ${shows ? "" : "pill-label-out"}`;
+
+// All labels share one grid cell, so swapping them moves nothing.
 function Word({ pill }: { pill: PillState }) {
-  const thinking = pill.word === "Thinking" && !pill.muted;
+  const { clearLabel, word } = pill;
+  const thinking = word === "Thinking" && clearLabel === null;
   return (
     <span className="absolute top-0 left-5 grid h-8 items-center text-[12.5px] font-semibold text-[#F5F5F7]">
       <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "pill-label-out" : ""} ${thinking ? "shimmer" : ""}`}
+        className={`${labelClass(clearLabel === null)} ${thinking ? "shimmer" : ""}`}
       >
-        {pill.word}
+        {word}
       </span>
-      <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "" : "pill-label-out"}`}
-      >
-        Muted
-      </span>
+      <span className={labelClass(clearLabel === "Muted")}>Muted</span>
+      <span className={labelClass(clearLabel === "Unmuted")}>Unmuted</span>
     </span>
   );
 }
 
 function MuteButton({ pill, onMute }: Pick<VoicePillProps, "pill" | "onMute">) {
+  const crossed = pill.mainMuted;
   return (
     <button
       type="button"
-      aria-label={pill.muted ? "Muted" : "Mute Baymax"}
-      aria-disabled={pill.muted}
+      aria-label={crossed ? "Unmute Baymax" : "Mute Baymax"}
+      aria-pressed={crossed}
       className="absolute top-[5px] right-5 grid h-[22px] w-[22px] cursor-pointer place-items-center rounded-full bg-[#1C1C1E]"
-      onClick={() => {
-        if (!pill.muted) onMute();
-      }}
+      onClick={onMute}
     >
-      <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "pill-label-out" : ""}`}
-      >
+      <span className={labelClass(!crossed)}>
         <SpeakerIcon crossed={false} />
       </span>
-      <span
-        className={`pill-label col-start-1 row-start-1 ${pill.muted ? "" : "pill-label-out"}`}
-      >
+      <span className={labelClass(crossed)}>
         <SpeakerIcon crossed />
       </span>
     </button>
@@ -136,7 +128,7 @@ function MuteButton({ pill, onMute }: Pick<VoicePillProps, "pill" | "onMute">) {
 // It is also the answer island's top strip.
 export function VoicePill(props: VoicePillProps) {
   const { pill, windowWidth, interactive, layers, onMute } = props;
-  const speaking = pill.word === "Speaking" || pill.muted;
+  const speaking = pill.word === "Speaking" || pill.clearLabel !== null;
   const { width, height } = pillShape;
   return (
     <div

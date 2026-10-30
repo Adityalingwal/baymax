@@ -101,7 +101,7 @@ function ChatList({ chat }: { chat: DisplayState["chat"] }) {
 export function App() {
   const { accessibility, holdKeyLabel, display, phase } = useMainState();
   const { demo, state, actions } = useShownState(display);
-  const [draft, setDraft] = useState(false);
+  const [draft, setDraft] = useState("");
   const cards = orderCards(state.tasks);
 
   useEffect(() => {
@@ -119,6 +119,7 @@ export function App() {
       draft={draft}
       phase={phase}
       tasks={state.tasks}
+      muted={state.muted}
       setMuted={actions.setMuted}
     >
       <TopBar

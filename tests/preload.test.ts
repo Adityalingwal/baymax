@@ -188,6 +188,20 @@ const subscriptionRows: SubscriptionRow[] = [
     replay: [[ipcChannels.getWindowShape]],
   },
   {
+    name: "onPointerOutside",
+    subscribe: (callback) => api.onPointerOutside(() => callback(null)),
+    channel: ipcChannels.pointerOutside,
+    payload: null,
+    replay: [],
+  },
+  {
+    name: "onSpaceChanged",
+    subscribe: (callback) => api.onSpaceChanged(() => callback(null)),
+    channel: ipcChannels.spaceChanged,
+    payload: null,
+    replay: [],
+  },
+  {
     name: "onVoicePhase",
     subscribe: (callback) => api.onVoicePhase(callback),
     channel: ipcChannels.voicePhase,

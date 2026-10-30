@@ -3,22 +3,14 @@ import type { IpcMainEvent } from "electron";
 import { ipcChannels } from "../shared/ipc";
 import type { WindowShape } from "../shared/ipc";
 import { panelBounds, pickDisplay, windowShape } from "./panel-geometry";
-import { hasNotch, panelWindowType } from "./platform";
+import type { NotchSizes } from "./panel-geometry";
+import { onSpaceChange, panelWindowType, readNotchSizes } from "./platform";
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
-type Placement = { bounds: Electron.Rectangle; shape: WindowShape };
-
-function currentPlacement(): Placement {
-  const display = pickDisplay(
-    screen.getAllDisplays(),
-    screen.getPrimaryDisplay(),
-  );
-  return {
-    bounds: panelBounds(display),
-    shape: windowShape(display, hasNotch(display)),
-  };
+function chosenDisplay(): Electron.Display {
+  return pickDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay());
 }
 
 function createPanel(bounds: Electron.Rectangle): BrowserWindow {
@@ -48,11 +40,43 @@ function createPanel(bounds: Electron.Rectangle): BrowserWindow {
   });
 }
 
-// Clicks pass through; mouse moves are still forwarded so the page can find its shape.
-function releaseMouse(browserWindow: BrowserWindow): void {
-  if (!browserWindow.isDestroyed()) {
-    browserWindow.setIgnoreMouseEvents(true, { forward: true });
-  }
+const cursorWatchMs = 100;
+
+type MouseHold = { capture: () => void; release: () => void };
+
+// While the page holds the mouse, a pointer that leaves the window may send it no last move, and a mouse-leave can report a point inside; only main sees the real cursor.
+function createMouseHold(browserWindow: BrowserWindow): MouseHold {
+  let watch: ReturnType<typeof setInterval> | null = null;
+  const stopWatch = () => {
+    if (watch !== null) clearInterval(watch);
+    watch = null;
+  };
+  const checkCursor = () => {
+    if (browserWindow.isDestroyed()) {
+      stopWatch();
+      return;
+    }
+    const { x, y } = screen.getCursorScreenPoint();
+    const area = browserWindow.getBounds();
+    const inX = x >= area.x && x < area.x + area.width;
+    const inY = y >= area.y && y < area.y + area.height;
+    if (inX && inY) return;
+    stopWatch();
+    browserWindow.webContents.send(ipcChannels.pointerOutside, null);
+  };
+  return {
+    capture: () => {
+      if (browserWindow.isDestroyed()) return;
+      browserWindow.setIgnoreMouseEvents(false);
+      if (watch === null) watch = setInterval(checkCursor, cursorWatchMs);
+    },
+    // Clicks pass through; mouse moves are still forwarded so the page can find its shape.
+    release: () => {
+      stopWatch();
+      if (browserWindow.isDestroyed()) return;
+      browserWindow.setIgnoreMouseEvents(true, { forward: true });
+    },
+  };
 }
 
 function isMouseCapture(payload: unknown): payload is { captured: boolean } {
@@ -67,16 +91,18 @@ function isMouseCapture(payload: unknown): payload is { captured: boolean } {
 // Scoped to this window's webContents, so src/index.ts needs no handler; no ipcMain listener may exist for these channels.
 function connectWindowChannels(
   browserWindow: BrowserWindow,
-  currentShape: () => WindowShape,
+  currentShape: () => WindowShape | null,
+  mouse: MouseHold,
 ): () => void {
   const { ipc } = browserWindow.webContents;
   const replayShape = (event: IpcMainEvent) => {
-    event.sender.send(ipcChannels.windowShape, currentShape());
+    const shape = currentShape();
+    if (shape !== null) event.sender.send(ipcChannels.windowShape, shape);
   };
   const setMouseCapture = (_event: IpcMainEvent, payload: unknown) => {
-    if (!isMouseCapture(payload) || browserWindow.isDestroyed()) return;
-    if (payload.captured) browserWindow.setIgnoreMouseEvents(false);
-    else releaseMouse(browserWindow);
+    if (!isMouseCapture(payload)) return;
+    if (payload.captured) mouse.capture();
+    else mouse.release();
   };
   ipc.on(ipcChannels.getWindowShape, replayShape);
   ipc.on(ipcChannels.setMouseCapture, setMouseCapture);
@@ -86,8 +112,10 @@ function connectWindowChannels(
   };
 }
 
-function placePanel(browserWindow: BrowserWindow, placement: Placement): void {
-  const requested = placement.bounds;
+function placePanel(
+  browserWindow: BrowserWindow,
+  requested: Electron.Rectangle,
+): void {
   browserWindow.setBounds(requested);
   const actual = browserWindow.getBounds();
   if (actual.y !== requested.y) {
@@ -98,26 +126,55 @@ function placePanel(browserWindow: BrowserWindow, placement: Placement): void {
   }
 }
 
-function samePlacement(a: Placement, b: Placement): boolean {
+function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-// Moves the panel to the chosen display and resends its shape; never shows or focuses it.
+// The page draws nothing until the first reading arrives, so a notched Mac never flashes the small pill.
+function trackShape(browserWindow: BrowserWindow) {
+  let shape: WindowShape | null = null;
+  let measured = "";
+  let latestRead = 0;
+  const apply = (read: number, notches: NotchSizes) => {
+    if (read !== latestRead || browserWindow.isDestroyed()) return;
+    const next = windowShape(chosenDisplay(), notches);
+    // An unchanged shape must not collapse an open shell.
+    if (sameJson(next, shape)) return;
+    shape = next;
+    browserWindow.webContents.send(ipcChannels.windowShape, next);
+  };
+  const refresh = () => {
+    const displays = screen.getAllDisplays();
+    const key = JSON.stringify(displays.map(({ id, bounds }) => [id, bounds]));
+    if (key === measured) return;
+    measured = key;
+    latestRead += 1;
+    const read = latestRead;
+    readNotchSizes()
+      .then((notches) => apply(read, notches))
+      .catch((error: unknown) => {
+        console.error("[Window] Failed to apply the notch size:", error);
+      });
+  };
+  return { current: () => shape, refresh };
+}
+
+// Moves the panel to the chosen display and refreshes its shape; never shows or focuses it.
 function followDisplays(
   browserWindow: BrowserWindow,
-  first: Placement,
-  setShape: (shape: WindowShape) => void,
+  first: Electron.Rectangle,
+  refreshShape: () => void,
 ): () => void {
   let last = first;
-  // Work-area changes (Dock or menu bar showing) fire too; an unchanged placement must not collapse an open shell.
+  // Work-area changes (Dock or menu bar showing) fire too; unchanged bounds and displays do nothing.
   const replace = () => {
     if (browserWindow.isDestroyed()) return;
-    const placement = currentPlacement();
-    if (samePlacement(placement, last)) return;
-    last = placement;
-    placePanel(browserWindow, placement);
-    setShape(placement.shape);
-    browserWindow.webContents.send(ipcChannels.windowShape, placement.shape);
+    const bounds = panelBounds(chosenDisplay());
+    if (!sameJson(bounds, last)) {
+      last = bounds;
+      placePanel(browserWindow, bounds);
+    }
+    refreshShape();
   };
   screen.on("display-added", replace);
   screen.on("display-removed", replace);
@@ -129,7 +186,7 @@ function followDisplays(
   };
 }
 
-function guardPage(browserWindow: BrowserWindow): void {
+function guardPage(browserWindow: BrowserWindow, mouse: MouseHold): void {
   const contents = browserWindow.webContents;
   // The renderer only shows main's state; a source link opens through main's typed action, never in this window.
   contents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -137,23 +194,32 @@ function guardPage(browserWindow: BrowserWindow): void {
     if (details.url !== MAIN_WINDOW_WEBPACK_ENTRY) details.preventDefault();
   });
   // A page that reloads or crashes while it held the mouse must not leave a block that swallows clicks.
-  contents.on("did-start-loading", () => releaseMouse(browserWindow));
-  contents.on("render-process-gone", () => releaseMouse(browserWindow));
+  contents.on("did-start-loading", mouse.release);
+  contents.on("render-process-gone", mouse.release);
 }
 
 export function createMainWindow(): BrowserWindow {
-  const placement = currentPlacement();
-  let shape = placement.shape;
-  const browserWindow = createPanel(placement.bounds);
-  releaseMouse(browserWindow);
+  const bounds = panelBounds(chosenDisplay());
+  const browserWindow = createPanel(bounds);
+  const mouse = createMouseHold(browserWindow);
+  mouse.release();
   browserWindow.setAlwaysOnTop(true, "screen-saver");
   browserWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  guardPage(browserWindow);
-  const stopChannels = connectWindowChannels(browserWindow, () => shape);
-  const stopDisplays = followDisplays(browserWindow, placement, (next) => {
-    shape = next;
+  guardPage(browserWindow, mouse);
+  const shape = trackShape(browserWindow);
+  const stopChannels = connectWindowChannels(
+    browserWindow,
+    shape.current,
+    mouse,
+  );
+  const stopDisplays = followDisplays(browserWindow, bounds, shape.refresh);
+  shape.refresh();
+  const stopSpaces = onSpaceChange(() => {
+    browserWindow.webContents.send(ipcChannels.spaceChanged, null);
   });
   browserWindow.on("closed", () => {
+    mouse.release();
+    stopSpaces();
     stopChannels();
     stopDisplays();
   });

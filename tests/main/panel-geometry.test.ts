@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   panelBounds,
   pickDisplay,
   windowShape,
 } from "../../src/main/panel-geometry";
+import { readNotchSizes } from "../../src/main/platform";
+
+vi.mock("electron", () => ({ systemPreferences: {} }));
+vi.mock("uiohook-napi", () => ({
+  UiohookKey: { Alt: 1, Ctrl: 2, Meta: 3 },
+}));
 
 type FakeDisplay = { id: number; internal: boolean };
 
@@ -35,45 +41,80 @@ describe("panelBounds", () => {
     {
       name: "centred at the top of a display at the origin",
       bounds: { x: 0, y: 0, width: 1280, height: 828 },
-      expected: { x: 320, y: 0, width: 640, height: 720 },
+      workHeight: 723,
+      expected: { x: 296, y: 0, width: 688, height: 560 },
     },
     {
       name: "centred at the top of a display with a non-zero origin",
       bounds: { x: -1920, y: -300, width: 1920, height: 1080 },
-      expected: { x: -1280, y: -300, width: 640, height: 720 },
+      workHeight: 1000,
+      expected: { x: -1304, y: -300, width: 688, height: 560 },
     },
     {
-      name: "as tall as a display shorter than 720",
+      name: "on a short screen, 16 points less than the work area",
       bounds: { x: 0, y: 0, width: 1024, height: 600 },
-      expected: { x: 192, y: 0, width: 640, height: 600 },
+      workHeight: 500,
+      expected: { x: 168, y: 0, width: 688, height: 484 },
     },
-  ])("$name", ({ bounds, expected }) => {
-    expect(panelBounds({ bounds })).toEqual(expected);
+  ])("$name", ({ bounds, workHeight, expected }) => {
+    const workArea = { ...bounds, height: workHeight };
+    expect(panelBounds({ bounds, workArea })).toEqual(expected);
   });
 });
 
-describe("windowShape", () => {
+const reading = (id: number, screenWidth: number, notch = { w: 0, h: 0 }) => ({
+  id,
+  screenWidth,
+  leftWidth: notch.h === 0 ? 0 : (screenWidth - notch.w) / 2,
+  rightWidth: notch.h === 0 ? 0 : (screenWidth - notch.w) / 2,
+  top: notch.h,
+});
+
+describe("the notch reading", () => {
+  const builtIn = {
+    id: 1,
+    internal: true,
+    bounds: { x: 0, y: 0, width: 1512, height: 982 },
+  };
+  const externalMain = {
+    id: 7,
+    internal: false,
+    bounds: { x: -1710, y: 0, width: 1710, height: 1107 },
+  };
+  const realNotch = { w: 185, h: 37 };
+  const smallPill = { notched: false, notchWidth: 186, notchHeight: 33 };
+  const measured = { notched: true, notchWidth: 185, notchHeight: 37 };
+
   it.each([
     {
-      name: "the measured notch on a 1280-point display",
-      width: 1280,
-      notched: true,
-      expected: { notched: true, notchWidth: 139, notchHeight: 25 },
+      name: "a notched Mac uses its own notch, not a scaled estimate",
+      call: async () => JSON.stringify([reading(1, 1512, realNotch)]),
+      displays: [builtIn],
+      expected: measured,
     },
     {
-      name: "the notch scaled to a 1710-point display",
-      width: 1710,
-      notched: true,
-      expected: { notched: true, notchWidth: 186, notchHeight: 33 },
+      name: "a Mac with no notch keeps the small pill at rest",
+      call: async () => JSON.stringify([reading(7, 1710)]),
+      displays: [externalMain],
+      expected: smallPill,
     },
     {
-      name: "a display without a notch keeps the size and is not notched",
-      width: 1280,
-      notched: false,
-      expected: { notched: false, notchWidth: 139, notchHeight: 25 },
+      name: "a failed call keeps the small pill at rest",
+      call: () => Promise.reject(new Error("osascript failed")),
+      displays: [externalMain],
+      expected: smallPill,
     },
-  ])("$name", ({ width, notched, expected }) => {
-    const bounds = { x: 0, y: 0, width, height: 900 };
-    expect(windowShape({ bounds }, notched)).toEqual(expected);
+    {
+      name: "an external main screen listed first: the selected internal screen's notch is used",
+      call: async () =>
+        JSON.stringify([reading(7, 1710), reading(1, 1512, realNotch)]),
+      displays: [externalMain, builtIn],
+      expected: measured,
+    },
+  ])("$name", async ({ call, displays, expected }) => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const notches = await readNotchSizes(call);
+    const display = pickDisplay(displays, externalMain);
+    expect(windowShape(display, notches)).toEqual(expected);
   });
 });

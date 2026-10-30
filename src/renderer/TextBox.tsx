@@ -3,7 +3,7 @@ import type { CardActions } from "./actions";
 
 type TextBoxProps = {
   submitQuestion: CardActions["submitQuestion"];
-  onDraft: (hasDraft: boolean) => void; // the shell keeps the panel open while the field holds text
+  onDraft: (text: string) => void; // each change, so the shell can restart its auto-close while the field holds text
   holdKeyLabel: string; // main's label for the hold key, e.g. "⌥"
 };
 
@@ -14,8 +14,7 @@ export function TextBox({
   holdKeyLabel,
 }: TextBoxProps) {
   const [draft, setDraft] = useState("");
-  const hasDraft = draft !== "";
-  useEffect(() => onDraft(hasDraft), [hasDraft, onDraft]);
+  useEffect(() => onDraft(draft), [draft, onDraft]);
   const ask = (event: FormEvent) => {
     event.preventDefault();
     const text = draft.trim();
@@ -25,7 +24,7 @@ export function TextBox({
   };
   return (
     <form
-      className="glass flex h-10 items-center gap-3 rounded-full pr-4 pl-4"
+      className="glass flex h-10 shrink-0 items-center gap-3 rounded-full pr-4 pl-4"
       onSubmit={ask}
     >
       <input
