@@ -14,7 +14,8 @@ export function ResultCard({ card, actions }: ResultCardProps) {
       <h3 className="type-title truncate">{card.words}</h3>
       <StatusLines card={card} />
       {answer !== null && (
-        <div className="max-h-72 overflow-y-auto pr-1">
+        // No height of its own: the card list is the panel's one vertical scroll; only a wide line scrolls sideways here.
+        <div className="overflow-x-auto overflow-y-hidden">
           <Answer markdown={answer.cardText} />
         </div>
       )}
