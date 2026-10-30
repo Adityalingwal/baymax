@@ -22,12 +22,7 @@ describe("startEngine port delivery", () => {
     engine.port.send(command);
     command.ask.goal = "changed";
     await engine.settle();
-    expect(JSON.stringify(engine.briefRequests()[0].messages)).toContain(
-      ask.goal,
-    );
-    expect(JSON.stringify(engine.workerRequests()[0].messages)).toContain(
-      ask.goal,
-    );
+    expect(JSON.stringify(engine.requests[0].messages)).toContain(ask.goal);
     engine.port.close();
   });
 
@@ -107,7 +102,7 @@ describe("startEngine holds", () => {
     expect(await engine.settle(1)).toEqual([errorEnd]);
     engine.port.send(runTask());
     expect(await engine.settle(2)).toEqual([errorEnd, errorEnd]);
-    expect(engine.loopRequests()).toHaveLength(2);
+    expect(engine.requests).toHaveLength(2);
     expect(engine.entries).toContainEqual(
       expect.objectContaining({ event: "taskEnd", how: "thrown" }),
     );
@@ -118,7 +113,7 @@ describe("startEngine holds", () => {
     engine.port.send(runTask());
     engine.port.send(runTask());
     await engine.settle();
-    expect(engine.loopRequests()).toHaveLength(1);
+    expect(engine.requests).toHaveLength(1);
     expect(engine.entries).toContainEqual({
       event: "duplicateTask",
       taskId: "task-1",
@@ -137,7 +132,7 @@ describe("startEngine robustness", () => {
     engine.port.close();
     answer(workerAnswer());
     expect(await engine.settle()).toEqual([]);
-    expect(engine.loopRequests()).toHaveLength(1);
+    expect(engine.requests).toHaveLength(1);
   });
 
   it("never throws on a malformed command and logs it", async () => {
@@ -174,14 +169,13 @@ describe("startEngine dev log", () => {
     port.send(runTask({ taskId: "task-2" }));
     port.send(cancel("task-2"));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    // task-2 is cancelled during its brief writer, so its event comes before task-1's, which still runs three more calls.
     expect(events).toEqual([
-      cancelled("task-2"),
       {
         type: "incomplete",
         taskId: "task-1",
         incomplete: { kind: "error", cause: "error", findings: null },
       },
+      cancelled("task-2"),
     ]);
   });
 
@@ -191,11 +185,8 @@ describe("startEngine dev log", () => {
     engine.port.send(runTask({ taskId: "task-2" }));
     await engine.settle(2);
     const calls = engine.entries.filter((entry) => entry.event === "modelCall");
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(2);
     for (const taskId of ["task-1", "task-2"]) {
-      expect(calls).toContainEqual(
-        expect.objectContaining({ taskId, role: "briefWriter" }),
-      );
       expect(calls).toContainEqual(
         expect.objectContaining({ taskId, role: "worker" }),
       );
@@ -217,7 +208,7 @@ describe("startEngine command from a listener", () => {
     });
     engine.port.send(runTask());
     await engine.settle(1);
-    expect(engine.loopRequests()).toHaveLength(2);
+    expect(engine.requests).toHaveLength(2);
     expect(engine.entries).not.toContainEqual({
       event: "duplicateTask",
       taskId: "task-1",
@@ -234,7 +225,7 @@ describe("startEngine command from a listener", () => {
       "incomplete",
       "cancelled",
     ]);
-    expect(engine.loopRequests()).toHaveLength(2);
+    expect(engine.requests).toHaveLength(2);
     engine.port.close();
   });
 });

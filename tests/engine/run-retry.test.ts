@@ -110,8 +110,8 @@ describe("runTask retry round", () => {
           findings: goodFindings,
         },
       ]);
-      const asked = run.loopRequests()[3];
-      const retry = run.loopRequests()[4];
+      const asked = run.requests[3];
+      const retry = run.requests[4];
       expect(retry.messages).toEqual([
         ...asked.messages,
         { role: "assistant", content: contentOf(row.failed) },
@@ -120,7 +120,7 @@ describe("runTask retry round", () => {
           content: `<check_result>\n${row.result}\n</check_result>\n\n${row.line}`,
         },
       ]);
-      expect(promptStart(retry)).toBe(promptStart(run.loopRequests()[0]));
+      expect(promptStart(retry)).toBe(promptStart(run.requests[0]));
       expect(run.entries).toContainEqual({
         event: "retryRound",
         taskId: "task-1",
@@ -161,7 +161,7 @@ describe("runTask after the last retry round", () => {
         uncheckedPart: "citations to pages that were not read",
       },
     });
-    expect(run.loopRequests()).toHaveLength(8);
+    expect(run.requests).toHaveLength(8);
     const checked = run.entries.filter(
       (entry) => entry.event === "doneCheck" && entry.stage === "code",
     );
@@ -211,7 +211,7 @@ describe("runTask nudge", () => {
       { event: "retryNudge", taskId: "task-1", round: 1 },
     ]);
     expect(ran.checked).toHaveLength(2);
-    const [retry, afterNudge] = ran.loopRequests().slice(4);
+    const [retry, afterNudge] = ran.requests.slice(4);
     const content = unresearched.ok ? unresearched.message.content : [];
     expect(afterNudge.messages).toEqual([
       ...retry.messages,
@@ -274,12 +274,12 @@ describe("runTask new research in a retry round", () => {
   );
 });
 
-// Tool turns to the end of the model-call limit, which counts the brief writer's call too, the first of the task.
+// Tool turns to the end of the model-call limit.
 const untilTheLimit = (): FakeStep[] => [
   ...reading,
   unread,
   toolUseReply([{ read: pageUrl("three") }]),
-  ...Array.from({ length: 24 }, () => toolUseReply([{ read: pageUrl("one") }])),
+  ...Array.from({ length: 25 }, () => toolUseReply([{ read: pageUrl("one") }])),
   workerAnswer(),
 ];
 

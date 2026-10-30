@@ -34,7 +34,6 @@ const card = (cardText: string): Findings => ({
 });
 
 type Sent = {
-  briefs: number;
   calls: number;
   queries: number;
   connects: number;
@@ -43,19 +42,11 @@ type StageRow = {
   name: string;
   steps: () => FakeStep[];
   searches?: FakeSearchStep[];
-  briefSteps?: FakeStep[];
   at: (sent: Sent) => boolean; // the stage is in flight
   found: Findings | null;
 };
 
 const stageRows: StageRow[] = [
-  {
-    name: "the brief writer's call",
-    steps: () => [],
-    briefSteps: ["waitForAbort"],
-    at: (sent) => sent.briefs === 1,
-    found: null,
-  },
   {
     name: "a worker call",
     steps: () => ["waitForAbort"],
@@ -113,16 +104,9 @@ describe("runTask cancel at each stage", () => {
   it.each(stageRows)(
     "stops $name with one cancelled carrying what was found",
     async (row) => {
-      const run = await startRun(
-        row.steps(),
-        row.searches ?? [],
-        undefined,
-        undefined,
-        row.briefSteps ?? [],
-      );
+      const run = await startRun(row.steps(), row.searches ?? []);
       const sent = (): Sent => ({
-        briefs: run.briefRequests().length,
-        calls: run.loopRequests().length, // the worker's calls; the stage is counted after the brief writer
+        calls: run.requests.length,
         queries: run.queries.length,
         connects: run.network.targets.length,
       });
@@ -166,7 +150,7 @@ const repeatRows: RepeatRow[] = [
     // A cancel in every microtask until cancelled arrives also lands between the work settling and the delivery.
     name: "cancels that keep coming until it arrives",
     cancelAgain: async (run) => {
-      await until(() => run.loopRequests().length === 1);
+      await until(() => run.requests.length === 1);
       run.port.send(cancel);
       for (let turn = 0; turn < 100; turn += 1) {
         await Promise.resolve();
@@ -184,7 +168,7 @@ const repeatRows: RepeatRow[] = [
         again = false;
         run.port.send(cancel);
       });
-      await until(() => run.loopRequests().length === 1);
+      await until(() => run.requests.length === 1);
       run.port.send(cancel);
     },
   },

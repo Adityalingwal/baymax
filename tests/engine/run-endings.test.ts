@@ -55,7 +55,7 @@ describe("runTask search endings", () => {
         [searchFailed(cause)],
       );
       expect(last).toEqual([searchDown]);
-      expect(run.loopRequests()).toHaveLength(1);
+      expect(run.requests).toHaveLength(1);
     },
   );
 
@@ -65,7 +65,7 @@ describe("runTask search endings", () => {
       [searchFailed("timeout")],
     );
     expect(last).toEqual([errorEnd]);
-    expect(lastResults(run.workerRequests()[1])).toEqual([
+    expect(lastResults(run.requests[1])).toEqual([
       expect.objectContaining({
         is_error: true,
         content: expect.stringContaining("Search failed (timeout)"),
@@ -95,7 +95,7 @@ describe("runTask other endings", () => {
       modelError,
     ]);
     expect(last).toEqual([errorEnd]);
-    expect(lastResults(run.workerRequests()[1])).toEqual([
+    expect(lastResults(run.requests[1])).toEqual([
       expect.objectContaining({
         is_error: true,
         content: expect.stringContaining(

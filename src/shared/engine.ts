@@ -3,7 +3,7 @@ import type { Findings, TaskId } from "./cards";
 // Only "normal" in V1; V2 adds "quick" and "deep".
 export type Depth = "normal";
 
-// The front call's one-line goal plus the user's exact words; the engine writes the brief from them.
+// The front call's one-line goal plus the user's exact words; the worker reads both.
 export type TaskAsk = { goal: string; userWords: string };
 
 export type ParentResult = {

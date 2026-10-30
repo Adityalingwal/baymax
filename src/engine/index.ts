@@ -46,7 +46,7 @@ function endOf(event: EngineEvent | null): string {
     : incomplete.kind;
 }
 
-// One fresh budget per run, shared by the brief writer and the worker; the hold sends the one terminal event.
+// One fresh budget per run; the hold sends the one terminal event.
 // The run keeps found current from its start, so a cancel or a throw still carries what it found.
 function startRun(engine: Engine, command: RunTaskCommand): void {
   const { taskId } = command;

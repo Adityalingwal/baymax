@@ -55,39 +55,6 @@ export type FakeStep =
   | Promise<ModelOutcome>
   | ((request: ModelRequest) => ModelOutcome);
 
-// The fixed parts of the default brief; its goal is the one in the request.
-export const fakeBriefParts = {
-  resultShape: "A short overview of its parts",
-  sources: "Its official docs and repository",
-  limits: "Leave out pricing",
-};
-
-// The two kinds of call the engine makes, told apart by the schema each asks for.
-type CallKind = "brief" | "worker";
-
-function schemaKeys(request: ModelRequest): string[] {
-  const format = request.output_config?.format;
-  if (format === undefined || format === null) return [];
-  const { properties } = format.schema;
-  return typeof properties === "object" && properties !== null
-    ? Object.keys(properties)
-    : [];
-}
-
-function kindOf(request: ModelRequest): CallKind {
-  const keys = schemaKeys(request);
-  return keys.includes("resultShape") ? "brief" : "worker";
-}
-
-const goalBlock = /<goal>\n([\s\S]*?)\n<\/goal>/;
-
-function defaultBriefReply(request: ModelRequest): ModelOutcome {
-  const content = request.messages[0].content;
-  const goal = typeof content === "string" ? goalBlock.exec(content)?.[1] : "";
-  const parts = { goal: goal ?? "", ...fakeBriefParts };
-  return { ok: true, message: fakeMessage(JSON.stringify(parts)) };
-}
-
 function abortedWhen(signal: AbortSignal): Promise<ModelOutcome> {
   const aborted: ModelOutcome = { ok: false, failure: "aborted", detail: "" };
   return new Promise((resolve) => {
@@ -104,18 +71,15 @@ export const noContents: ContentsFn = async () => ({
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-// The scripted model: the steps are the worker's, in order; a brief writer request is answered from briefSteps, and by a valid brief when none is scripted.
+// The scripted model: the steps are the worker's, in order.
 // A request past the steps counts as missing, so settle fails and a missing step is never taken for the expected task error.
-function scriptedModel(steps: FakeStep[], briefSteps: FakeStep[]) {
+function scriptedModel(steps: FakeStep[]) {
   const requests: ModelRequest[] = [];
   const clock = { now: 0, missing: 0 };
   const model: ModelCall = async (request, options) => {
     requests.push(structuredClone(request));
     clock.now += 250;
-    const brief = kindOf(request) === "brief";
-    const step = brief
-      ? (briefSteps.shift() ?? defaultBriefReply)
-      : steps.shift();
+    const step = steps.shift();
     if (step === undefined) {
       clock.missing += 1;
       throw new Error("no fake model step left");
@@ -123,26 +87,11 @@ function scriptedModel(steps: FakeStep[], briefSteps: FakeStep[]) {
     if (step === "waitForAbort") return abortedWhen(options.signal);
     return typeof step === "function" ? step(request) : step;
   };
-  const ofKind = (kind: CallKind) => () =>
-    requests.filter((request) => kindOf(request) === kind);
-  return {
-    model,
-    clock,
-    requests,
-    briefRequests: ofKind("brief"),
-    workerRequests: ofKind("worker"),
-    // the worker's calls in order: every call but the brief writer's
-    loopRequests: () =>
-      requests.filter((request) => kindOf(request) !== "brief"),
-  };
+  return { model, clock, requests };
 }
 
-export function startTestEngine(
-  steps: FakeStep[],
-  fakes: EngineFakes = {},
-  briefSteps: FakeStep[] = [],
-) {
-  const { model, clock, ...requests } = scriptedModel(steps, briefSteps);
+export function startTestEngine(steps: FakeStep[], fakes: EngineFakes = {}) {
+  const { model, clock, requests } = scriptedModel(steps);
   const entries: DevLogEntry[] = [];
   const events: EngineEvent[] = [];
   const log = (entry: DevLogEntry) => {
@@ -172,5 +121,5 @@ export function startTestEngine(
       );
     return events;
   };
-  return { port, ...requests, entries, events, settle };
+  return { port, requests, entries, events, settle };
 }

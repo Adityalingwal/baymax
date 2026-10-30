@@ -168,6 +168,6 @@ describe("runTask code check", () => {
         findings: goodFindings,
       },
     ]);
-    expect(run.loopRequests()).toHaveLength(4);
+    expect(run.requests).toHaveLength(4);
   });
 });

@@ -11,12 +11,7 @@ import type {
   EngineEvent,
   ParentResult,
 } from "../../src/shared/engine";
-import {
-  fakeBriefParts,
-  fakeMessage,
-  noContents,
-  startTestEngine,
-} from "./harness";
+import { fakeMessage, noContents, startTestEngine } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   htmlPage,
@@ -29,8 +24,6 @@ export const ask = {
   goal: "How the Hermes agent works inside",
   userWords: "how does Hermes agent work inside?",
 };
-
-export const brief = { ...ask, ...fakeBriefParts };
 
 export function runTask(
   extra: { taskId?: string; parent?: ParentResult | null } = {},
@@ -184,26 +177,21 @@ export async function startRun(
   searches: FakeSearchStep[] = [],
   now?: () => number,
   contents: ContentsFn = noContents,
-  briefSteps: FakeStep[] = [],
 ) {
   const network = await startPages();
   networks.push(network);
   const searcher = fakeSearch(searches);
   const contentsAsked: string[] = [];
-  const engine = startTestEngine(
-    steps,
-    {
-      search: searcher.search,
-      contents: (url, signal) => {
-        contentsAsked.push(url);
-        return contents(url, signal);
-      },
-      lookup: network.lookup,
-      connect: network.connect,
-      ...(now === undefined ? {} : { now }),
+  const engine = startTestEngine(steps, {
+    search: searcher.search,
+    contents: (url, signal) => {
+      contentsAsked.push(url);
+      return contents(url, signal);
     },
-    briefSteps,
-  );
+    lookup: network.lookup,
+    connect: network.connect,
+    ...(now === undefined ? {} : { now }),
+  });
   const terminal = (event: EngineEvent) =>
     ["result", "incomplete", "cancelled"].includes(event.type);
   // Waits for the task's terminal event, then settles so a stray later event would show.

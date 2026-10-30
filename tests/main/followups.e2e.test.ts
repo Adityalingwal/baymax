@@ -380,11 +380,8 @@ describe("a follow-up with the real engine", () => {
     expect(lastRun(w, "t2")).toMatchObject({
       parent: { taskId: "t1", outcome: "incomplete", findings: null },
     });
-    await until(
-      "card 2's worker request",
-      () => engine.workerRequests().length >= 2,
-    );
-    expect(firstText(engine.workerRequests()[1])).toContain("<parent_result>");
+    await until("card 2's worker request", () => engine.requests.length >= 2);
+    expect(firstText(engine.requests[1])).toContain("<parent_result>");
     await flush();
     await w.playAll();
     expect(w.spoken()).not.toContain(line);

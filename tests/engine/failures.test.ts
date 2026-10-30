@@ -25,6 +25,6 @@ describe("startEngine runTask worker failures", () => {
         incomplete: { kind: "error", cause: row.kind, findings: null },
       },
     ]);
-    expect(engine.loopRequests()).toHaveLength(1);
+    expect(engine.requests).toHaveLength(1);
   });
 });

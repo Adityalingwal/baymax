@@ -41,7 +41,6 @@ const limitHit = (findings: Findings | null): EngineEvent => ({
 });
 
 // The fake clock reads what the run has done so far, so a chosen call or batch takes the whole active time.
-// calls counts the worker's calls; the brief writer's call is the first model call of the task and counts toward its limit.
 type Seen = { calls: number; connects: number };
 type LimitRow = {
   name: string;
@@ -60,7 +59,7 @@ const limitRows: LimitRow[] = [
     steps: () => Array.from({ length: 31 }, readOne),
     searches: [],
     clock: still,
-    calls: 29,
+    calls: 30,
     found: listOne,
   },
   {
@@ -111,7 +110,7 @@ async function startClocked(row: Omit<LimitRow, "name" | "calls" | "found">) {
   const now = () =>
     row.clock({ calls: seen.calls(), connects: seen.targets.length });
   const run = await startRun(row.steps(), row.searches, now);
-  seen.calls = () => run.loopRequests().length;
+  seen.calls = () => run.requests.length;
   seen.targets = run.network.targets;
   return run;
 }
@@ -137,7 +136,7 @@ describe("runTask limits", () => {
       expect(events.filter((event) => event.type !== "progress")).toEqual([
         limitHit(row.found),
       ]);
-      expect(run.loopRequests()).toHaveLength(row.calls);
+      expect(run.requests).toHaveLength(row.calls);
     },
   );
 });
@@ -161,7 +160,7 @@ describe("runTask full prompt", () => {
         openPoints: [],
       }),
     );
-    expect(run.loopRequests()).toHaveLength(1);
+    expect(run.requests).toHaveLength(1);
     expect(run.entries).toContainEqual({
       event: "limitHit",
       taskId: "task-1",
@@ -210,7 +209,7 @@ describe("runTask a call past the active time", () => {
     expect(events.filter((event) => event.type !== "progress")).toEqual([
       row.end,
     ]);
-    expect(run.loopRequests()).toHaveLength(row.slowCall);
+    expect(run.requests).toHaveLength(row.slowCall);
   });
 });
 
@@ -233,7 +232,7 @@ describe("runTask limits with nothing found", () => {
     );
     expect(last).toEqual([nothingFound]);
     expect(run.queries).toHaveLength(20);
-    expect(lastResults(run.workerRequests()[20])).toEqual([
+    expect(lastResults(run.requests[20])).toEqual([
       expect.objectContaining({
         content: expect.stringContaining("Searches left: 0."),
       }),
@@ -243,8 +242,7 @@ describe("runTask limits with nothing found", () => {
 
 describe("runTask active time with nothing found", () => {
   it("ends limitHit before a tool batch once the active time is used up", async () => {
-    // the brief writer's call takes the first two readings
-    const times = [0, 0, 0, 250_000];
+    const times = [0, 250_000];
     const now = () => times.shift() ?? 250_000;
     const run = await startRun(
       [toolUseReply([{ search: "hermes" }])],
@@ -266,7 +264,7 @@ describe("runTask active time with nothing found", () => {
       (event) => event.type !== "progress",
     );
     expect(last).toEqual([nothingFound]);
-    expect(run.loopRequests()).toHaveLength(1);
+    expect(run.requests).toHaveLength(1);
   });
   it("counts a tool batch's time as active time", async () => {
     const sent: { queries: string[] } = { queries: [] };
@@ -283,6 +281,6 @@ describe("runTask active time with nothing found", () => {
       nothingFound,
     ]);
     expect(run.queries).toEqual(["hermes"]);
-    expect(run.loopRequests()).toHaveLength(1);
+    expect(run.requests).toHaveLength(1);
   });
 });
