@@ -87,7 +87,7 @@ const allStates: TaskState[] = [
   "running",
   "cancelling",
   "done",
-  "incomplete",
+  "failed",
   "cancelled",
 ];
 

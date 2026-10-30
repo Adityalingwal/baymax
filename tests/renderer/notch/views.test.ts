@@ -64,14 +64,13 @@ const done: Card = {
   answer: {
     cardText: "Hermes runs a loop.",
     sources: [{ id: "s", url: "https://a.com", title: "A" }],
-    openPoints: [],
   },
 };
 const chat: Card = {
   taskId: "t1",
   state: "done",
   reply: "Hi there.",
-  answer: { cardText: "Hi there.", sources: [], openPoints: [] },
+  answer: { cardText: "Hi there.", sources: [] },
 };
 
 const speaking = (kind: SpokenKind, taskId: string | null): VoicePhase => ({
@@ -94,9 +93,9 @@ const answerRows: AnswerRow[] = [
     answer: true,
   },
   {
-    name: "an incomplete task's line",
-    phase: speaking("incomplete", "t1"),
-    tasks: [{ ...done, state: "incomplete" }],
+    name: "a failed task's line",
+    phase: speaking("failure", "t1"),
+    tasks: [{ ...done, state: "failed" }],
     answer: false,
   },
   {

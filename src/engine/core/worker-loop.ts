@@ -15,10 +15,11 @@ type WorkerPrompt = {
   effort: Anthropic.OutputConfig["effort"];
 };
 
-// An answer turn ends the round; "cutOff" is one stopped at the output ceiling, whose text is not whole.
+// An answer turn ends the round; "cutOff" is one stopped at the output ceiling, whose text is not whole; "malformed" has no single text to read.
 type LoopOutcome =
   | { kind: "answer"; text: string }
   | { kind: "cutOff" }
+  | { kind: "malformed" }
   | { kind: "end"; ending: LoopEnding }
   | { kind: "aborted" };
 
@@ -69,8 +70,19 @@ function answerOf(message: Anthropic.Message): LoopOutcome {
     return calls ? failed : { kind: "cutOff" };
   }
   const texts = message.content.filter((block) => block.type === "text");
-  if (texts.length !== 1 || texts[0].type !== "text") return failed;
+  if (texts.length !== 1 || texts[0].type !== "text") {
+    return { kind: "malformed" };
+  }
   return { kind: "answer", text: texts[0].text };
+}
+
+// The API refuses a resent assistant turn with no content, and a rewrite may follow this turn.
+function canResend(message: Anthropic.Message): boolean {
+  return message.content.some(
+    (block) =>
+      block.type === "tool_use" ||
+      (block.type === "text" && block.text.trim() !== ""),
+  );
 }
 
 // A fresh request object and messages array each step; earlier turns are never edited, so the cached prefix holds.
@@ -123,7 +135,9 @@ export async function runWorkerLoop(
     if (job.signal.aborted) return { kind: "aborted" };
     if (!outcome.ok) return dispatchEnding(outcome);
     const { message } = outcome;
-    history.push({ role: "assistant", content: message.content });
+    if (canResend(message)) {
+      history.push({ role: "assistant", content: message.content });
+    }
     const { stop_reason: stop } = message;
     if (stop === "end_turn" || stop === "max_tokens") return answerOf(message);
     if (message.stop_reason !== "tool_use") return failed;

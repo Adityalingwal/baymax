@@ -7,7 +7,7 @@ import {
   StatusLines,
   StopButton,
 } from "./CardFrame";
-import { isPending, stateLabel } from "./forms";
+import { cardTitle, isPending, stateLabel } from "./forms";
 
 type RunningCardProps = { card: TaskCard; actions: CardActions };
 
@@ -19,7 +19,7 @@ export function RunningCard({ card, actions }: RunningCardProps) {
       <LabelLine pulse={card.state === "running"}>
         {stateLabel(card.state)}
       </LabelLine>
-      <h3 className="type-title truncate pr-9">{card.words}</h3>
+      <h3 className="type-title truncate pr-9">{cardTitle(card)}</h3>
       {pending && card.step !== null && (
         <p className="type-body shimmer truncate">{card.step}</p>
       )}

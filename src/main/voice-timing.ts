@@ -1,3 +1,4 @@
+import { speechStartBufferMs } from "../shared/ipc";
 import type { LineId, SpeechChunk } from "../shared/ipc";
 import type { LineFeed, Spoken } from "./speech";
 
@@ -70,7 +71,9 @@ export function createGapWatch(
     if (watched === null || watched.lineId !== chunk.lineId) {
       watched = { lineId: chunk.lineId, startedAt: at, audioMs: 0 };
     }
-    const dryMs = at - (watched.startedAt + watched.audioMs);
+    const playsUntil =
+      watched.startedAt + speechStartBufferMs + watched.audioMs;
+    const dryMs = at - playsUntil;
     if (dryMs >= dryLimitMs) {
       log(
         `speech gap: audio ran dry ${Math.round(dryMs)} ms before chunk ${chunk.seq}`,

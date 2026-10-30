@@ -66,6 +66,31 @@ describe("the voice phase", () => {
   });
 });
 
+const endedTurns = [
+  { name: "a discarded hold", run: (h: Harness) => void hold(h, "discard") },
+  {
+    name: "words not caught",
+    run: async (h: Harness) => {
+      sendAudio(h, hold(h));
+      await transcribed(h, 0, { kind: "empty" });
+    },
+  },
+  {
+    name: "a hold with nothing said",
+    run: async (h: Harness) => {
+      sendAudio(h, hold(h), "silence");
+      await transcribed(h, 0, { kind: "empty" });
+    },
+  },
+  {
+    name: "words main's state dropped",
+    run: async (h: Harness) => {
+      sendAudio(h, hold(h));
+      await transcribed(h, 0, { kind: "words", words: "  " });
+    },
+  },
+];
+
 describe("the voice phase after a failed or muted turn", () => {
   it("never shows a failed attempt waiting for Retry as thinking", async () => {
     const h = createHarness();
@@ -88,23 +113,7 @@ describe("the voice phase after a failed or muted turn", () => {
     expect(h.phases).toEqual([listening, thinking, idle]);
   });
 
-  it.each([
-    { name: "a discarded hold", run: (h: Harness) => void hold(h, "discard") },
-    {
-      name: "words not caught",
-      run: async (h: Harness) => {
-        sendAudio(h, hold(h));
-        await transcribed(h, 0, { kind: "empty" });
-      },
-    },
-    {
-      name: "words main's state dropped",
-      run: async (h: Harness) => {
-        sendAudio(h, hold(h));
-        await transcribed(h, 0, { kind: "words", words: "  " });
-      },
-    },
-  ])("goes back to idle after $name", async ({ run }) => {
+  it.each(endedTurns)("goes back to idle after $name", async ({ run }) => {
     const h = createHarness();
     await run(h);
     expect(h.phases.at(-1)).toEqual(idle);
@@ -178,6 +187,15 @@ const heardRows: HeardRow[] = [
     deliver: transcript({ kind: "empty" }),
     up: ["notice wordsNotCaught"],
     down: ["voiceAvailable true", "notice wordsNotCaught"],
+  },
+  {
+    name: "a hold with nothing said",
+    deliver: async (h, index) => {
+      sendAudio(h, hold(h), "silence");
+      await transcribed(h, index, { kind: "empty" });
+    },
+    up: [],
+    down: ["voiceAvailable true"],
   },
   {
     name: "a transcription error",

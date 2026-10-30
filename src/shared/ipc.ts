@@ -42,9 +42,8 @@ export type StartupInfo = {
 
 export type LineId = string;
 
-// What a spoken line is: the front call's line, a clarifying question, a done task's answer, an incomplete task's line, a failure or a notice.
-export type SpokenKind =
-  "talk" | "question" | "answer" | "incomplete" | "failure" | "notice";
+// What a spoken line is: the front call's line, a clarifying question, a done task's answer, a failure or a notice.
+export type SpokenKind = "talk" | "question" | "answer" | "failure" | "notice";
 
 // The line whose audio is playing; taskId is null for a notice.
 export type SpeakingLine = {
@@ -88,6 +87,9 @@ export type SpeechChunk = {
   sampleRate: number;
 };
 export type SpeechEnd = { lineId: LineId };
+
+// A streamed line plays this long after its first chunk: Aura's first burst is 200 ms, then a gap of up to 314 ms measured.
+export const speechStartBufferMs = 350;
 
 export type SubmitQuestion = { text: string };
 export type TaskAction = { taskId: TaskId };

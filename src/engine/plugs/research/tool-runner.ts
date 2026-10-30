@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { SearchFailure } from "../../../providers/exa";
-import type { ProgressStep } from "../../../shared/engine";
+import type { FailureKind, ProgressStep } from "../../../shared/engine";
 import type { DispatchDeps, DispatchJob } from "../../core/dispatch";
 import { taskLimits } from "../../core/limits";
 import { runToolBatch } from "../../core/tool-batch";
@@ -16,20 +16,16 @@ type ToolRunner = {
   progress: (step: ProgressStep, sourcesRead: number) => void;
 };
 
-type Counts = {
-  searches: number;
-  failedSearches: number;
-  searchesFound: number;
-};
+type Counts = { searches: number; failedSearches: number };
 
 type ResearchCall =
   | { id: string; tool: "search"; query: string }
   | { id: string; tool: "read"; url: string };
 
-const searchDown: ToolStep = {
+const searchEnding = (cause: FailureKind): ToolStep => ({
   kind: "end",
-  ending: { kind: "error", cause: "searchDown" },
-};
+  ending: { kind: "error", cause },
+});
 
 // The worker's only tools, both from the one web tool; the list never changes, so the prompt start stays cached.
 export const researchTools: Anthropic.Tool[] = [
@@ -143,9 +139,10 @@ function searchFailed(
   cause: SearchFailure,
 ): ToolStep {
   if (cause === "aborted") return { kind: "aborted" };
-  if (cause === "keyRejected" || cause === "quota") return searchDown;
+  if (cause === "keyRejected") return searchEnding("searchKeyRejected");
+  if (cause === "quota") return searchEnding("searchQuota");
   counts.failedSearches += 1;
-  if (counts.failedSearches >= 2) return searchDown;
+  if (counts.failedSearches >= 2) return searchEnding("searchDown");
   const content = `Search failed (${cause}). Try again or read a URL you already have.\n${counterLine(runner, counts)}`;
   return { kind: "result", content, isError: true };
 }
@@ -163,7 +160,6 @@ async function search(
   const outcome = await runner.web.search(call.query, signal);
   logTool(runner, "search", outcome.ok ? "ok" : outcome.cause, started);
   if (!outcome.ok) return searchFailed(runner, counts, outcome.cause);
-  if (outcome.hits.length > 0) counts.searchesFound += 1;
   const content = `${searchHitsForModel(outcome.hits)}\n\n${counterLine(runner, counts)}`;
   return { kind: "result", content, isError: false };
 }
@@ -210,13 +206,11 @@ function startTool(
 }
 
 // One runner per task: its counts last for the whole run.
-// researchMark grows only with a search that returned results or a newly kept page, so a round compares it with its start.
-export function createToolRunner(runner: ToolRunner): {
-  runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
-  researchMark: () => number;
-} {
-  const counts: Counts = { searches: 0, failedSearches: 0, searchesFound: 0 };
-  const runTools = async (blocks: Anthropic.ToolUseBlock[]) => {
+export function createToolRunner(
+  runner: ToolRunner,
+): (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn> {
+  const counts: Counts = { searches: 0, failedSearches: 0 };
+  return async (blocks) => {
     const calls = parseCalls(blocks);
     if (calls === null) {
       runner.deps.log({
@@ -233,6 +227,4 @@ export function createToolRunner(runner: ToolRunner): {
       startTool(runner, counts, call, signal),
     );
   };
-  const researchMark = () => counts.searchesFound + runner.web.pages().length;
-  return { runTools, researchMark };
 }

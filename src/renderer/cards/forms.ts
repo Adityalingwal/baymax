@@ -8,7 +8,7 @@ export function cardForm(card: Pick<TaskCard, "state">): CardForm {
     case "clarifying":
       return "question";
     case "done":
-    case "incomplete":
+    case "failed":
       return "open";
     default:
       return "pill";
@@ -27,6 +27,17 @@ export function isChatReply(
     answer.sources.length === 0 &&
     answer.cardText === reply
   );
+}
+
+// One line naming the task: the front call's title, or the raw words until there is one.
+export function cardTitle(card: Pick<TaskCard, "title" | "words">): string {
+  return card.title ?? card.words;
+}
+
+// The report to show; null when there is none, so an empty report never shows a blank answer.
+export function shownReport(card: Pick<TaskCard, "answer">): string | null {
+  const report = card.answer?.cardText ?? "";
+  return report === "" ? null : report;
 }
 
 // Work still in flight, so its live line may shimmer; a failed attempt waiting for Retry is not.
@@ -55,7 +66,7 @@ const stateLabels: Record<TaskState, string> = {
   running: "Running",
   cancelling: "Cancelling",
   done: "Done",
-  incomplete: "Incomplete",
+  failed: "Failed",
   cancelled: "Cancelled",
 };
 

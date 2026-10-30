@@ -25,7 +25,7 @@ const finish = (w: Wired, taskId: TaskId) =>
     type: "result",
     taskId,
     spokenLine: `${taskId} found it.`,
-    findings: { cardText: "Found.", sources: [], openPoints: [] },
+    findings: { cardText: "Found.", sources: [] },
   });
 
 describe("five typed questions through the wiring", () => {
@@ -97,7 +97,7 @@ describe("the queue moving on through the wiring", () => {
       type: "result",
       taskId: "t1",
       spokenLine: "Done. spoken",
-      findings: { cardText: "Done.", sources: [], openPoints: [] },
+      findings: { cardText: "Done.", sources: [] },
     });
     expect(runTaskIds(w)).toEqual(["t1", "t2"]);
     await flush();

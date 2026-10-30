@@ -1,9 +1,10 @@
+import { speechStartBufferMs } from "../shared/ipc";
 import { fromPcm16 } from "./pcm";
 
 // Our own small adapter over Web Audio, so tests need no DOM.
 export type Player = {
   play(audio: ArrayBuffer, onEnded: () => void): Promise<void>; // resolves once started; rejects when the audio cannot be decoded or started
-  queue(pcm: ArrayBuffer, sampleRate: number): void; // a streamed chunk, played right after the ones queued before it
+  queue(pcm: ArrayBuffer, sampleRate: number): void; // a streamed chunk; the first starts a line after the start buffer, the rest follow it back to back
   whenDrained(onDrained: () => void): void; // once every queued chunk has played; at once when none is left
   stop(): void; // stops the current source and every queued chunk, or cancels a play still decoding
   dispose(): void;
@@ -38,6 +39,7 @@ type WebAudio = {
   source: AudioSource | null;
   queued: Set<AudioSource>;
   nextStart: number; // where the next queued chunk starts on the output's timeline
+  lineOpen: boolean; // a line's first chunk was queued, and it has not drained or stopped yet
   onDrained: (() => void) | null;
   // Bumped by every play and stop, so a play that was stopped or replaced never starts audio.
   generation: number;
@@ -51,6 +53,7 @@ function stopSource(web: WebAudio): void {
   web.generation += 1;
   web.onDrained = null;
   web.nextStart = 0;
+  web.lineOpen = false;
   const sources = [...web.queued, ...(web.source === null ? [] : [web.source])];
   web.source = null;
   web.queued.clear();
@@ -105,7 +108,14 @@ function drained(web: WebAudio): void {
   const onDrained = web.onDrained;
   if (web.queued.size > 0 || onDrained === null) return;
   web.onDrained = null;
+  web.lineOpen = false;
   onDrained();
+}
+
+function openLine(web: WebAudio, output: AudioOutput): void {
+  if (web.lineOpen) return;
+  web.lineOpen = true;
+  web.nextStart = output.currentTime + speechStartBufferMs / 1000;
 }
 
 // Chunks are scheduled back to back on the output's one timeline, so they play without gaps.
@@ -118,6 +128,7 @@ function queueChunk(web: WebAudio, pcm: ArrayBuffer, sampleRate: number) {
   }
   const samples = fromPcm16(pcm);
   if (samples.length === 0) return;
+  openLine(web, output);
   const buffer = output.createBuffer(1, samples.length, sampleRate);
   buffer.getChannelData(0).set(samples);
   const source = output.createBufferSource();
@@ -159,6 +170,7 @@ export function createWebAudioPlayer(createOutput: () => AudioOutput): Player {
     source: null,
     queued: new Set(),
     nextStart: 0,
+    lineOpen: false,
     onDrained: null,
     generation: 0,
   };

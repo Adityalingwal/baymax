@@ -61,7 +61,6 @@ type StreamJob = {
   taken: number; // characters of the line's text already cut into clauses
   flushesSent: number;
   flushesDone: number;
-  spokeSinceFlush: boolean;
   textEnded: boolean;
 };
 
@@ -299,20 +298,13 @@ function sendClauses(
 ): boolean {
   for (const clause of clauses) {
     if (!aura.speak(clause)) return false;
-    stream.spokeSinceFlush = true;
-    // The first clause is flushed at once, so its audio starts while the rest is written.
-    if (stream.flushesSent === 0 && !flush(aura, stream)) return false;
+    stream.flushesSent += 1;
+    if (!aura.flush()) return false;
   }
   return true;
 }
 
-function flush(aura: Aura, stream: StreamJob): boolean {
-  stream.flushesSent += 1;
-  stream.spokeSinceFlush = false;
-  return aura.flush();
-}
-
-// Text goes out clause by clause as it arrives; Flush only after the first clause and at the end, at most two per line.
+// Text goes out sentence by sentence as it arrives, with a Flush each time.
 function sendText(aura: Aura, stream: StreamJob, line: Line): boolean {
   const { text, ended } = line.feed;
   const { clauses, rest } = takeClauses(text.slice(stream.taken), ended);
@@ -321,7 +313,7 @@ function sendText(aura: Aura, stream: StreamJob, line: Line): boolean {
   if (!ended) return true;
   stream.textEnded = true;
   line.feed.changed = null;
-  return !stream.spokeSinceFlush || flush(aura, stream);
+  return true;
 }
 
 function audioDone(ctx: SpeechContext): void {
@@ -339,7 +331,6 @@ function startStream(ctx: SpeechContext, aura: Aura, line: Line): void {
     taken: 0,
     flushesSent: 0,
     flushesDone: 0,
-    spokeSinceFlush: false,
     textEnded: false,
   };
   if (occupy(ctx, line, stream) === null) return pump(ctx);

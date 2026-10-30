@@ -23,22 +23,21 @@ function streaming() {
 const speak = (text: string) => `speak ${text}`;
 
 describe("a line on the Aura socket (L10)", () => {
-  it("speaks clause by clause with a Flush after the first clause and one at the end", () => {
+  it("speaks sentence by sentence with a Flush after each", () => {
     const { aura, h } = streaming();
     h.speech.speak(
       said("Sure, I'll check tomorrow's forecast. Rain decides it."),
     );
     expect(aura.sent).toEqual([
-      speak("Sure,"),
+      speak("Sure, I'll check tomorrow's forecast."),
       "flush",
-      speak("I'll check tomorrow's forecast."),
       speak("Rain decides it."),
       "flush",
     ]);
     expect(h.synthesize).not.toHaveBeenCalled();
   });
 
-  it("flushes a one-clause line once", () => {
+  it("flushes a one-sentence line once", () => {
     const { aura, h } = streaming();
     h.speech.speak(said("Hello there."));
     expect(aura.sent).toEqual([speak("Hello there."), "flush"]);
@@ -46,7 +45,7 @@ describe("a line on the Aura socket (L10)", () => {
 
   it("sends chunks in seq order and the end only after every Flushed, then waits for playback", () => {
     const { aura, h } = streaming();
-    h.speech.speak(said("One, two."));
+    h.speech.speak(said("One. Two."));
     h.speech.speak(said("Next."));
     aura.audio(1);
     aura.flushed();
@@ -181,24 +180,23 @@ beforeEach(() => {
 });
 
 describe("a line the talker writes as it goes", () => {
-  it("streams clauses to the Aura socket as the text arrives, flushing the first clause and the end", () => {
+  it("sends each sentence to the Aura socket as soon as it is whole, with a Flush, and the rest at text end", () => {
     const aura = createFakeAura();
     const h = createHarness(aura);
     aura.open();
     const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
     line.push("Sure, I'll");
-    expect(aura.sent).toEqual(["speak Sure,", "flush"]);
-    line.push(" check the forecast. The rain");
-    line.push(" decides it.");
-    line.end();
-    line.push("ignored");
+    expect(aura.sent).toEqual([]);
+    line.push(" check the forecast.");
     expect(aura.sent).toEqual([
-      "speak Sure,",
-      "flush",
-      "speak I'll check the forecast.",
-      "speak The rain decides it.",
+      speak("Sure, I'll check the forecast."),
       "flush",
     ]);
+    line.push(" The rain decides");
+    expect(aura.sent).toHaveLength(2);
+    line.end();
+    line.push("ignored");
+    expect(aura.sent.slice(2)).toEqual([speak("The rain decides"), "flush"]);
   });
 
   it("waits for the whole text before the REST call when the socket is not open", () => {
@@ -272,11 +270,11 @@ describe("a talker line cut or failing mid-stream", () => {
     const h = createHarness(aura);
     aura.open();
     const line = h.speech.speakFed({ taskId: "t1", kind: "talk", key: "k1" });
-    line.push("Sure, ");
+    line.push("Sure. ");
     aura.audio(1);
     aura.failSends();
-    line.push("more words. ");
-    expect(aura.sent).toEqual(["speak Sure,", "flush", "restart"]);
+    line.push("More words. ");
+    expect(aura.sent).toEqual(["speak Sure.", "flush", "restart"]);
     expect(h.ends).toEqual([{ lineId: h.chunks[0].lineId }]);
     expect(h.synthesize).not.toHaveBeenCalled();
   });
@@ -306,32 +304,60 @@ const rows: Row[] = [
     rest: "",
   },
   {
-    name: "punctuation and a space end a clause",
-    text: "Sure, I'll check tomorrow's forecast. The rain",
+    name: "a whole sentence leaves whole, with no cut by length",
+    text: "I'll look for the best headphones under two hundred dollars.",
     ended: false,
-    clauses: ["Sure,", "I'll check tomorrow's forecast."],
-    rest: "The rain",
+    clauses: ["I'll look for the best headphones under two hundred dollars."],
+    rest: "",
   },
   {
-    name: "a mark not yet followed by a space waits, since 3.5 may still be coming",
+    name: "two sentences leave one at a time",
+    text: "Is it sunny? Take a hat! Then",
+    ended: false,
+    clauses: ["Is it sunny?", "Take a hat!"],
+    rest: "Then",
+  },
+  {
+    name: "a decimal point is no sentence end",
+    text: "It costs 3.5 dollars.",
+    ended: false,
+    clauses: ["It costs 3.5 dollars."],
+    rest: "",
+  },
+  {
+    name: "a mark after a digit at the end of the text so far waits, since 3.5 may still be coming",
     text: "It is 3.",
     ended: false,
     clauses: [],
     rest: "It is 3.",
   },
   {
-    name: "about 40 characters without punctuation are cut at the last space",
-    text: "this sentence has no punctuation at all and keeps on going",
+    name: "a mark after a digit leaves once a space follows",
+    text: "It is 3. Next",
     ended: false,
-    clauses: ["this sentence has no punctuation at all"],
-    rest: "and keeps on going",
+    clauses: ["It is 3."],
+    rest: "Next",
   },
   {
-    name: "a long word with no space is cut at 40 characters",
-    text: "a".repeat(45),
+    name: "a line with no final punctuation leaves at text end",
+    text: "this line has no punctuation at all and keeps on going",
+    ended: true,
+    clauses: ["this line has no punctuation at all and keeps on going"],
+    rest: "",
+  },
+  {
+    name: "no length cuts a line still being written",
+    text: "this line has no punctuation at all and keeps on going",
     ended: false,
-    clauses: ["a".repeat(40)],
-    rest: "aaaaa",
+    clauses: [],
+    rest: "this line has no punctuation at all and keeps on going",
+  },
+  {
+    name: "commas, colons and semicolons never cut",
+    text: "Sure, one thing: the rain; then",
+    ended: false,
+    clauses: [],
+    rest: "Sure, one thing: the rain; then",
   },
   {
     name: "blank text gives nothing",

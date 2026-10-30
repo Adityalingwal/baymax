@@ -26,10 +26,9 @@ export type TaskRecord = {
   shown: boolean;
   created: number;
   admission: Admission | null;
-  topic: string | null; // the front call's short name for the request; never on the card
+  topic: string | null; // the front call's short name for the request; the card shows it as its title
   spokenLine: string | null;
   hiddenQuestion: ClarifyingQuestion | null;
-  builtOnPartial: boolean;
   attempt: Attempt | null;
   failedAttempt: Attempt | null;
   attempts: number;
@@ -92,6 +91,7 @@ export function addRecord(
       taskId,
       state: "thinking",
       words,
+      title: null,
       parentTaskId: null,
       sayBack: null,
       line: null,
@@ -101,7 +101,6 @@ export function addRecord(
       sourcesRead: 0,
       question: null,
       answer: null,
-      missing: null,
       canRetry: false,
     },
     shown: true,
@@ -110,7 +109,6 @@ export function addRecord(
     topic: null,
     spokenLine: null,
     hiddenQuestion: null,
-    builtOnPartial: false,
     attempt: null,
     failedAttempt: null,
     attempts: 0,
