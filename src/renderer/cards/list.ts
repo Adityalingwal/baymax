@@ -23,12 +23,3 @@ export function orderCards<C extends ListCard>(tasks: readonly C[]): C[] {
 export function isRunning(state: TaskState): boolean {
   return state === "running" || state === "queued";
 }
-
-// The top strip's status: what runs; results only when nothing runs.
-export function statusLine(tasks: readonly ListCard[]): string {
-  const running = tasks.filter((card) => isRunning(card.state)).length;
-  const results = tasks.filter((card) => card.state === "done").length;
-  if (running > 0) return `${running} running`;
-  if (results === 0) return "Nothing running";
-  return results === 1 ? "1 result" : `${results} results`;
-}

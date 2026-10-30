@@ -36,6 +36,7 @@ const draftLeave: Step = (state) => ({
   token: state.draftLeave ?? -1,
 });
 const escape: PanelEvent = { kind: "escape" };
+const closeControl: PanelEvent = { kind: "close-control" };
 const closed: PanelEvent = { kind: "closed" };
 const draft = (text: string): PanelEvent => ({ kind: "draft", text });
 const mouse = (down: boolean): PanelEvent => ({ kind: "mouse", down });
@@ -58,6 +59,32 @@ type Expected = {
 };
 
 const rows: { name: string; steps: Step[]; expected: Expected }[] = [
+  {
+    name: "the close control closes at once with the pointer on the panel",
+    steps: [...opened, onPanel, closeControl],
+    expected: { open: false, closing: true, leaving: false },
+  },
+  {
+    name: "the close control closes with text in the field",
+    steps: [...opened, onPanel, draft("hello"), closeControl],
+    expected: { open: false, closing: true, draftLeaving: false },
+  },
+  {
+    name: "the close control closes over the Accessibility hint",
+    steps: [access, closeControl],
+    expected: { open: false, closing: true },
+  },
+  {
+    name: "the close control closes while a timer runs, and its firing does nothing",
+    steps: [
+      ...opened,
+      away,
+      closeControl,
+      closed,
+      { kind: "leave-elapsed", token: 2 },
+    ],
+    expected: { open: false, closing: false, leaving: false },
+  },
   {
     name: "resting 200 ms on the notch opens",
     steps: opened,

@@ -34,6 +34,7 @@ export type PanelEvent =
   | { kind: "leave-elapsed"; token: number }
   | { kind: "draft-leave-elapsed"; token: number }
   | { kind: "escape" }
+  | { kind: "close-control" }
   | { kind: "draft"; text: string }
   | { kind: "mouse"; down: boolean }
   | { kind: "access"; needed: boolean }
@@ -101,6 +102,11 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
       const closed = close(state);
       return closed === state ? state : { ...closed, waitForExit: true };
     }
+    // Closes in every state, even over the Accessibility hint, so nothing can trap the user; the text stays.
+    case "close-control":
+      return state.open
+        ? { ...state, open: false, closing: true, waitForExit: true }
+        : state;
     // Each change drops the running timer, so a key typed outside restarts the 3 s.
     case "draft":
       return event.text === state.draft

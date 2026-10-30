@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import type { DisplayState } from "../shared/cards";
 import type { VoicePhase } from "../shared/ipc";
 import type { CardActions } from "./actions";
@@ -6,6 +6,7 @@ import { orderCards } from "./cards/list";
 import { TaskCard } from "./cards/TaskCard";
 import { startMicrophone } from "./microphone";
 import { NotchShell } from "./notch/NotchShell";
+import { initialView, viewReducer } from "./panel-contents";
 import { startPlayback } from "./playback";
 import { TextBox } from "./TextBox";
 import { TopBar } from "./TopBar";
@@ -62,6 +63,7 @@ export function App() {
   const { accessibility, holdKeyLabel, display, phase } = useMainState();
   const actions: CardActions = window.baymax;
   const [draft, setDraft] = useState("");
+  const [view, changeView] = useReducer(viewReducer, initialView);
   const cards = orderCards(display.tasks);
 
   useEffect(() => {
@@ -81,28 +83,36 @@ export function App() {
       tasks={display.tasks}
       muted={display.muted}
       setMuted={actions.setMuted}
+      onOpenResult={() => changeView({ kind: "open-result" })}
     >
-      <TopBar
-        accessibility={accessibility}
-        state={display}
-        setMuted={actions.setMuted}
-        openAccessibilitySettings={() =>
-          window.baymax.openAccessibilitySettings()
-        }
-      />
-      <ChatList chat={display.chat} />
-      {cards.length > 0 && (
-        <section className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto">
-          {cards.map((card) => (
-            <TaskCard key={card.taskId} card={card} actions={actions} />
-          ))}
-        </section>
+      {(closePanel) => (
+        <>
+          <TopBar
+            tab={view.tab}
+            onTab={(tab) => changeView({ kind: "tab", tab })}
+            accessibility={accessibility}
+            state={display}
+            setMuted={actions.setMuted}
+            onClose={closePanel}
+            openAccessibilitySettings={() =>
+              window.baymax.openAccessibilitySettings()
+            }
+          />
+          {view.tab === "chat" && <ChatList chat={display.chat} />}
+          {view.tab === "tasks" && cards.length > 0 && (
+            <section className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto">
+              {cards.map((card) => (
+                <TaskCard key={card.taskId} card={card} actions={actions} />
+              ))}
+            </section>
+          )}
+          <TextBox
+            submitQuestion={actions.submitQuestion}
+            onDraft={setDraft}
+            holdKeyLabel={holdKeyLabel}
+          />
+        </>
       )}
-      <TextBox
-        submitQuestion={actions.submitQuestion}
-        onDraft={setDraft}
-        holdKeyLabel={holdKeyLabel}
-      />
     </NotchShell>
   );
 }
