@@ -27,8 +27,7 @@ const happySteps = () => [
 
 const progress = (
   step: { tool: "search"; query: string } | { tool: "read"; url: string },
-  sourcesRead: number,
-): EngineEvent => ({ type: "progress", taskId: "task-1", step, sourcesRead });
+): EngineEvent => ({ type: "progress", taskId: "task-1", step });
 
 const promptStart = (request: ModelRequest) =>
   JSON.stringify([request.system, request.tools, request.cache_control]);
@@ -45,11 +44,11 @@ describe("runTask happy path", () => {
     ]);
     run.port.send(runTask());
     expect(await run.ended()).toEqual([
-      progress({ tool: "search", query: "hermes agent internals" }, 0),
-      progress({ tool: "read", url: pageUrl("one") }, 0),
-      progress({ tool: "read", url: pageUrl("one") }, 1),
-      progress({ tool: "read", url: pageUrl("two") }, 1),
-      progress({ tool: "read", url: pageUrl("two") }, 2),
+      progress({ tool: "search", query: "hermes agent internals" }),
+      progress({ tool: "read", url: pageUrl("one") }),
+      progress({ tool: "read", url: pageUrl("one") }),
+      progress({ tool: "read", url: pageUrl("two") }),
+      progress({ tool: "read", url: pageUrl("two") }),
       {
         type: "result",
         taskId: "task-1",

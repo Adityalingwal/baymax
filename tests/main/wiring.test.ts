@@ -49,7 +49,6 @@ describe("wireMain typed path", () => {
       type: "progress",
       taskId: "t1",
       step: { tool: "search", query: "Hermes agent internals" },
-      sourcesRead: 1,
     });
     expect(w.card("t1")).toMatchObject({
       step: "searching: Hermes agent internals",

@@ -101,8 +101,8 @@ function startRounds(run: ResearchRun): Rounds {
     findings: foundFindings(null, web.pages()),
   });
   const job = { ...run.task, role: "worker" as const };
-  const progress = (step: ProgressStep, sourcesRead: number) =>
-    run.progress({ type: "progress", taskId, step, sourcesRead });
+  const progress = (step: ProgressStep) =>
+    run.progress({ type: "progress", taskId, step });
   const first = firstWorkerMessage({
     today: run.today,
     ask: run.command.ask,

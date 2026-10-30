@@ -50,7 +50,6 @@ export type EngineEvent =
       type: "progress";
       taskId: TaskId;
       step: ProgressStep;
-      sourcesRead: number;
     }
   | { type: "result"; taskId: TaskId; spokenLine: string; findings: Findings }
   | {

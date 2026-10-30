@@ -275,7 +275,6 @@ describe("a failed task through the wiring", () => {
         type: "progress",
         taskId: "t1",
         step: { tool: "search", query: "hermes" },
-        sourcesRead: 2,
       });
       w.port.emit({
         type: "failed",
@@ -339,7 +338,7 @@ describe("a running task's step", () => {
   it.each(stepRows)("shows $text", async ({ step, text }) => {
     const w = wire();
     await admitAs(w, "hermes");
-    w.port.emit({ type: "progress", taskId: "t1", step, sourcesRead: 1 });
+    w.port.emit({ type: "progress", taskId: "t1", step });
     expect(w.card("t1")).toMatchObject({ step: text });
   });
 });
