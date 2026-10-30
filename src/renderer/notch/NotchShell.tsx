@@ -158,7 +158,7 @@ function usePanel(input: PanelInput) {
   };
   return {
     open: pointer.state.open,
-    inVisible: pointer.state.inVisible,
+    hovering: pointer.state.hovering,
     layers: motion.layers,
     contentElement,
     onKeyDown,

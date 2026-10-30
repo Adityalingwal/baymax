@@ -59,12 +59,12 @@ export function useIsland(tasks: readonly TaskCard[]): {
 // What the island follows from the panel's own state, known only after the shape it depends on.
 export function useIslandFollows(
   dispatch: Dispatch<IslandEvent>,
-  panel: { open: boolean; inVisible: boolean },
+  panel: { open: boolean; hovering: boolean },
 ): void {
-  const { open, inVisible } = panel;
+  const { open, hovering } = panel;
   useEffect(() => dispatch({ kind: "panel", open }), [dispatch, open]);
   useEffect(
-    () => dispatch({ kind: "pointer", on: inVisible }),
-    [dispatch, inVisible],
+    () => dispatch({ kind: "pointer", on: hovering }),
+    [dispatch, hovering],
   );
 }
