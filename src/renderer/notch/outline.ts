@@ -34,7 +34,8 @@ export const pillShape: Silhouette = {
   rx: 16.6,
   ry: 18,
 };
-const ringWing = 18;
+// The ring's 11 pt sits 6 pt from the notch and 8 pt from the shape's edge: design-lock-timing.md, "Running ring position".
+export const ringLayout = { size: 11, edge: 8, notchGap: 6 } as const;
 // The curves' control points, as in the selected ears preview.
 const earPull = 0.3;
 const cornerPull = 0.35;
@@ -42,8 +43,9 @@ const cornerPull = 0.35;
 const earClearance = 4;
 
 export function ringSilhouette(shape: WindowShape): Silhouette {
+  const { size, edge, notchGap } = ringLayout;
   return {
-    width: shape.notchWidth + 2 * ringWing,
+    width: shape.notchWidth + 2 * (notchGap + size + edge),
     height: shape.notchHeight,
     ear: 8,
     rx: 10,

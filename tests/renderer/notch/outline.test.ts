@@ -91,7 +91,7 @@ describe("silhouettePath", () => {
     {
       name: "the ring's ears flare 8 points past its body",
       shape: ring,
-      box: { left: 224.5, right: 415.5, top: 0, bottom: 25 },
+      box: { left: 217.5, right: 422.5, top: 0, bottom: 25 },
     },
   ])("$name", ({ shape, box }) => {
     expect(pathBox(silhouettePath(640, shape))).toEqual(box);
@@ -232,6 +232,16 @@ describe("the open panel's size", () => {
       width,
       height,
     });
+  });
+});
+
+describe("ringSilhouette", () => {
+  it.each([
+    { notchWidth: 139, width: 189 },
+    { notchWidth: 185, width: 235 },
+  ])("is $width wide on a $notchWidth notch", ({ notchWidth, width }) => {
+    const shape = { notched: true, notchWidth, notchHeight: 25 };
+    expect(ringSilhouette(shape).width).toBe(width);
   });
 });
 
