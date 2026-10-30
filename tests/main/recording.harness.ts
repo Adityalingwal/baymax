@@ -104,9 +104,15 @@ export function hold(h: Harness, outcome: HoldOutcome): UtteranceId {
   return utteranceId;
 }
 
-// A frame's first byte names it, so a test can follow it through the socket.
+// A frame's first byte names it, so a test can follow it through the socket; its second sample is at speech level.
 export function frame(h: Harness, utteranceId: UtteranceId, mark = 1): void {
-  const pcm = new Uint8Array([mark, 0, 0, 0]).buffer;
+  const pcm = new Uint8Array([mark, 0, 0, 0x10]).buffer;
+  h.flow.micAudio({ type: "frames", utteranceId, pcm });
+}
+
+// A frame under the speech level, as in a hold where nothing was said.
+export function quietFrame(h: Harness, utteranceId: UtteranceId): void {
+  const pcm = new Uint8Array([1, 0, 0, 0]).buffer;
   h.flow.micAudio({ type: "frames", utteranceId, pcm });
 }
 

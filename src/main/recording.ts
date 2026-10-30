@@ -1,13 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { Transcription } from "../providers/deepgram";
 import type { UtteranceId } from "../shared/cards";
 import type { MicAudio, MicFailure, RecordingCommand } from "../shared/ipc";
 import { createTurns } from "./flux-turns";
-import type { TurnsDeps } from "./flux-turns";
+import type { TurnResult, TurnsDeps } from "./flux-turns";
 import type { HoldOutcome } from "./hold";
 
 export type NotCaughtCause =
-  "empty" | MicFailure | "unreachable" | "keyRejected" | "noCredit";
+  "silent" | "empty" | MicFailure | "unreachable" | "keyRejected" | "noCredit";
 
 export type Heard =
   | { kind: "words"; utteranceId: UtteranceId; words: string }
@@ -46,12 +45,13 @@ function notCaught(
   return { kind: "notCaught", utteranceId, cause };
 }
 
-function heardFrom(utteranceId: UtteranceId, result: Transcription): Heard {
+function heardFrom(utteranceId: UtteranceId, result: TurnResult): Heard {
   switch (result.kind) {
     case "words":
       return { kind: "words", utteranceId, words: result.words };
+    case "silent":
     case "empty":
-      return notCaught(utteranceId, "empty", "");
+      return notCaught(utteranceId, result.kind, "");
     case "failed":
       return notCaught(utteranceId, result.cause, result.detail);
   }

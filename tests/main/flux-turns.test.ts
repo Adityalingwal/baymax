@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Transcription } from "../../src/providers/deepgram";
 import type { FluxEvent } from "../../src/providers/flux";
+import type { Heard, NotCaughtCause } from "../../src/main/recording";
 import {
   createFakeFlux,
   createHarness,
@@ -9,6 +11,7 @@ import {
   hold,
   micFailed,
   missed,
+  quietFrame,
   resolveCall,
   sendAudio,
   words,
@@ -71,7 +74,7 @@ describe("ending the turn (L4)", () => {
 type BindingRow = {
   name: string;
   events: FluxEvent[];
-  heard: string | null; // the words, or null for not caught
+  heard: string;
 };
 
 const bindingRows: BindingRow[] = [
@@ -86,12 +89,6 @@ const bindingRows: BindingRow[] = [
     events: [timeout("only part"), { kind: "noActiveTurn" }],
     heard: "only part",
   },
-  {
-    name: "the no-turn warning alone",
-    events: [{ kind: "noActiveTurn" }],
-    heard: null,
-  },
-  { name: "an empty manual end of turn", events: [manual("  ")], heard: null },
 ];
 
 describe("turn binding (L3b, L5)", () => {
@@ -100,9 +97,7 @@ describe("turn binding (L3b, L5)", () => {
     const id = hold(h, "accept");
     sendAudio(h, id);
     events.forEach(flux.emit);
-    expect(h.heard).toEqual([
-      heard === null ? missed(id, "empty") : words(id, heard),
-    ]);
+    expect(h.heard).toEqual([words(id, heard)]);
   });
 
   it("resolves utterances in the order their audio was sent", () => {
@@ -114,6 +109,122 @@ describe("turn binding (L3b, L5)", () => {
     flux.emit(manual("first"));
     flux.emit(manual("second"));
     expect(h.heard).toEqual([words(a, "first"), words(b, "second")]);
+  });
+});
+
+const nothingHeard: { name: string; event: FluxEvent }[] = [
+  { name: "the no-turn warning", event: { kind: "noActiveTurn" } },
+  { name: "an empty manual end of turn", event: manual("  ") },
+];
+
+describe.each(nothingHeard)("nothing heard: $name", ({ event }) => {
+  it("under the speech level is silent, with no batch call", () => {
+    const { flux, h } = openHarness();
+    const id = hold(h, "accept");
+    quietFrame(h, id);
+    end(h, id);
+    flux.emit(event);
+    expect(h.heard).toEqual([missed(id, "silent")]);
+    expect(h.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("at the speech level gets its words from the held audio", async () => {
+    const { flux, h } = openHarness();
+    const id = hold(h, "accept");
+    sendAudio(h, id, [1, 2]);
+    flux.emit(event);
+    expect([...new Uint8Array(h.pending[0].audio, 44)]).toEqual([
+      1, 0, 0, 16, 2, 0, 0, 16,
+    ]);
+    await resolveCall(h, 0, { kind: "words", words: "the whisper" });
+    expect(h.heard).toEqual([words(id, "the whisper")]);
+  });
+
+  it("keeps text from before a timeout, under the speech level too", () => {
+    const { flux, h } = openHarness();
+    const id = hold(h, "accept");
+    quietFrame(h, id);
+    end(h, id);
+    flux.emit(timeout("kept words"));
+    flux.emit(event);
+    expect(h.heard).toEqual([words(id, "kept words")]);
+  });
+});
+
+describe.each(nothingHeard)("speech lost: $name", ({ event }) => {
+  it.each<{ name: string; result: Transcription; cause: NotCaughtCause }>([
+    { name: "empty too", result: { kind: "empty" }, cause: "empty" },
+    {
+      name: "failing",
+      result: { kind: "failed", cause: "unreachable", detail: "down" },
+      cause: "unreachable",
+    },
+  ])(
+    "at the speech level with the batch call $name is not caught",
+    async ({ result, cause }) => {
+      const { flux, h } = openHarness();
+      const id = hold(h, "accept");
+      sendAudio(h, id);
+      flux.emit(event);
+      await resolveCall(h, 0, result);
+      expect(h.heard).toEqual([missed(id, cause)]);
+    },
+  );
+});
+
+type BatchAloneRow = {
+  name: string;
+  send: (h: ReturnType<typeof createHarness>, id: string) => void;
+  result: Transcription;
+  heard: (id: string) => Heard;
+};
+
+const batchAloneRows: BatchAloneRow[] = [
+  {
+    name: "silence, batch empty: silent",
+    send: quietFrame,
+    result: { kind: "empty" },
+    heard: (id) => missed(id, "silent"),
+  },
+  {
+    name: "speech level, batch empty: not caught",
+    send: (h, id) => frame(h, id),
+    result: { kind: "empty" },
+    heard: (id) => missed(id, "empty"),
+  },
+  {
+    name: "silence, batch words: the words",
+    send: quietFrame,
+    result: { kind: "words", words: "soft" },
+    heard: (id) => words(id, "soft"),
+  },
+  {
+    name: "silence, batch failed: its own cause",
+    send: quietFrame,
+    result: { kind: "failed", cause: "noCredit", detail: "402" },
+    heard: (id) => missed(id, "noCredit"),
+  },
+];
+
+describe("a hold whose socket is closed goes to batch alone", () => {
+  it.each(batchAloneRows)("$name", async ({ send, result, heard }) => {
+    const h = createHarness(createFakeFlux());
+    const id = hold(h, "accept");
+    send(h, id);
+    end(h, id);
+    await resolveCall(h, 0, result);
+    expect(h.heard).toEqual([heard(id)]);
+  });
+
+  it("keeps text from before a timeout when batch is empty", async () => {
+    const { flux, h } = openHarness();
+    const id = hold(h, "accept");
+    frame(h, id);
+    flux.emit(timeout("kept words"));
+    flux.close();
+    end(h, id);
+    await resolveCall(h, 0, { kind: "empty" });
+    expect(h.heard).toEqual([words(id, "kept words")]);
   });
 });
 
@@ -251,7 +362,7 @@ describe("the batch fallback (L7)", () => {
     await resolveCall(h, 0, { kind: "words", words: "batch words" });
     expect(h.transcribe).toHaveBeenCalledTimes(1);
     expect([...new Uint8Array(h.pending[0].audio, 44)]).toEqual([
-      1, 0, 0, 0, 2, 0, 0, 0,
+      1, 0, 0, 16, 2, 0, 0, 16,
     ]);
     expect(flux.sent).toEqual(["connectNow"]);
     expect(h.heard).toEqual([words(id, "batch words")]);
@@ -272,7 +383,7 @@ describe("the batch fallback (L7)", () => {
     expect(flux.sent).toEqual(["audio 1"]);
     expect(h.transcribe).toHaveBeenCalledTimes(1);
     expect([...new Uint8Array(h.pending[0].audio, 44)]).toEqual([
-      1, 0, 0, 0, 2, 0, 0, 0,
+      1, 0, 0, 16, 2, 0, 0, 16,
     ]);
     expect(h.heard).toEqual([words(id, "whole clip")]);
   });
@@ -336,7 +447,9 @@ describe("the deadline of an utterance bound for batch", () => {
       h.clock.advance(4999);
       expect(h.transcribe).not.toHaveBeenCalled();
       h.clock.advance(1);
-      expect([...new Uint8Array(h.pending[0].audio, 44)]).toEqual([1, 0, 0, 0]);
+      expect([...new Uint8Array(h.pending[0].audio, 44)]).toEqual([
+        1, 0, 0, 16,
+      ]);
       await resolveCall(h, 0, { kind: "words", words: "capped" });
       expect(h.heard).toEqual([words(id, "capped")]);
     },
@@ -377,7 +490,7 @@ describe("a final that may never come", () => {
     h.flow.holdEnded("accept");
     end(h, b);
     flux.emit({ kind: "endOfTurn", trigger: "manual", transcript: "stale" });
-    expect(pcmOf(h, 0)).toEqual([2, 0, 0, 0, 3, 0, 0, 0]);
+    expect(pcmOf(h, 0)).toEqual([2, 0, 0, 16, 3, 0, 0, 16]);
     await resolveCall(h, 0, { kind: "words", words: "whole b" });
     expect(h.heard).toEqual([words(b, "whole b")]);
   });
@@ -404,7 +517,7 @@ describe("a failed Flux send", () => {
       h.flow.holdEnded("accept");
       end(h, id);
       expect(flux.sent).toEqual(sent);
-      expect(pcmOf(h, 0)).toEqual([1, 0, 0, 0, 2, 0, 0, 0]);
+      expect(pcmOf(h, 0)).toEqual([1, 0, 0, 16, 2, 0, 0, 16]);
       await resolveCall(h, 0, { kind: "words", words: "batch" });
       expect(h.heard).toEqual([words(id, "batch")]);
     },

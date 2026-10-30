@@ -199,7 +199,7 @@ describe("batch transcription input", () => {
     expect(h.pending).toHaveLength(1);
     const { audio, mimeType } = h.pending[0];
     expect(mimeType).toBe("audio/wav");
-    expect([...new Uint8Array(audio, 44)]).toEqual([7, 0, 0, 0, 9, 0, 0, 0]);
+    expect([...new Uint8Array(audio, 44)]).toEqual([7, 0, 0, 16, 9, 0, 0, 16]);
   });
 });
 

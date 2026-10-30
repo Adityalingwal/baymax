@@ -254,6 +254,8 @@ function notCaught(
   order: number,
 ): void {
   switch (cause) {
+    case "silent":
+      return setStt(model, deps.log, true, order);
     case "empty":
       setStt(model, deps.log, true, order);
       return state.showNotice("wordsNotCaught");
