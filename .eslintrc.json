@@ -75,57 +75,74 @@
       {
         "zones": [
           {
-            "target": ["./src/renderer", "./src/renderer.ts"],
+            "target": [
+              "./src/renderer",
+              "./src/renderer.ts",
+              "./tests/renderer"
+            ],
             "from": [
               "./src/index.ts",
               "./src/main",
               "./src/preload.ts",
               "./src/engine",
               "./src/shared/engine.ts",
-              "./src/providers"
+              "./src/providers",
+              "./tests/main",
+              "./tests/engine",
+              "./tests/providers",
+              "./tests/preload.test.ts"
             ],
             "message": "The renderer talks to main only through window.baymax (AGENTS.md)."
           },
           {
-            "target": ["./src/index.ts", "./src/main"],
-            "from": ["./src/renderer", "./src/renderer.ts"],
+            "target": ["./src/index.ts", "./src/main", "./tests/main"],
+            "from": ["./src/renderer", "./src/renderer.ts", "./tests/renderer"],
             "message": "Core imports nothing from the renderer (AGENTS.md)."
           },
           {
-            "target": ["./src/engine"],
+            "target": ["./src/engine", "./tests/engine"],
             "from": [
               "./src/index.ts",
               "./src/main",
               "./src/preload.ts",
               "./src/renderer",
-              "./src/renderer.ts"
+              "./src/renderer.ts",
+              "./tests/main",
+              "./tests/preload.test.ts",
+              "./tests/renderer"
             ],
             "message": "The engine imports nothing from main or the renderer (AGENTS.md)."
           },
           {
-            "target": ["./src/index.ts", "./src/main"],
+            "target": ["./src/index.ts", "./src/main", "./tests/main"],
             "from": ["./src/engine"],
             "except": ["./index.ts"],
             "message": "Main imports the engine only through src/engine/index.ts (AGENTS.md)."
           },
           {
-            "target": ["./src/providers"],
+            "target": ["./src/providers", "./tests/providers"],
             "from": [
               "./src/index.ts",
               "./src/main",
               "./src/engine",
               "./src/preload.ts",
               "./src/renderer",
-              "./src/renderer.ts"
+              "./src/renderer.ts",
+              "./tests/main",
+              "./tests/engine",
+              "./tests/preload.test.ts",
+              "./tests/renderer"
             ],
             "message": "Provider code imports no process folder (AGENTS.md)."
           },
           {
-            "target": ["./src/preload.ts"],
+            "target": ["./src/preload.ts", "./tests/preload.test.ts"],
             "from": [
               "./src/engine",
               "./src/providers",
-              "./src/shared/engine.ts"
+              "./src/shared/engine.ts",
+              "./tests/engine",
+              "./tests/providers"
             ],
             "message": "The preload only bridges the renderer and main; it imports no engine or provider code (AGENTS.md)."
           },
@@ -151,6 +168,16 @@
               "./src/renderer.ts"
             ],
             "message": "Shared files hold process-neutral contracts and import no process folder (AGENTS.md)."
+          },
+          {
+            "target": ["./tests/main"],
+            "from": ["./tests/engine"],
+            "message": "Main tests reach the engine only through src/engine/index.ts (AGENTS.md)."
+          },
+          {
+            "target": ["./src"],
+            "from": ["./tests"],
+            "message": "Application code imports nothing from tests/ (AGENTS.md)."
           }
         ]
       }
@@ -188,7 +215,7 @@
   },
   "overrides": [
     {
-      "files": ["src/**/*.{ts,tsx}"],
+      "files": ["src/**/*.{ts,tsx}", "tests/**/*.ts"],
       "parserOptions": {
         "project": "./tsconfig.json"
       },
@@ -209,7 +236,7 @@
       }
     },
     {
-      "files": ["src/renderer/**/*", "src/renderer.ts"],
+      "files": ["src/renderer/**/*", "src/renderer.ts", "tests/renderer/**/*"],
       "env": {
         "browser": true,
         "node": false
@@ -328,7 +355,12 @@
       }
     },
     {
-      "files": ["src/engine/**/*", "src/providers/**/*"],
+      "files": [
+        "src/engine/**/*",
+        "src/providers/**/*",
+        "tests/engine/**/*",
+        "tests/providers/**/*"
+      ],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -354,7 +386,7 @@
       }
     },
     {
-      "files": ["src/engine/**/*"],
+      "files": ["src/engine/**/*", "tests/engine/**/*"],
       "env": {
         "browser": false,
         "node": true
@@ -419,7 +451,7 @@
       }
     },
     {
-      "files": ["src/**/*.test.ts", "*.config.ts", "webpack.*.ts"],
+      "files": ["tests/**/*.test.ts", "*.config.ts", "webpack.*.ts"],
       "rules": {
         "no-restricted-syntax": [
           "error",
@@ -438,6 +470,18 @@
           {
             "selector": "ExportAllDeclaration",
             "message": "Use named exports and explicit re-exports, not export * (AGENTS.md)."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/**/*.test.*", "src/**/*.harness.ts", "src/**/harness.ts"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "Program",
+            "message": "Tests and harnesses live in tests/ (AGENTS.md)."
           }
         ]
       }

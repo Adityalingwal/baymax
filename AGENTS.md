@@ -49,6 +49,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 ## Tests
 
+- Tests and their harnesses live in `tests/`, at the same relative path as the code they cover (`src/main/voice.ts` -> `tests/main/voice.test.ts`).
 - Test important behaviour only: what a card shows or what Baymax says, cancel and the queue, an error that names its cause and fix, and safety (which URLs may be read, size caps, keys). Dev-log timing, log text and internal guards get no test of their own.
 - Test through the top interfaces: main through the wiring harness and its `*.e2e.test.ts` files, the engine through its port, each provider through its own call, the renderer through its pure modules. A lower module keeps its own test only when a top test cannot reach its important behaviour.
 - One behaviour gets one test. A new case goes into the existing table as a row; add a test file only when no top-level file covers that area.
@@ -91,4 +92,4 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 Prettier formats the code, the pre-commit hook runs ESLint and Prettier on staged files, and CI runs the checks on every PR.
 
-ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer, main, engine, providers, preload and shared-file zones (the two link files never import each other) and a `*Sync` rule over all of `src/` (dropped for tests and configs). Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
+ESLint (`.eslintrc.json`) enforces the Code and boundary rules above where a lint rule can; a new rule lands only after it is shown to fail on a bad example. Today it holds the renderer, main, engine, providers, preload and shared-file zones (the two link files never import each other) and a `*Sync` rule over all of `src/` and the harnesses (dropped for test files and configs). The same zones hold for the matching folders in `tests/`; application code cannot import from `tests/`, and a test or harness file in `src/` fails lint. Where a library requires a class, disable `no-restricted-syntax` on that line with a one-line reason.
