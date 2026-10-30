@@ -87,28 +87,6 @@ const sendRows: SendRow[] = [
     },
   },
   {
-    name: "brief writer",
-    role: "briefWriter",
-    activeMs: 0,
-    expected: {
-      model: "claude-sonnet-5-5",
-      max_tokens: 1024,
-      timeoutMs: 20_000,
-      deadlineMs: 45_000,
-    },
-  },
-  {
-    name: "brief retry",
-    role: "briefRetry",
-    activeMs: 0,
-    expected: {
-      model: "claude-opus-5-5",
-      max_tokens: 2048,
-      timeoutMs: 20_000,
-      deadlineMs: 45_000,
-    },
-  },
-  {
     name: "worker with less active time left",
     role: "worker",
     activeMs: 230_000.7,
@@ -212,26 +190,6 @@ describe("dispatch counting", () => {
         taskDollars: expect.closeTo(0.0084, 10),
       },
     ]);
-  });
-});
-
-describe("dispatch cost by model", () => {
-  it.each([
-    { role: "briefWriter" as const, dollars: 0.0084 },
-    { role: "briefRetry" as const, dollars: 0.0164 },
-  ])("prices a $role call at its model's rates", async (row) => {
-    const message = fakeMessage("{}", {
-      usage: {
-        input_tokens: 1_000,
-        output_tokens: 500,
-        cache_creation_input_tokens: 400,
-        cache_read_input_tokens: 2_000,
-      },
-    });
-    const { deps } = setup({ ok: true, message });
-    const budget = createTaskBudget();
-    await dispatch(deps, jobFor(row.role, budget), request);
-    expect(budget.dollars).toBeCloseTo(row.dollars, 10);
   });
 });
 

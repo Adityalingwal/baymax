@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ModelOutcome, ModelRequest } from "../../src/providers/anthropic";
+import type { ModelRequest } from "../../src/providers/anthropic";
 import type { Findings } from "../../src/shared/cards";
 import type { EngineEvent } from "../../src/shared/engine";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
+  failed,
+  goodAnswer,
   hits,
   pageUrl,
   runTask,
@@ -26,22 +28,16 @@ const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
 const listOne: Findings = {
   cardText: "- Page one",
   sources: [one],
-  openPoints: [],
 };
 const listTwo: Findings = {
   cardText: `${listOne.cardText}\n- Page two`,
   sources: [one, two],
-  openPoints: [],
 };
 
-const limitHit = (findings: Findings | null): EngineEvent => ({
-  type: "incomplete",
-  taskId: "task-1",
-  incomplete: { kind: "limitHit", findings },
-});
+const limitHit = (findings: Findings | null): EngineEvent =>
+  failed("limitHit", findings);
 
 // The fake clock reads what the run has done so far, so a chosen call or batch takes the whole active time.
-// calls counts the worker's calls; the brief writer's call is the first model call of the task and counts toward its limit.
 type Seen = { calls: number; connects: number };
 type LimitRow = {
   name: string;
@@ -60,7 +56,7 @@ const limitRows: LimitRow[] = [
     steps: () => Array.from({ length: 31 }, readOne),
     searches: [],
     clock: still,
-    calls: 29,
+    calls: 30,
     found: listOne,
   },
   {
@@ -111,7 +107,7 @@ async function startClocked(row: Omit<LimitRow, "name" | "calls" | "found">) {
   const now = () =>
     row.clock({ calls: seen.calls(), connects: seen.targets.length });
   const run = await startRun(row.steps(), row.searches, now);
-  seen.calls = () => run.loopRequests().length;
+  seen.calls = () => run.requests.length;
   seen.targets = run.network.targets;
   return run;
 }
@@ -137,7 +133,7 @@ describe("runTask limits", () => {
       expect(events.filter((event) => event.type !== "progress")).toEqual([
         limitHit(row.found),
       ]);
-      expect(run.loopRequests()).toHaveLength(row.calls);
+      expect(run.requests).toHaveLength(row.calls);
     },
   );
 });
@@ -158,10 +154,9 @@ describe("runTask full prompt", () => {
       limitHit({
         cardText: "- Long page",
         sources: [{ id: "s1", url: pageUrl("long"), title: "Long page" }],
-        openPoints: [],
       }),
     );
-    expect(run.loopRequests()).toHaveLength(1);
+    expect(run.requests).toHaveLength(1);
     expect(run.entries).toContainEqual({
       event: "limitHit",
       taskId: "task-1",
@@ -171,46 +166,42 @@ describe("runTask full prompt", () => {
   });
 });
 
-const cited = {
-  cardText: "Hermes runs a loop.",
-  claims: [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }],
-};
-const checkedCard = {
-  cardText: "Hermes runs a loop.",
-  sources: [one],
-  openPoints: ["How it stores memory"],
-};
-
-type LateRow = { name: string; slowCall: number; end: EngineEvent };
-
-const lateRows: LateRow[] = [
-  {
-    name: "an answer is kept",
-    slowCall: 2,
-    end: {
-      type: "result",
-      taskId: "task-1",
-      spokenLine: "Hermes runs a loop of model calls and tools.",
-      findings: checkedCard,
-    },
-  },
-];
-
 // A reply already received is used; the limit stops only the next step.
-describe("runTask a call past the active time", () => {
-  it.each(lateRows)("ends as received: $name", async (row) => {
-    const steps: ModelOutcome[] = [readOne(), workerAnswer(cited)];
+describe("runTask a valid answer that uses up the budget", () => {
+  it.each([
+    {
+      name: "active time",
+      clock: (seen: Seen) => (seen.calls >= 2 ? 250_000 : 0),
+    },
+    {
+      name: "dollars",
+      clock: still,
+      input: 248_000,
+    },
+  ])("keeps its line and findings: $name", async ({ clock, input }) => {
+    const answer = workerAnswer({ sourceIds: ["s1"] });
+    if (answer.ok && input !== undefined) {
+      answer.message.usage.input_tokens = input;
+    }
     const run = await startClocked({
-      steps: () => steps,
+      steps: () => [readOne(), answer],
       searches: [],
-      clock: (seen) => (seen.calls >= row.slowCall ? 250_000 : 0),
+      clock,
     });
     run.port.send(runTask());
     const events = await run.ended();
     expect(events.filter((event) => event.type !== "progress")).toEqual([
-      row.end,
+      {
+        type: "result",
+        taskId: "task-1",
+        spokenLine: goodAnswer.line,
+        findings: {
+          cardText: goodAnswer.report,
+          sources: [one],
+        },
+      },
     ]);
-    expect(run.loopRequests()).toHaveLength(row.slowCall);
+    expect(run.requests).toHaveLength(2);
   });
 });
 
@@ -233,7 +224,7 @@ describe("runTask limits with nothing found", () => {
     );
     expect(last).toEqual([nothingFound]);
     expect(run.queries).toHaveLength(20);
-    expect(lastResults(run.workerRequests()[20])).toEqual([
+    expect(lastResults(run.requests[20])).toEqual([
       expect.objectContaining({
         content: expect.stringContaining("Searches left: 0."),
       }),
@@ -243,8 +234,7 @@ describe("runTask limits with nothing found", () => {
 
 describe("runTask active time with nothing found", () => {
   it("ends limitHit before a tool batch once the active time is used up", async () => {
-    // the brief writer's call takes the first two readings
-    const times = [0, 0, 0, 250_000];
+    const times = [0, 250_000];
     const now = () => times.shift() ?? 250_000;
     const run = await startRun(
       [toolUseReply([{ search: "hermes" }])],
@@ -266,7 +256,7 @@ describe("runTask active time with nothing found", () => {
       (event) => event.type !== "progress",
     );
     expect(last).toEqual([nothingFound]);
-    expect(run.loopRequests()).toHaveLength(1);
+    expect(run.requests).toHaveLength(1);
   });
   it("counts a tool batch's time as active time", async () => {
     const sent: { queries: string[] } = { queries: [] };
@@ -283,6 +273,6 @@ describe("runTask active time with nothing found", () => {
       nothingFound,
     ]);
     expect(run.queries).toEqual(["hermes"]);
-    expect(run.loopRequests()).toHaveLength(1);
+    expect(run.requests).toHaveLength(1);
   });
 });

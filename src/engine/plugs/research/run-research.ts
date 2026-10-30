@@ -4,6 +4,7 @@ import type { Findings, TaskId } from "../../../shared/cards";
 import type {
   EngineCommand,
   EngineEvent,
+  FailureCause,
   ProgressStep,
 } from "../../../shared/engine";
 import type { DevLogEntry } from "../../core/dev-log";
@@ -13,11 +14,9 @@ import type { TaskBudget } from "../../core/limits";
 import type { LoopEnding, ToolTurn } from "../../core/tool-batch";
 import { runWorkerLoop } from "../../core/worker-loop";
 import { answerSchema, foundFindings } from "./answer";
-import { writeBrief } from "./brief-writer";
-import type { WorkerBrief } from "./brief-writer";
 import type { Connect, LookupAll } from "./connection";
-import { incomplete, runRounds } from "./rounds";
-import type { CheckRun, Rounds, WorkTurn } from "./rounds";
+import { runRounds } from "./rounds";
+import type { Rounds, WorkTurn } from "./rounds";
 import { createToolRunner, researchTools } from "./tool-runner";
 import { hostOf } from "./url-rules";
 import { createWebTool } from "./web-tool";
@@ -50,38 +49,21 @@ type ResearchRun = {
 
 // Built once: the prompt start is byte-identical for every step and every task.
 const workerPrompt = {
-  system: workerInstructions(workerThinking),
+  system: workerInstructions,
   tools: researchTools,
   schema: answerSchema,
   ...thinkingFields(workerThinking),
 };
 
-// A short ending carries what was found when the run stopped; at a limit, a found answer keeps its spoken line.
-function endingEvent(
-  taskId: TaskId,
-  ending: LoopEnding,
-  found: FoundAnswer,
-): EngineEvent {
-  const { findings, spokenLine } = found;
-  if (ending.kind !== "limitHit") {
-    return incomplete(taskId, { kind: "error", cause: ending.cause, findings });
-  }
-  return incomplete(
-    taskId,
-    spokenLine === null
-      ? { kind: "limitHit", findings }
-      : { kind: "limitHit", findings, spokenLine },
-  );
-}
-
-type FoundAnswer = { findings: Findings | null; spokenLine: string | null };
-
 type Worker = {
   run: ResearchRun;
-  foundAnswer: () => FoundAnswer;
+  endShort: Rounds["endShort"];
   history: Anthropic.MessageParam[];
   runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
 };
+
+const causeOf = (ending: LoopEnding): FailureCause =>
+  ending.kind === "limitHit" ? "limitHit" : ending.cause;
 
 // The worker loop in the shared conversation, until its next answer turn or an ending.
 async function work(worker: Worker): Promise<WorkTurn> {
@@ -99,55 +81,51 @@ async function work(worker: Worker): Promise<WorkTurn> {
     return { kind: "aborted" };
   }
   if (outcome.kind === "end") {
-    const found = worker.foundAnswer();
-    const event = endingEvent(run.task.taskId, outcome.ending, found);
+    const event = worker.endShort(causeOf(outcome.ending));
     return { kind: "event", event };
   }
   return { kind: "turn", turn: outcome };
 }
 
-function startRounds(run: ResearchRun, brief: WorkerBrief): Rounds {
+function startRounds(run: ResearchRun): Rounds {
   const { taskId } = run.task;
   const web = createWebTool(run.access);
-  let built: { findings: Findings; spokenLine: string } | null = null;
-  const found = () => foundFindings(built?.findings ?? null, web.pages());
-  // The spoken line belongs to the found card only when that card is the built answer itself.
-  const foundAnswer = (): FoundAnswer => {
-    const findings = found();
-    const spokenLine =
-      built !== null && findings === built.findings ? built.spokenLine : null;
-    return { findings, spokenLine };
-  };
-  run.found.current = found;
+  let kept: Findings | null = null;
+  run.found.current = () => foundFindings(kept, web.pages());
+  // A valid answer ends the run at once, so a run that ends short shows only the pages it read.
+  const endShort = (cause: FailureCause): EngineEvent => ({
+    type: "failed",
+    taskId,
+    cause,
+    reason: null,
+    findings: foundFindings(null, web.pages()),
+  });
   const job = { ...run.task, role: "worker" as const };
   const progress = (step: ProgressStep, sourcesRead: number) =>
     run.progress({ type: "progress", taskId, step, sourcesRead });
   const first = firstWorkerMessage({
     today: run.today,
-    brief,
+    ask: run.command.ask,
     parent: run.command.parent,
   });
-  const checks: CheckRun = {
-    deps: run.deps,
-    task: run.task,
-    pages: web.pages,
-    found,
-    built: (findings, spokenLine) => (built = { findings, spokenLine }),
-  };
   const history: Anthropic.MessageParam[] = [{ role: "user", content: first }];
-  const tools = createToolRunner({ web, deps: run.deps, job, progress });
-  const worker = { run, foundAnswer, history, runTools: tools.runTools };
+  const runTools = createToolRunner({ web, deps: run.deps, job, progress });
+  const worker = { run, endShort, history, runTools };
   return {
-    checks,
+    deps: run.deps,
+    taskId,
+    pages: web.pages,
     history,
     work: () => work(worker),
-    researchMark: tools.researchMark,
+    keep: (findings) => (kept = findings),
+    endShort,
   };
 }
 
 function findingsOf(event: EngineEvent): Findings | null {
-  if (event.type === "result") return event.findings;
-  return event.type === "incomplete" ? event.incomplete.findings : null;
+  return event.type === "result" || event.type === "failed"
+    ? event.findings
+    : null;
 }
 
 // Hostnames only: a URL's path or query can carry the user's words.
@@ -166,20 +144,11 @@ function cardSourcesEntry(
   };
 }
 
-// One task's research: the brief first, then the rounds. Returns its one terminal event, or null once cancelled; progress goes out on the way.
+// One task's research. Returns its one terminal event, or null once cancelled; progress goes out on the way.
 export async function runResearch(
   run: ResearchRun,
 ): Promise<EngineEvent | null> {
-  const { deps, task, command } = run;
-  const brief = await writeBrief(
-    deps,
-    task,
-    command.ask,
-    command.parent,
-    run.today,
-  );
-  if (brief === null) return null;
-  const event = await runRounds(startRounds(run, brief));
+  const event = await runRounds(startRounds(run));
   const entry = cardSourcesEntry(run.task.taskId, event);
   if (entry !== null) run.deps.log(entry);
   return event;

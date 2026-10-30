@@ -40,9 +40,8 @@ export type StartupInfo = {
 
 export type LineId = string;
 
-// What a spoken line is: the front call's line, a clarifying question, a done task's answer, an incomplete task's line, a failure or a notice.
-export type SpokenKind =
-  "talk" | "question" | "answer" | "incomplete" | "failure" | "notice";
+// What a spoken line is: the front call's line, a clarifying question, a done task's answer, a failure or a notice.
+export type SpokenKind = "talk" | "question" | "answer" | "failure" | "notice";
 
 // The line whose audio is playing; taskId is null for a notice.
 export type SpeakingLine = {

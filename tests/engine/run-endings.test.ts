@@ -1,34 +1,31 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelOutcome, ModelRequest } from "../../src/providers/anthropic";
 import type { SearchOutcome } from "../../src/providers/exa";
-import type { EngineEvent, Incomplete } from "../../src/shared/engine";
+import type { EngineEvent } from "../../src/shared/engine";
+import { startEngine } from "../../src/engine/index";
 import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
+  endTurnWith,
+  failed,
   goodAnswer,
   hits,
   pageUrl,
   runTask,
   startRun,
+  textBlock,
+  thinkingBlock,
   toolUseReply,
+  until,
 } from "./run.harness";
 import type { FakeSearchStep } from "./run.harness";
 
 afterEach(closeRuns);
 
-const ended = (incomplete: Incomplete): EngineEvent => ({
-  type: "incomplete",
-  taskId: "task-1",
-  incomplete,
-});
-
-const errorEnd = ended({ kind: "error", cause: "error", findings: null });
-const searchDown = ended({
-  kind: "error",
-  cause: "searchDown",
-  findings: null,
-});
+const errorEnd = failed("error");
+const searchDown = failed("searchDown");
+const keyRejected = failed("searchKeyRejected");
 const modelError: ModelOutcome = { ok: false, failure: "error", detail: "x" };
 
 async function runOf(steps: FakeStep[], searches: FakeSearchStep[] = []) {
@@ -47,17 +44,17 @@ const searchFailed = (cause: string): SearchOutcome =>
   ({ ok: false, cause }) as SearchOutcome;
 
 describe("runTask search endings", () => {
-  it.each(["keyRejected", "quota"])(
-    "ends searchDown at once on %s",
-    async (cause) => {
-      const { run, last } = await runOf(
-        [toolUseReply([{ search: "hermes" }])],
-        [searchFailed(cause)],
-      );
-      expect(last).toEqual([searchDown]);
-      expect(run.loopRequests()).toHaveLength(1);
-    },
-  );
+  it.each([
+    { cause: "keyRejected", ending: "searchKeyRejected" },
+    { cause: "quota", ending: "searchQuota" },
+  ] as const)("ends $ending at once on $cause", async ({ cause, ending }) => {
+    const { run, last } = await runOf(
+      [toolUseReply([{ search: "hermes" }])],
+      [searchFailed(cause)],
+    );
+    expect(last).toEqual([failed(ending)]);
+    expect(run.requests).toHaveLength(1);
+  });
 
   it("tells the worker about one failed search and goes on", async () => {
     const { run, last } = await runOf(
@@ -65,12 +62,45 @@ describe("runTask search endings", () => {
       [searchFailed("timeout")],
     );
     expect(last).toEqual([errorEnd]);
-    expect(lastResults(run.workerRequests()[1])).toEqual([
+    expect(lastResults(run.requests[1])).toEqual([
       expect.objectContaining({
         is_error: true,
         content: expect.stringContaining("Search failed (timeout)"),
       }),
     ]);
+  });
+});
+
+const searchKey = "secret-search-key";
+
+// The real search call with only the network faked: the reply echoes the key, as a provider's error text may.
+describe("a search provider's refusal", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    { status: 401, cause: "searchKeyRejected" },
+    { status: 429, cause: "searchQuota" },
+  ] as const)("$status names $cause and carries no key text", async (row) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(`bad key ${searchKey}`, { status: row.status }),
+    );
+    const events: EngineEvent[] = [];
+    const port = startEngine(
+      { anthropicKey: "test-key", searchKey },
+      {
+        model: async () => toolUseReply([{ search: "hermes" }]),
+        log: () => undefined,
+      },
+    );
+    port.onMessage((event) => events.push(event));
+    port.send(runTask());
+    await until(() => events.some((event) => event.type === "failed"));
+    port.close();
+    expect(events.at(-1)).toEqual(failed(row.cause));
+    expect(JSON.stringify(events)).not.toContain(searchKey);
+    expect(JSON.stringify(events)).not.toContain("bad key");
   });
 });
 
@@ -95,7 +125,7 @@ describe("runTask other endings", () => {
       modelError,
     ]);
     expect(last).toEqual([errorEnd]);
-    expect(lastResults(run.workerRequests()[1])).toEqual([
+    expect(lastResults(run.requests[1])).toEqual([
       expect.objectContaining({
         is_error: true,
         content: expect.stringContaining(
@@ -113,11 +143,11 @@ const reply = (
 ) => ({ ok: true, message: fakeMessage(text, { stopReason }) }) as ModelOutcome;
 const answerWith = (fields: Record<string, unknown>) =>
   reply(JSON.stringify({ ...goodAnswer, ...fields }), "end_turn");
-const withoutOpenPoints = Object.fromEntries(
-  Object.entries(goodAnswer).filter(([key]) => key !== "openPoints"),
+const withoutSources = Object.fromEntries(
+  Object.entries(goodAnswer).filter(([key]) => key !== "sourceIds"),
 );
 
-// Stop reasons that are no answer turn end the run at once, with no retry round.
+// Stop reasons that are no answer turn end the run at once, with no rewrite.
 const unanswered: { name: string; step: ModelOutcome }[] = [
   { name: "refusal", step: reply(answerJson, "refusal") },
   { name: "pause_turn", step: reply(answerJson, "pause_turn") },
@@ -126,28 +156,29 @@ const unanswered: { name: string; step: ModelOutcome }[] = [
 const malformedAnswers: { name: string; step: ModelOutcome }[] = [
   { name: "max_tokens", step: reply(answerJson, "max_tokens") },
   { name: "invalid JSON", step: reply("{ not json", "end_turn") },
+  { name: "no text block", step: endTurnWith([]) },
+  { name: "only a thinking block", step: endTurnWith([thinkingBlock]) },
+  {
+    name: "two text blocks",
+    step: endTurnWith([textBlock(answerJson), textBlock(answerJson)]),
+  },
   {
     name: "a missing field",
-    step: reply(JSON.stringify(withoutOpenPoints), "end_turn"),
+    step: reply(JSON.stringify(withoutSources), "end_turn"),
   },
   { name: "an extra field", step: answerWith({ notes: "x" }) },
-  {
-    name: "a claim with an extra field",
-    step: answerWith({
-      claims: [{ claim: "c", sourceIds: ["s1"], weight: 1 }],
-    }),
-  },
+  { name: "an old status field", step: answerWith({ status: "complete" }) },
   {
     name: "a source id that is not a string",
-    step: answerWith({ claims: [{ claim: "c", sourceIds: [1] }] }),
+    step: answerWith({ sourceIds: [1] }),
   },
   {
-    name: "open points that are not strings",
-    step: answerWith({ openPoints: [null] }),
+    name: "a line that is not a string",
+    step: answerWith({ line: 3 }),
   },
   {
-    name: "a spoken line that is not a string",
-    step: answerWith({ spokenLine: 3 }),
+    name: "a nothingFound that is not a string",
+    step: answerWith({ nothingFound: 3 }),
   },
 ];
 
@@ -158,9 +189,9 @@ describe("runTask malformed answers", () => {
   });
 
   it.each(malformedAnswers)(
-    "ends error on $name in every round when nothing was found",
+    "ends error on $name twice when nothing was found",
     async (row) => {
-      const { last } = await runOf([row.step, row.step, row.step]);
+      const { last } = await runOf([row.step, row.step]);
       expect(last).toEqual([errorEnd]);
     },
   );
@@ -211,11 +242,7 @@ describe("runTask tool batches", () => {
     );
     run.port.send(runTask());
     const events = await run.ended();
-    expect(events[events.length - 1]).toEqual({
-      type: "incomplete",
-      taskId: "task-1",
-      incomplete: { kind: "error", cause: "searchDown", findings: null },
-    });
+    expect(events[events.length - 1]).toEqual(keyRejected);
     const tools = run.entries.filter((entry) => entry.event === "toolCall");
     expect(tools.map((entry) => [entry.tool, entry.outcome])).toEqual([
       ["search", "keyRejected"],
@@ -236,11 +263,7 @@ describe("runTask tool batches", () => {
     );
     run.port.send(runTask());
     const events = await run.ended();
-    expect(events[events.length - 1]).toEqual({
-      type: "incomplete",
-      taskId: "task-1",
-      incomplete: { kind: "limitHit", findings: null },
-    });
+    expect(events[events.length - 1]).toEqual(failed("limitHit"));
     expect(run.queries).toEqual(
       queries.slice(0, 20).map((call) => call.search),
     );

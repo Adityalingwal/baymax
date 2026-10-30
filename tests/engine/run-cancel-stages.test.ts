@@ -22,19 +22,13 @@ const cancel = { type: "cancel" as const, taskId: "task-1" };
 
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const readOne = () => toolUseReply([{ read: pageUrl("one") }]);
-const answered = (cardText: string, sourceIds = ["s1"]) =>
-  workerAnswer({
-    cardText,
-    claims: [{ claim: "Hermes runs a loop", sourceIds }],
-  });
-const card = (cardText: string): Findings => ({
-  cardText,
+const rejected = () => workerAnswer({ line: " " });
+const listOne: Findings = {
+  cardText: "- Page one",
   sources: [one],
-  openPoints: ["How it stores memory"],
-});
+};
 
 type Sent = {
-  briefs: number;
   calls: number;
   queries: number;
   connects: number;
@@ -43,19 +37,11 @@ type StageRow = {
   name: string;
   steps: () => FakeStep[];
   searches?: FakeSearchStep[];
-  briefSteps?: FakeStep[];
   at: (sent: Sent) => boolean; // the stage is in flight
   found: Findings | null;
 };
 
 const stageRows: StageRow[] = [
-  {
-    name: "the brief writer's call",
-    steps: () => [],
-    briefSteps: ["waitForAbort"],
-    at: (sent) => sent.briefs === 1,
-    found: null,
-  },
   {
     name: "a worker call",
     steps: () => ["waitForAbort"],
@@ -67,45 +53,19 @@ const stageRows: StageRow[] = [
     steps: () => [readOne(), toolUseReply([{ search: "hermes" }])],
     searches: ["waitForAbort"],
     at: (sent) => sent.queries === 1,
-    found: { cardText: "- Page one", sources: [one], openPoints: [] },
+    found: listOne,
   },
   {
     name: "a read",
     steps: () => [readOne(), toolUseReply([{ read: pageUrl("slow") }])],
     at: (sent) => sent.connects === 2,
-    found: { cardText: "- Page one", sources: [one], openPoints: [] },
+    found: listOne,
   },
   {
-    name: "the retry round's worker call",
-    steps: () => [
-      readOne(),
-      answered("A loop, memory.", ["s1", "s7"]),
-      "waitForAbort",
-    ],
+    name: "the rewrite's worker call, leaving out the rejected answer",
+    steps: () => [readOne(), rejected(), "waitForAbort"],
     at: (sent) => sent.calls === 3,
-    found: card("A loop, memory."),
-  },
-  {
-    name: "a later worker call of the retry round",
-    steps: () => [
-      readOne(),
-      answered("A loop, memory.", ["s1", "s7"]),
-      toolUseReply([{ read: pageUrl("two") }]),
-      "waitForAbort",
-    ],
-    at: (sent) => sent.calls === 4,
-    found: card("A loop, memory."),
-  },
-  {
-    name: "the worker call after a nudge",
-    steps: () => [
-      readOne(),
-      answered("A loop, memory.", ["s1", "s7"]),
-      answered("A loop again."),
-      "waitForAbort",
-    ],
-    at: (sent) => sent.calls === 4,
-    found: card("A loop, memory."),
+    found: listOne,
   },
 ];
 
@@ -113,16 +73,9 @@ describe("runTask cancel at each stage", () => {
   it.each(stageRows)(
     "stops $name with one cancelled carrying what was found",
     async (row) => {
-      const run = await startRun(
-        row.steps(),
-        row.searches ?? [],
-        undefined,
-        undefined,
-        row.briefSteps ?? [],
-      );
+      const run = await startRun(row.steps(), row.searches ?? []);
       const sent = (): Sent => ({
-        briefs: run.briefRequests().length,
-        calls: run.loopRequests().length, // the worker's calls; the stage is counted after the brief writer
+        calls: run.requests.length,
         queries: run.queries.length,
         connects: run.network.targets.length,
       });
@@ -166,7 +119,7 @@ const repeatRows: RepeatRow[] = [
     // A cancel in every microtask until cancelled arrives also lands between the work settling and the delivery.
     name: "cancels that keep coming until it arrives",
     cancelAgain: async (run) => {
-      await until(() => run.loopRequests().length === 1);
+      await until(() => run.requests.length === 1);
       run.port.send(cancel);
       for (let turn = 0; turn < 100; turn += 1) {
         await Promise.resolve();
@@ -184,7 +137,7 @@ const repeatRows: RepeatRow[] = [
         again = false;
         run.port.send(cancel);
       });
-      await until(() => run.loopRequests().length === 1);
+      await until(() => run.requests.length === 1);
       run.port.send(cancel);
     },
   },
@@ -226,10 +179,7 @@ describe("runTask cancel at the edges", () => {
   it("sends no cancelled after the result when a result listener cancels", async () => {
     const run = await startRun([
       toolUseReply([{ read: pageUrl("one") }]),
-      workerAnswer({
-        cardText: "A loop.",
-        claims: [{ claim: "A loop", sourceIds: ["s1"] }],
-      }),
+      workerAnswer({ report: "A loop.", sourceIds: ["s1"] }),
     ]);
     run.port.onMessage((event) => {
       if (event.type === "result") run.port.send(cancel);

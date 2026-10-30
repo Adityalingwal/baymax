@@ -12,7 +12,6 @@ import {
 afterEach(closeRuns);
 
 const unread = "https://unread.example/docs";
-const claimOne = [{ claim: "Hermes runs a loop", sourceIds: ["s1"] }];
 
 type Row = { name: string; page: string; cardText: string; expected: string };
 
@@ -103,7 +102,7 @@ describe("runTask card links", () => {
   it.each(rows)("forms no link of any kind after $name", async (row) => {
     const run = await startRun([
       toolUseReply([{ read: pageUrl(row.page) }]),
-      workerAnswer({ cardText: row.cardText, claims: claimOne }),
+      workerAnswer({ report: row.cardText, sourceIds: ["s1"] }),
     ]);
     run.port.send(runTask());
     const events = await run.ended();

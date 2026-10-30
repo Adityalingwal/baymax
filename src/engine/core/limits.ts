@@ -8,12 +8,6 @@ export const taskLimits = {
 } as const;
 
 export const roles = {
-  briefWriter: {
-    model: "claude-sonnet-5-5",
-    maxTokens: 1024,
-    timeoutMs: 20_000,
-  },
-  briefRetry: { model: "claude-opus-5-5", maxTokens: 2048, timeoutMs: 20_000 }, // Opus always thinks, and thinking counts against max_tokens
   worker: { model: "claude-sonnet-5-5", maxTokens: 2048, timeoutMs: 60_000 },
 } as const;
 
@@ -44,12 +38,6 @@ const prices: Record<RoleModel, Price> = {
     input: 2.0,
     output: 10.0,
     cacheWrite: 2.5,
-    cacheRead: 0.2,
-  },
-  "claude-opus-5-5": {
-    input: 4.0,
-    output: 20.0,
-    cacheWrite: 5.0,
     cacheRead: 0.2,
   },
 };

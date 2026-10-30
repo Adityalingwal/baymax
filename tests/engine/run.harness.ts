@@ -9,14 +9,10 @@ import type { Findings } from "../../src/shared/cards";
 import type {
   EngineCommand,
   EngineEvent,
+  FailureCause,
   ParentResult,
 } from "../../src/shared/engine";
-import {
-  fakeBriefParts,
-  fakeMessage,
-  noContents,
-  startTestEngine,
-} from "./harness";
+import { fakeMessage, noContents, startTestEngine } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   htmlPage,
@@ -29,8 +25,6 @@ export const ask = {
   goal: "How the Hermes agent works inside",
   userWords: "how does Hermes agent work inside?",
 };
-
-export const brief = { ...ask, ...fakeBriefParts };
 
 export function runTask(
   extra: { taskId?: string; parent?: ParentResult | null } = {},
@@ -104,6 +98,16 @@ function reply(
   return { ok: true, message: { ...message, content } };
 }
 
+// An answer turn that ends normally with exactly these blocks.
+export const endTurnWith = (content: Anthropic.ContentBlock[]): ModelOutcome =>
+  reply(content, "end_turn");
+
+export const textBlock = (text: string): Anthropic.TextBlock => ({
+  type: "text",
+  text,
+  citations: null,
+});
+
 export const thinkingBlock: Anthropic.ThinkingBlock = {
   type: "thinking",
   thinking: "I should search first.",
@@ -118,25 +122,18 @@ export function toolUseReply(
   return reply([...lead, ...calls.map(toolBlock)], "tool_use");
 }
 
-export type AnswerFields = {
-  spokenLine?: string;
-  cardText?: string;
-  claims?: { claim: string; sourceIds: string[] }[];
-  openPoints?: string[];
-  status?: string;
-  nextQuestion?: string | null;
+type AnswerFields = {
+  report?: string;
+  line?: string;
+  sourceIds?: string[];
+  nothingFound?: string | null;
 };
 
 export const goodAnswer = {
-  spokenLine: "Hermes runs a loop of model calls and tools.",
-  cardText: "## How it works\n\nHermes runs a loop with tools.",
-  claims: [
-    { claim: "Hermes runs a loop", sourceIds: ["s1"] },
-    { claim: "It uses tools", sourceIds: ["s2"] },
-  ],
-  openPoints: ["How it stores memory"],
-  status: "complete",
-  nextQuestion: null,
+  report: "## How it works\n\nHermes runs a loop with tools.",
+  line: "Hermes runs a loop of model calls and tools.",
+  sourceIds: ["s1", "s2"],
+  nothingFound: null,
 };
 
 export function workerAnswer(fields: AnswerFields = {}): ModelOutcome {
@@ -145,6 +142,18 @@ export function workerAnswer(fields: AnswerFields = {}): ModelOutcome {
     message: fakeMessage(JSON.stringify({ ...goodAnswer, ...fields })),
   };
 }
+
+// A task that ended failed; only an answer of nothing found carries a reason.
+export const failed = (
+  cause: FailureCause,
+  findings: Findings | null = null,
+): EngineEvent => ({
+  type: "failed",
+  taskId: "task-1",
+  cause,
+  reason: null,
+  findings,
+});
 
 export type FakeSearchStep =
   SearchOutcome | "waitForAbort" | Promise<SearchOutcome>;
@@ -184,28 +193,23 @@ export async function startRun(
   searches: FakeSearchStep[] = [],
   now?: () => number,
   contents: ContentsFn = noContents,
-  briefSteps: FakeStep[] = [],
 ) {
   const network = await startPages();
   networks.push(network);
   const searcher = fakeSearch(searches);
   const contentsAsked: string[] = [];
-  const engine = startTestEngine(
-    steps,
-    {
-      search: searcher.search,
-      contents: (url, signal) => {
-        contentsAsked.push(url);
-        return contents(url, signal);
-      },
-      lookup: network.lookup,
-      connect: network.connect,
-      ...(now === undefined ? {} : { now }),
+  const engine = startTestEngine(steps, {
+    search: searcher.search,
+    contents: (url, signal) => {
+      contentsAsked.push(url);
+      return contents(url, signal);
     },
-    briefSteps,
-  );
+    lookup: network.lookup,
+    connect: network.connect,
+    ...(now === undefined ? {} : { now }),
+  });
   const terminal = (event: EngineEvent) =>
-    ["result", "incomplete", "cancelled"].includes(event.type);
+    ["result", "failed", "cancelled"].includes(event.type);
   // Waits for the task's terminal event, then settles so a stray later event would show.
   const ended = async () => {
     for (let wait = 0; wait < 1500; wait += 1) {

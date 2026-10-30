@@ -14,7 +14,6 @@ const findings = (cardText: string, sources = 0): Findings => ({
     url: `https://example.com/${index}`,
     title: `Page ${index}`,
   })),
-  openPoints: [],
 });
 
 const card = (id: string, state: TaskState, fields: Partial<Card> = {}) => ({
@@ -48,8 +47,8 @@ describe("isChatReply", () => {
       chat: false,
     },
     {
-      name: "an incomplete card",
-      card: { ...chat, state: "incomplete" as const },
+      name: "a failed card",
+      card: { ...chat, state: "failed" as const },
       chat: false,
     },
   ])("$name: $chat", ({ card: given, chat: expected }) => {
@@ -112,9 +111,19 @@ describe("statusLine", () => {
       line: "1 needs you · 1 running",
     },
     {
-      name: "results only, chat not counted",
-      tasks: [result, { ...result, id: "r2" }, card("i", "incomplete"), chat],
-      line: "3 done",
+      name: "results only, chat and failed cards not counted",
+      tasks: [result, { ...result, id: "r2" }, card("i", "failed"), chat],
+      line: "2 results",
+    },
+    {
+      name: "one result",
+      tasks: [result],
+      line: "1 result",
+    },
+    {
+      name: "only a failed card",
+      tasks: [card("i", "failed")],
+      line: "Nothing running",
     },
   ])("$name: $line", ({ tasks, line }) => {
     expect(statusLine(tasks)).toBe(line);

@@ -1,17 +1,8 @@
 import type { Findings, TaskId } from "../../shared/cards";
-import type {
-  EngineEvent,
-  Incomplete,
-  ParentResult,
-} from "../../shared/engine";
+import type { EngineEvent, ParentResult } from "../../shared/engine";
 import type { Decision } from "./decision";
 import { appendResult } from "./history";
-import {
-  fixedLines,
-  incompleteLines,
-  partialParentLine,
-  stepText,
-} from "./lines";
+import { failedLine, fixedLines, stepText } from "./lines";
 import type { Admission, Change, Input, Model, TaskRecord } from "./record";
 import {
   abandonAttempt,
@@ -27,28 +18,32 @@ const QUEUE_LIMIT = 3;
 
 type RunEvent = Extract<
   EngineEvent,
-  { type: "progress" } | { type: "result" } | { type: "incomplete" }
+  { type: "progress" } | { type: "result" } | { type: "failed" }
 >;
 type Admitted = Extract<Decision, { route: "newTask" | "followUp" }>;
 
 const LEAVE_MS = 3000;
 
-function closeTask(
-  change: Change,
-  record: TaskRecord,
-  outcome: ParentResult["outcome"],
-  findings: Findings | null,
-): void {
+type Ending = Pick<ParentResult, "outcome" | "findings" | "spokenLine">;
+
+// An admitted task keeps its ask, even when it found nothing; a record that never had one keeps the card's words.
+function closeTask(change: Change, record: TaskRecord, ending: Ending): void {
   const { model } = change;
-  const { taskId } = record.card;
-  model.answers.set(taskId, { taskId, outcome, findings });
+  const { taskId, words } = record.card;
+  const ask = record.admission?.ask ?? null;
+  model.answers.set(taskId, {
+    taskId,
+    goal: ask?.goal ?? null,
+    words: ask?.userWords ?? words,
+    ...ending,
+  });
   model.queue = model.queue.filter((id) => id !== taskId);
   model.questions = model.questions.filter((id) => id !== taskId);
   record.sent = null;
   record.attempt = null;
   record.failedAttempt = null;
   record.hiddenQuestion = null;
-  record.card.state = outcome;
+  record.card.state = ending.outcome;
   record.card.step = null;
 }
 
@@ -59,11 +54,11 @@ function endDone(
   spokenLine: string,
   findings: Findings,
 ): void {
-  closeTask(change, record, "done", findings);
+  closeTask(change, record, { outcome: "done", findings, spokenLine });
   record.spokenLine = spokenLine;
   record.card.spokenLine = spokenLine;
   record.card.answer = findings;
-  record.card.line = record.builtOnPartial ? fixedLines.builtOnPartial : null;
+  record.card.line = null;
   const { taskId } = record.card;
   appendResult(change.model.exchanges, taskId, spokenLine);
   say(change, taskId, spokenLine, "answer");
@@ -71,8 +66,8 @@ function endDone(
 
 // The front call's line was the whole answer, so the card shows it as a done answer.
 export function endChat(change: Change, record: TaskRecord, text: string) {
-  const findings: Findings = { cardText: text, sources: [], openPoints: [] };
-  closeTask(change, record, "done", findings);
+  const findings: Findings = { cardText: text, sources: [] };
+  closeTask(change, record, { outcome: "done", findings, spokenLine: text });
   record.spokenLine = text;
   record.card.spokenLine = text;
   record.card.reply = text;
@@ -81,25 +76,23 @@ export function endChat(change: Change, record: TaskRecord, text: string) {
   record.card.line = null;
 }
 
-function endIncomplete(
+function endFailed(
   change: Change,
   record: TaskRecord,
-  incomplete: Incomplete,
+  event: Extract<EngineEvent, { type: "failed" }>,
 ): void {
-  const lines = incompleteLines(incomplete, record.topic);
-  closeTask(change, record, "incomplete", incomplete.findings);
-  record.card.answer = incomplete.findings;
-  record.card.line = lines.line;
-  record.card.missing = lines.missing;
-  // Without a fixed line, the spoken text is the worker's own (its next question or its answer), said as given.
-  say(change, record.card.taskId, lines.spoken, "incomplete");
+  const line = failedLine(event.cause, event.reason);
+  const { findings } = event;
+  closeTask(change, record, { outcome: "failed", findings, spokenLine: null });
+  record.card.answer = findings;
+  record.card.line = line;
+  say(change, record.card.taskId, line, "failure");
 }
 
 function clearForLeaving(change: Change, record: TaskRecord): void {
   const { card } = record;
   card.question = null;
   card.answer = null;
-  card.missing = null;
   card.canRetry = false;
   setTimer(change, LEAVE_MS, leave(card.taskId));
 }
@@ -110,7 +103,11 @@ function endCancelled(
   findings: Findings | null,
   line: string | null,
 ): void {
-  closeTask(change, record, "cancelled", findings);
+  closeTask(change, record, {
+    outcome: "cancelled",
+    findings,
+    spokenLine: null,
+  });
   record.card.line = line;
   clearForLeaving(change, record);
   const { taskId } = record.card;
@@ -124,7 +121,11 @@ export function endOutside(
   record: TaskRecord,
   spoken: string,
 ): void {
-  closeTask(change, record, "cancelled", null);
+  closeTask(change, record, {
+    outcome: "cancelled",
+    findings: null,
+    spokenLine: null,
+  });
   record.card.line = null;
   record.card.reply = spoken;
   clearForLeaving(change, record);
@@ -166,7 +167,6 @@ function parentResult(change: Change, record: TaskRecord): ParentResult | null {
   return null;
 }
 
-// The card's line is the fixed partial-parent line when the parent did not end done, else none.
 function startTask(
   change: Change,
   record: TaskRecord,
@@ -174,17 +174,9 @@ function startTask(
 ): void {
   const { card } = record;
   const parent = parentResult(change, record);
-  const parentId = card.parentTaskId;
-  const parentTopic =
-    parentId === null
-      ? null
-      : (change.model.records.get(parentId)?.topic ?? null);
-  const partial =
-    parent === null ? null : partialParentLine(parent, parentTopic);
   if (parent === null) card.parentTaskId = null;
-  record.builtOnPartial = partial !== null && parent?.findings !== null;
   card.state = "running";
-  card.line = partial;
+  card.line = null;
   hold(change, record, {
     type: "runTask",
     taskId: card.taskId,
@@ -206,6 +198,7 @@ export function admit(
   const { card } = record;
   record.admission = { ask: decision.ask };
   record.topic = decision.topic;
+  card.title = record.topic;
   card.sayBack = null;
   card.reply = line;
   card.parentTaskId =
@@ -257,21 +250,9 @@ export function receiveRunEvent(
     case "result":
       endDone(change, record, event.spokenLine, event.findings);
       return true;
-    case "incomplete":
-      endIncomplete(change, record, event.incomplete);
+    case "failed":
+      endFailed(change, record, event);
       return true;
-  }
-}
-
-function carriedFindings(event: EngineEvent): Findings | null {
-  switch (event.type) {
-    case "cancelled":
-    case "result":
-      return event.findings;
-    case "incomplete":
-      return event.incomplete.findings;
-    default:
-      return null;
   }
 }
 
@@ -284,7 +265,7 @@ export function receiveWhileCancelling(
   if (event.type === "progress") {
     return dropped(change, `progress while cancelling ${event.taskId}`);
   }
-  endCancelled(change, record, carriedFindings(event), null);
+  endCancelled(change, record, event.findings, null);
   return true;
 }
 

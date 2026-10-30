@@ -20,11 +20,13 @@ describe("startEngine runTask worker failures", () => {
     engine.port.send(runTask());
     expect(await engine.settle(1)).toEqual([
       {
-        type: "incomplete",
+        type: "failed",
         taskId: "task-1",
-        incomplete: { kind: "error", cause: row.kind, findings: null },
+        cause: row.kind,
+        reason: null,
+        findings: null,
       },
     ]);
-    expect(engine.loopRequests()).toHaveLength(1);
+    expect(engine.requests).toHaveLength(1);
   });
 });

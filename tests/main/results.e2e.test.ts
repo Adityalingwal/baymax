@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Findings } from "../../src/shared/cards";
-import type { FailureKind, Incomplete } from "../../src/shared/engine";
-import { admitAs, admitTask, runToDone, wire } from "./wiring.harness";
+import type { FailureCause } from "../../src/shared/engine";
+import { ipcChannels } from "../../src/shared/ipc";
+import {
+  admitAs,
+  admitTask,
+  runToDone,
+  streamFront,
+  wire,
+} from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
-import { findings } from "./tasks/harness";
+import { findings, newTask } from "./tasks/harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -13,153 +20,93 @@ async function spokenAll(w: Wired): Promise<string[]> {
   return w.spoken();
 }
 
-const found: Findings = { cardText: "Partial.", sources: [], openPoints: [] };
+const found: Findings = { cardText: "- Page one", sources: [] };
 
-// The topic the front call gave the task; its first part names the task in the lines.
-const topic = "how Hermes works, from its docs";
+const limitLine = "I ran out of time on that one before I had an answer.";
+const errorLine = "I hit an error on that question. Try again.";
 
-const failureRows: { kind: FailureKind; line: string }[] = [
+type FailedRow = {
+  name: string;
+  cause: FailureCause;
+  reason?: string;
+  answer: Findings | null;
+  line: string;
+};
+
+const failedRows: FailedRow[] = [
   {
-    kind: "modelsUnreachable",
+    name: "nothing found, its reason said as written",
+    cause: "nothingFound",
+    reason: "No page mentions a Hermes 9.",
+    answer: null,
+    line: "No page mentions a Hermes 9.",
+  },
+  {
+    name: "nothing found after reading, its pages on the card",
+    cause: "nothingFound",
+    reason: "No page mentions a Hermes 9.",
+    answer: found,
+    line: "No page mentions a Hermes 9.",
+  },
+  {
+    name: "a limit with pages",
+    cause: "limitHit",
+    answer: found,
+    line: limitLine,
+  },
+  {
+    name: "a limit with nothing",
+    cause: "limitHit",
+    answer: null,
+    line: limitLine,
+  },
+  {
+    name: "an error with pages",
+    cause: "error",
+    answer: found,
+    line: errorLine,
+  },
+  {
+    name: "an error with nothing",
+    cause: "error",
+    answer: null,
+    line: errorLine,
+  },
+  {
+    name: "models unreachable",
+    cause: "modelsUnreachable",
+    answer: found,
     line: "I can't reach my models right now. Try again in a few minutes.",
   },
   {
-    kind: "searchDown",
+    name: "search down",
+    cause: "searchDown",
+    answer: found,
     line: "Search isn't working right now. Try again in a few minutes.",
   },
   {
-    kind: "keyRejected",
+    name: "a rejected model key",
+    cause: "keyRejected",
+    answer: found,
     line: "Baymax's model service rejected its key. Please tell the person who set up Baymax.",
   },
   {
-    kind: "noCredit",
+    name: "no credit",
+    cause: "noCredit",
+    answer: null,
     line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
   },
-];
-
-type IncompleteRow = {
-  name: string;
-  incomplete: Incomplete;
-  line: string | null;
-  missing: string | null;
-  spoken: string;
-};
-
-const errorCauseRows: IncompleteRow[] = failureRows.map((row) => ({
-  name: `error caused by ${row.kind}`,
-  incomplete: { kind: "error", cause: row.kind, findings: found },
-  line: row.line,
-  missing: null,
-  spoken: row.line,
-}));
-
-const answered = { ...found, openPoints: ["the price in India", "the weight"] };
-
-const incompleteRows: IncompleteRow[] = [
   {
-    name: "limitHit with an answer and open points",
-    incomplete: {
-      kind: "limitHit",
-      findings: answered,
-      spokenLine: "Hermes runs a loop.",
-    },
-    line: null,
-    missing: "Not found: the price in India; the weight",
-    spoken: "Hermes runs a loop.",
+    name: "a rejected search key",
+    cause: "searchKeyRejected",
+    answer: null,
+    line: "Baymax's search service rejected its key. Please tell the person who set up Baymax.",
   },
   {
-    name: "limitHit with an answer and nothing open",
-    incomplete: {
-      kind: "limitHit",
-      findings: { ...found, openPoints: [] },
-      spokenLine: "Hermes runs a loop.",
-    },
-    line: null,
-    missing: null,
-    spoken: "Hermes runs a loop.",
-  },
-  {
-    name: "limitHit with an answer whose spoken line is empty",
-    incomplete: { kind: "limitHit", findings: answered, spokenLine: "" },
-    line: null,
-    missing: "Not found: the price in India; the weight",
-    spoken: "Here's what I found on how Hermes works.",
-  },
-  {
-    name: "limitHit with pages only",
-    incomplete: { kind: "limitHit", findings: found },
-    line: "I couldn't finish an answer on how Hermes works; here are the pages I read.",
-    missing: null,
-    spoken:
-      "I couldn't finish an answer on how Hermes works; here are the pages I read.",
-  },
-  {
-    name: "limitHit without findings",
-    incomplete: { kind: "limitHit", findings: null },
-    line: "I couldn't find an answer on how Hermes works.",
-    missing: null,
-    spoken: "I couldn't find an answer on how Hermes works.",
-  },
-  {
-    name: "sourcesThin with findings",
-    incomplete: { kind: "sourcesThin", findings: found },
-    line: "How Hermes works found little on the web; here is what I found.",
-    missing: null,
-    spoken: "How Hermes works found little on the web; here is what I found.",
-  },
-  {
-    name: "sourcesThin without findings",
-    incomplete: { kind: "sourcesThin", findings: null },
-    line: "How Hermes works found little on the web before it found anything.",
-    missing: null,
-    spoken:
-      "How Hermes works found little on the web before it found anything.",
-  },
-  {
-    name: "error with findings",
-    incomplete: { kind: "error", cause: "error", findings: found },
-    line: "How Hermes works hit an error; here is what I found.",
-    missing: null,
-    spoken: "How Hermes works hit an error; here is what I found.",
-  },
-  {
-    name: "error without findings",
-    incomplete: { kind: "error", cause: "error", findings: null },
-    line: "How Hermes works hit an error before it found anything.",
-    missing: null,
-    spoken: "How Hermes works hit an error before it found anything.",
-  },
-  ...errorCauseRows,
-  {
-    name: "error caused by noCredit, nothing found",
-    incomplete: { kind: "error", cause: "noCredit", findings: null },
-    line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
-    missing: null,
-    spoken:
-      "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
-  },
-  {
-    name: "unchecked",
-    incomplete: {
-      kind: "unchecked",
-      uncheckedPart: "The dates.",
-      findings: found,
-    },
-    line: "How Hermes works is finished, but I couldn't check all of it; the unchecked part is marked.",
-    missing: "The dates.",
-    spoken:
-      "How Hermes works is finished, but I couldn't check all of it; the unchecked part is marked.",
-  },
-  {
-    name: "needsUser",
-    incomplete: {
-      kind: "needsUser",
-      nextQuestion: "Which version?",
-      findings: null,
-    },
-    line: null,
-    missing: "Which version?",
-    spoken: "Which version?",
+    name: "a reached search quota",
+    cause: "searchQuota",
+    answer: found,
+    line: "Baymax's search service has reached its quota. Please tell the person who set up Baymax.",
   },
 ];
 
@@ -183,32 +130,71 @@ const stepRows = [
   { step: { tool: "read", url: "not a url" }, text: "reading not a url" },
 ] as const;
 
-describe("an incomplete task through the wiring", () => {
-  it.each(incompleteRows)(
+describe("a failed task through the wiring", () => {
+  it.each(failedRows)(
     "$name shows and says its line",
-    async ({ incomplete, line, missing, spoken }) => {
+    async ({ cause, reason, answer, line }) => {
       const w = wire();
-      await admitAs(w, topic);
+      await admitAs(w, "hermes");
       w.port.emit({
         type: "progress",
         taskId: "t1",
         step: { tool: "search", query: "hermes" },
         sourcesRead: 2,
       });
-      w.port.emit({ type: "incomplete", taskId: "t1", incomplete });
+      w.port.emit({
+        type: "failed",
+        taskId: "t1",
+        cause,
+        reason: reason ?? null,
+        findings: answer,
+      });
       expect(w.card("t1")).toMatchObject({
-        state: "incomplete",
-        answer: incomplete.findings,
+        state: "failed",
+        answer,
         line,
-        missing,
+        spokenLine: null,
         step: null,
         sourcesRead: 2,
       });
-      // The worker's own text (its question or its answer) is said as given; fixed lines are said as written.
-      expect((await spokenAll(w)).at(-1)).toBe(spoken);
+      expect((await spokenAll(w)).at(-1)).toBe(line);
       expect(w.talkerCalls).toHaveLength(1);
     },
   );
+});
+
+describe("a result with an empty report", () => {
+  it("says and shows its line, with no report to show", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    const empty = { cardText: "", sources: [] };
+    w.port.emit({
+      type: "result",
+      taskId: "t1",
+      spokenLine: "It is 31 degrees in Delhi.",
+      findings: empty,
+    });
+    expect(w.card("t1")).toMatchObject({
+      state: "done",
+      answer: empty,
+      line: null,
+      spokenLine: "It is 31 degrees in Delhi.",
+    });
+    expect((await spokenAll(w)).at(-1)).toBe("It is 31 degrees in Delhi.");
+  });
+});
+
+describe("a card's title", () => {
+  it("is the topic once the front call gave one, and the words stay as asked", async () => {
+    const w = wire();
+    w.send(ipcChannels.submitQuestion, { text: "tell me hermes" });
+    expect(w.card("t1")).toMatchObject({ title: null });
+    await streamFront(w, newTask("how Hermes works"), "Checking.");
+    expect(w.card("t1")).toMatchObject({
+      title: "how Hermes works",
+      words: "tell me hermes",
+    });
+  });
 });
 
 describe("a running task's step", () => {
@@ -225,13 +211,15 @@ const tenMinutes = 10 * 60 * 1000;
 const endedRows = [
   { name: "done", end: runToDone },
   {
-    name: "incomplete",
+    name: "failed",
     end: async (w: Wired) => {
       await admitTask(w);
       w.port.emit({
-        type: "incomplete",
+        type: "failed",
         taskId: "t1",
-        incomplete: { kind: "limitHit", findings: findings("Part.") },
+        cause: "limitHit",
+        reason: null,
+        findings: findings("Part."),
       });
     },
   },

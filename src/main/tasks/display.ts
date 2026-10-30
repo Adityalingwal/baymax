@@ -41,7 +41,7 @@ export function recentExchanges(
     .slice(-RECENT_COUNT);
   const carded = new Map<TaskId, string>();
   for (const { card } of records
-    .filter((r) => r.card.answer !== null)
+    .filter((r) => (r.card.answer?.cardText ?? "") !== "")
     .slice(-CARD_COUNT)) {
     if (card.answer !== null) {
       carded.set(card.taskId, cardExcerpt(card.answer.cardText));
