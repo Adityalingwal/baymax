@@ -1,4 +1,9 @@
-import type { LineId, SpeakingLine, VoicePhase } from "../../shared/ipc";
+import type {
+  LineId,
+  SetMuted,
+  SpeakingLine,
+  VoicePhase,
+} from "../../shared/ipc";
 
 // The closed-panel voice pill and the answer island it grows into. Rules and timings: notch-design-locked.md,
 // "Voice pill", the pill close and mute sections, and "Task finish", with design-lock-timing.md's updates.
@@ -121,6 +126,18 @@ function muteClicked(state: PillState): PillState {
     clearLabel: state.mainMuted ? "Unmuted" : "Muted",
   };
   return islandShown(state) ? clicked : startWait(clicked, "hold");
+}
+
+// One click on the pill's mute: what main is asked for comes from main's own mute, never from the pill's label.
+export function clickMute(
+  state: PillState,
+  actions: {
+    dispatch: (event: PillEvent) => void;
+    setMuted: (payload: SetMuted) => void;
+  },
+): void {
+  actions.dispatch({ kind: "mute-clicked" });
+  actions.setMuted({ muted: !state.mainMuted });
 }
 
 export function pillReducer(state: PillState, event: PillEvent): PillState {

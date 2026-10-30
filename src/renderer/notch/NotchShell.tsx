@@ -13,6 +13,7 @@ import {
   silhouettePath,
 } from "./outline";
 import type { OutlineGeometry } from "./outline";
+import { clickMute } from "./pill";
 import { RunningRing } from "./RunningRing";
 import { useClosedShape } from "./useClosedShape";
 import type { ClosedShape } from "./useClosedShape";
@@ -232,10 +233,8 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const panel = usePanel({ ...props, closed, fullReport });
   const { open, layers } = panel;
   const scrollTo = useScrollTo(open);
-  const onMute = () => {
-    voice.dispatch({ kind: "mute-clicked" });
-    setMuted({ muted: !props.muted });
-  };
+  const onMute = () =>
+    clickMute(voice.pill, { dispatch: voice.dispatch, setMuted });
   // The explicit open-result event: it ends the island, opens the panel and scrolls to the result.
   const onOpenResult = (taskId: TaskId) => {
     voice.dispatch({ kind: "open-result" });

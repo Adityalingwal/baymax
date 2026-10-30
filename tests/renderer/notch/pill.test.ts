@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { VoicePhase } from "../../../src/shared/ipc";
 import {
+  clickMute,
   initialPill,
   islandShown,
   pillDelays,
@@ -175,19 +176,6 @@ describe("pillReducer", () => {
     }).toEqual(expected);
   });
 
-  it("toggles on two clicks in a row, following main's mute, with the 800 ms from each click", () => {
-    const once = run([speaking, mute, mainMuted, idle]);
-    const twice = pillReducer(once, mute);
-    expect(once.clearLabel).toBe("Muted");
-    expect(twice.clearLabel).toBe("Unmuted");
-    expect(twice.wait?.token).not.toBe(once.wait?.token);
-    expect(pillReducer(twice, staleHold(once.wait?.token ?? -1)).shown).toBe(
-      true,
-    );
-    const unmuted = pillReducer(twice, { kind: "main-muted", muted: false });
-    expect(pillReducer(unmuted, mute).clearLabel).toBe("Muted");
-  });
-
   it("holds the locked delays", () => {
     expect(pillDelays).toEqual({ thresholdMs: 50, holdMs: 800 });
   });
@@ -209,6 +197,39 @@ describe("pillReducer", () => {
       kind: "answer",
     });
     expect(run([speaking, idle]).line).toBeNull();
+  });
+});
+
+describe("two clicks in a row on the pill's mute", () => {
+  it("toggles the label, following main's mute, with the 800 ms from each click", () => {
+    const once = run([speaking, mute, mainMuted, idle]);
+    const twice = pillReducer(once, mute);
+    expect(once.clearLabel).toBe("Muted");
+    expect(twice.clearLabel).toBe("Unmuted");
+    expect(twice.wait?.token).not.toBe(once.wait?.token);
+    expect(pillReducer(twice, staleHold(once.wait?.token ?? -1)).shown).toBe(
+      true,
+    );
+    const unmuted = pillReducer(twice, { kind: "main-muted", muted: false });
+    expect(pillReducer(unmuted, mute).clearLabel).toBe("Muted");
+  });
+
+  it("asks main to mute, then to unmute", () => {
+    const sent: boolean[] = [];
+    let state = run([speaking]);
+    const click = () =>
+      clickMute(state, {
+        dispatch: (event) => {
+          state = pillReducer(state, event);
+        },
+        setMuted: ({ muted }) => {
+          sent.push(muted);
+        },
+      });
+    click();
+    state = pillReducer(state, mainMuted);
+    click();
+    expect(sent).toEqual([true, false]);
   });
 });
 
