@@ -166,7 +166,7 @@
     "max-lines": [
       "warn",
       {
-        "max": 300,
+        "max": 500,
         "skipBlankLines": true,
         "skipComments": true
       }

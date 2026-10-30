@@ -20,7 +20,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 - Write plain functions and modules. Use a class only when a library requires one.
 - Use `as const` objects and union types instead of `enum`.
 - Write application code in TypeScript (`.ts`, `.tsx`). Keep it strict: no `any`, `@ts-ignore` or non-null `!`.
-- Keep a file at 300 lines or fewer and a function at 50 or fewer. One file does one job.
+- Keep one concept in one file, up to about 500 lines, and a function at 50 lines or fewer.
 - Name folders and functions by what they do (`adapters/`, `startListening`). Replace generic names such as `utils/`, `helpers/`, `Manager`, `handler`, `data` with specific ones.
 - Use one word per concept: `hold`, `listening`, `idle`, `talker`, `coordinator`, `worker`, `plug`, `engine`, `task`, `card`, `done check`, `adapter`.
 - When the same concept is written twice, move it to one place. Code that only looks similar stays separate.
