@@ -1,7 +1,8 @@
 import type { Findings, TaskId } from "../../shared/cards";
 import type { EngineEvent, ParentResult } from "../../shared/engine";
 import type { Decision } from "./decision";
-import { appendResult } from "./history";
+import { forgetFailure } from "./failure";
+import { appendLine } from "./history";
 import { failedLine, stepText } from "./lines";
 import type { Admission, Change, Input, Model, TaskRecord } from "./record";
 import {
@@ -57,7 +58,7 @@ function endDone(
   record.card.answer = findings;
   record.card.line = null;
   const { taskId } = record.card;
-  appendResult(change.model.exchanges, taskId, spokenLine);
+  appendLine(change.model.exchanges, taskId, spokenLine);
   say(change, taskId, spokenLine, "answer");
 }
 
@@ -71,6 +72,7 @@ export function endChat(change: Change, record: TaskRecord, text: string) {
   record.card.line = null;
 }
 
+// It has no line of its own: the talker tells it, in a turn that runs when nothing is in the way.
 function endFailed(
   change: Change,
   record: TaskRecord,
@@ -82,7 +84,10 @@ function endFailed(
   record.card.answer = findings;
   record.card.line = line;
   record.card.canRetry = record.admission !== null;
-  say(change, record.card.taskId, line, "failure");
+  change.model.pendingFailures.push({
+    taskId: record.card.taskId,
+    cause: line,
+  });
 }
 
 function clearForLeaving(change: Change, record: TaskRecord): void {
@@ -104,6 +109,7 @@ function endCancelled(
   });
   record.card.line = null;
   clearForLeaving(change, record);
+  forgetFailure(change, record.card.taskId);
   silence(change, record.card.taskId);
 }
 
@@ -216,6 +222,7 @@ export function retryTask(change: Change, taskId: TaskId): boolean {
     return dropped(change, `retry ${taskId}`);
   }
   const { card } = record;
+  forgetFailure(change, taskId);
   change.model.answers.delete(taskId);
   record.retried = true;
   card.canRetry = false;

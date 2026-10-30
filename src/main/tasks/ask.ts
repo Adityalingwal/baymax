@@ -25,6 +25,7 @@ function partsFor(
     words,
     history: conversationHistory(model.exchanges),
     recent: recentExchanges(model, taskId),
+    offers: model.offers.map((offer) => ({ ...offer })),
     tasks: taskSummaries(model),
     room: roomLeft(model),
     waiting,

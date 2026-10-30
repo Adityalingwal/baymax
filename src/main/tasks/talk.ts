@@ -31,19 +31,40 @@ export type WaitingQuestion = {
 
 export type HistoryTurn = { role: "user" | "assistant"; text: string };
 
-// What main asks the front call for: a spoken line about new words, then a decision about them.
-export type TalkRequest = {
-  kind: "front";
+// An open offer to try a failed task again; kept apart from recent, since the task may be older than that window.
+export type RetryOffer = { taskId: TaskId; title: string; order: number };
+
+// What a talker call reads, whatever it is about.
+type TalkContext = {
   attemptId: string; // unique per call, so a late result of an older call is ignored
   taskId: TaskId;
-  utteranceId: UtteranceId | null; // null for typed words
-  words: string;
   history: HistoryTurn[];
   recent: RecentExchange[];
+  offers: RetryOffer[];
   tasks: TaskSummary[]; // only the running and queued ones
   room: number; // how many more tasks fit, running or waiting
   waiting: WaitingQuestion | null;
 };
+
+// What main asks the front call for: a spoken line about new words, then a decision about them.
+export type FrontRequest = TalkContext & {
+  kind: "front";
+  utteranceId: UtteranceId | null; // null for typed words
+  words: string;
+};
+
+// A failed task told in the talker's own words; there are no new words.
+export type FailureRequest = TalkContext & {
+  kind: "failure";
+  failed: {
+    title: string;
+    cause: string; // plain words: a line from lines.ts, or the worker's own sentence
+    onScreen: "the pages it read" | "nothing";
+    triedAgain: boolean;
+  };
+};
+
+export type TalkRequest = FrontRequest | FailureRequest;
 
 // The generation a front call belongs to, for its timing: its utterance, or its typed question.
 export function frontKey(talk: {

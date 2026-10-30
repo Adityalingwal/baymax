@@ -12,7 +12,7 @@ import type { FailureKind } from "../shared/engine";
 import type { LineFeed } from "./speech";
 import type { SaidKind, Timers } from "./tasks/state";
 import { frontKey } from "./tasks/talk";
-import type { TalkRequest, TalkerReply } from "./tasks/talk";
+import type { FailureRequest, TalkRequest, TalkerReply } from "./tasks/talk";
 
 type TalkerDeps = {
   stream: TextStream | null; // null when there is no Anthropic key
@@ -178,6 +178,19 @@ function todayBlock(now: Date): string {
   return taggedText("today", body);
 }
 
+// The model needs an open offer's id even when its task is older than the recent records, and must never make one up.
+function offerLines({ offers }: TalkRequest): string[] {
+  if (offers.length === 0) return [];
+  const latest = Math.max(...offers.map((offer) => offer.order));
+  return [
+    ...offers.map(
+      ({ order, taskId, title }) =>
+        `- open retry offer ${order}: task ${taskId} | title: ${title}`,
+    ),
+    `latest open retry offer: ${latest}`,
+  ];
+}
+
 function recentBlock(request: TalkRequest): string {
   const lines = request.recent.map((exchange) => {
     const line = `- task ${exchange.taskId} (${exchange.state}): question: ${exchange.question} | answer: ${exchange.answer ?? "none yet"}`;
@@ -185,7 +198,7 @@ function recentBlock(request: TalkRequest): string {
       ? line
       : `${line}\n  card: ${exchange.cardText}`;
   });
-  return taggedText("recent", list(lines));
+  return taggedText("recent", list([...lines, ...offerLines(request)]));
 }
 
 function tasksBlock(request: TalkRequest): string {
@@ -214,10 +227,23 @@ function waitingBlock(request: TalkRequest): string {
   return taggedText("waiting_question", body);
 }
 
+function failedBlock({ taskId, failed }: FailureRequest): string {
+  const body = [
+    `task id: ${taskId}`,
+    `title: ${failed.title}`,
+    `cause: ${failed.cause}`,
+    `on screen: ${failed.onScreen}`,
+  ];
+  if (failed.triedAgain) body.push("already tried again");
+  return taggedText("task_failed", body.join("\n"));
+}
+
 function currentTurn(request: TalkRequest, now: Date): string {
   return [
     todayBlock(now),
-    taggedText("words", request.words),
+    request.kind === "front"
+      ? taggedText("words", request.words)
+      : failedBlock(request),
     recentBlock(request),
     tasksBlock(request),
     waitingBlock(request),
@@ -383,11 +409,12 @@ async function callWithRetry(
 
 // The line opens and the whole-call deadline starts here; a retry keeps both.
 function openCall(deps: TalkerDeps, talk: TalkRequest): Attempt {
-  const line = deps.talk({
-    taskId: talk.taskId,
-    kind: "talk",
-    key: frontKey(talk),
-  });
+  const { taskId } = talk;
+  const line = deps.talk(
+    talk.kind === "front"
+      ? { taskId, kind: "talk", key: frontKey(talk) }
+      : { taskId, kind: "failure", key: null },
+  );
   const attempt: Attempt = {
     abort: new AbortController(),
     line,

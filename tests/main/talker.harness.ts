@@ -6,7 +6,7 @@ import type {
 import type { TaskId } from "../../src/shared/cards";
 import { createTalker } from "../../src/main/talker";
 import { createClock } from "./tasks/harness";
-import type { TalkRequest, TalkerReply } from "../../src/main/tasks/talk";
+import type { FrontRequest, TalkerReply } from "../../src/main/tasks/talk";
 
 type Call = {
   request: TextRequest;
@@ -89,8 +89,8 @@ export const flush = () =>
   new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 export const frontRequest = (
-  fields: Partial<TalkRequest> = {},
-): TalkRequest => ({
+  fields: Partial<FrontRequest> = {},
+): FrontRequest => ({
   kind: "front",
   attemptId: "t2#1",
   taskId: "t2",
@@ -98,6 +98,7 @@ export const frontRequest = (
   words: "will it rain in Delhi tomorrow?",
   history: [],
   recent: [],
+  offers: [],
   tasks: [],
   room: 4,
   waiting: null,

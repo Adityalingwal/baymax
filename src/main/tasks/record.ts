@@ -3,7 +3,13 @@ import type { EngineCommand, ParentResult, TaskAsk } from "../../shared/engine";
 import type { SpokenKind } from "../../shared/ipc";
 import type { Exchange } from "./history";
 import { fixedLines } from "./lines";
-import type { ClarifyingQuestion, QuestionId, TalkRequest } from "./talk";
+import type {
+  ClarifyingQuestion,
+  FrontRequest,
+  QuestionId,
+  RetryOffer,
+  TalkRequest,
+} from "./talk";
 
 // Main's state says fixed lines (failure, notice), results and a re-asked question as given; the front call says the rest.
 export type SaidKind = SpokenKind;
@@ -12,7 +18,7 @@ export type SaidLine = { taskId: TaskId | null; text: string; kind: SaidKind };
 export type Admission = { ask: TaskAsk };
 
 // Everything a front call is asked except its id.
-export type FrontParts = Omit<TalkRequest, "kind" | "attemptId">;
+export type FrontParts = Omit<FrontRequest, "kind" | "attemptId">;
 
 // One front call in flight.
 export type Attempt = {
@@ -20,6 +26,12 @@ export type Attempt = {
   order: number; // the exchange's place in the conversation, fixed when the call starts
   parts: FrontParts;
 };
+
+// A failed task whose talker call has not started; cause is what the call is told.
+export type PendingFailure = { taskId: TaskId; cause: string };
+
+// The one failure turn in flight.
+export type FailureCall = PendingFailure & { attemptId: string };
 
 export type TaskRecord = {
   card: TaskCard;
@@ -42,6 +54,10 @@ export type Model = {
   exchanges: Exchange[];
   exchangeOrder: number;
   queue: TaskId[];
+  pendingFailures: PendingFailure[]; // in the order they failed
+  failureCall: FailureCall | null;
+  offers: RetryOffer[];
+  offersMade: number; // how many were ever made, for their order
   questions: { taskId: TaskId; order: number }[]; // the records holding a question, in the order spoken
   askedQuestion: QuestionId | null; // the question the user last heard as the active one
   chat: ChatEntry[];
@@ -77,6 +93,10 @@ export function createModel(): Model {
     exchanges: [],
     exchangeOrder: 0,
     queue: [],
+    pendingFailures: [],
+    failureCall: null,
+    offers: [],
+    offersMade: 0,
     questions: [],
     askedQuestion: null,
     chat: [],
@@ -121,6 +141,11 @@ export function addRecord(
   };
   model.records.set(taskId, record);
   return record;
+}
+
+export function nextAttemptId(record: TaskRecord): string {
+  record.attempts += 1;
+  return `${record.card.taskId}#${record.attempts}`;
 }
 
 export function hold(

@@ -10,6 +10,7 @@ import {
   addChat,
   dropped,
   holdQuestion,
+  nextAttemptId,
   say,
   talk,
 } from "./record";
@@ -22,9 +23,8 @@ export function openAttempt(
   record: TaskRecord,
   parts: FrontParts,
 ): void {
-  record.attempts += 1;
+  const id = nextAttemptId(record);
   change.model.exchangeOrder += 1;
-  const id = `${record.card.taskId}#${record.attempts}`;
   const order = change.model.exchangeOrder;
   record.attempt = { id, order, parts };
   talk(change, { kind: "front", attemptId: id, ...parts });
@@ -42,6 +42,12 @@ function earlierThan(model: Model, taskId: TaskId): ReadonlySet<TaskId> {
 function canStop(model: Model, taskId: TaskId): boolean {
   const state = model.records.get(taskId)?.card.state;
   return state === "running" || state === "queued" || state === "clarifying";
+}
+
+// A task that can still say more keeps its exchange, so the later line has somewhere to go.
+function canSayMore(model: Model, taskId: TaskId): boolean {
+  const state = model.records.get(taskId)?.card.state;
+  return state === "queued" || state === "running" || state === "failed";
 }
 
 function canRetry(model: Model, taskId: TaskId): boolean {
@@ -147,12 +153,16 @@ export function receiveFront(
   }
   record.attempt = null;
   // What was spoken is part of the conversation whether or not the decision holds.
-  addExchange(change.model.exchanges, {
-    order: attempt.order,
-    taskId,
-    words: attempt.parts.words,
-    line: reply.text ?? "",
-  });
+  addExchange(
+    change.model.exchanges,
+    {
+      order: attempt.order,
+      taskId,
+      words: attempt.parts.words,
+      line: reply.text ?? "",
+    },
+    (id) => canSayMore(change.model, id),
+  );
   if (reply.kind === "failed") {
     const spoke = (reply.text ?? "").trim() !== "";
     return failFront(change, record, attempt, { kind: reply.failure, spoke });

@@ -40,7 +40,9 @@ export function wireMain(deps: WiringDeps): Wiring {
     log: deps.log,
   });
   const talk = (request: TalkRequest): void => {
-    if (request.utteranceId === null) voice.submitted(frontKey(request));
+    if (request.kind === "front" && request.utteranceId === null) {
+      voice.submitted(frontKey(request));
+    }
     talker.talk(request);
   };
   const state = createMainState({

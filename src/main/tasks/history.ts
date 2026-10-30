@@ -7,7 +7,7 @@ export type Exchange = {
   taskId: TaskId;
   words: string;
   line: string;
-  result: string | null; // the spoken line of the task's result, once it ended done
+  later: string[]; // what Baymax said about the task afterwards, in order: its failure line, its result
 };
 
 const WINDOW = 20;
@@ -16,11 +16,20 @@ const KEEP = 30;
 export function addExchange(
   exchanges: Exchange[],
   entry: { order: number; taskId: TaskId; words: string; line: string },
+  keep: (taskId: TaskId) => boolean,
 ): void {
   if (entry.line.trim() === "") return;
-  exchanges.push({ ...entry, result: null });
+  exchanges.push({ ...entry, later: [] });
   exchanges.sort((a, b) => a.order - b.order);
-  if (exchanges.length > KEEP) exchanges.splice(0, exchanges.length - KEEP);
+  let over = exchanges.length - KEEP;
+  for (let index = 0; over > 0 && index < exchanges.length;) {
+    if (keep(exchanges[index].taskId)) {
+      index += 1;
+    } else {
+      exchanges.splice(index, 1);
+      over -= 1;
+    }
+  }
 }
 
 // An answer's exchange moves to the waiting task it answered, so that task's result joins it.
@@ -33,16 +42,17 @@ export function setExchangeTask(
   if (exchange !== undefined) exchange.taskId = taskId;
 }
 
-// A task that ended done adds its result line to its latest exchange, once.
-export function appendResult(
+// A line said about a task with no words of its own joins the task's latest exchange, so no empty user turn enters history.
+export function appendLine(
   exchanges: Exchange[],
   taskId: TaskId,
   line: string,
 ): void {
+  if (line.trim() === "") return;
   for (let index = exchanges.length - 1; index >= 0; index -= 1) {
     const exchange = exchanges[index];
     if (exchange.taskId !== taskId) continue;
-    if (exchange.result === null) exchange.result = line;
+    exchange.later.push(line);
     return;
   }
 }
@@ -52,10 +62,7 @@ export function conversationHistory(exchanges: Exchange[]): HistoryTurn[] {
   const turns: HistoryTurn[] = [];
   const said = exchanges.filter((exchange) => exchange.line.trim() !== "");
   for (const exchange of said.slice(-WINDOW)) {
-    const spoken =
-      exchange.result === null
-        ? exchange.line
-        : `${exchange.line}\n${exchange.result}`;
+    const spoken = [exchange.line, ...exchange.later].join("\n");
     turns.push(
       { role: "user", text: exchange.words },
       { role: "assistant", text: spoken },

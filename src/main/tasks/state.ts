@@ -3,6 +3,7 @@ import type { EngineCommand, EngineEvent } from "../../shared/engine";
 import type { OpenSource } from "../../shared/ipc";
 import { ask } from "./ask";
 import { buildDisplay, waitingQuestion } from "./display";
+import { receiveFailureTurn, startFailureTurn } from "./failure";
 import { receiveFront } from "./front";
 import type {
   Change,
@@ -88,7 +89,7 @@ export function createMainState(deps: MainStateDeps): MainState {
       update((c) => setVoiceAvailable(c, available)),
     showNotice: (notice) => update((c) => showNotice(c, notice)),
     talkerReplied: (taskId, attemptId, reply) =>
-      update((c) => receiveFront(c, taskId, attemptId, reply)),
+      update((c) => receiveTalk(c, taskId, attemptId, reply)),
     receive: (event) => update((c) => receiveEvent(c, event)),
     displayState: () => buildDisplay(model),
   };
@@ -144,6 +145,7 @@ function createUpdatePath(
     if (!input(change)) return;
     startNext(change);
     reAskOlderQuestion(change);
+    startFailureTurn(change);
     guarded(deps, "publish", () => deps.publish(buildDisplay(model)));
     change.outputs.forEach((output) => flushOutput(deps, update, output));
   };
@@ -158,6 +160,18 @@ function createUpdatePath(
     }
   };
   return update;
+}
+
+function receiveTalk(
+  change: Change,
+  taskId: TaskId,
+  attemptId: string,
+  reply: TalkerReply,
+): boolean {
+  const call = change.model.failureCall;
+  return call?.attemptId === attemptId
+    ? receiveFailureTurn(change, call, reply)
+    : receiveFront(change, taskId, attemptId, reply);
 }
 
 function receiveEvent(change: Change, event: EngineEvent): boolean {
