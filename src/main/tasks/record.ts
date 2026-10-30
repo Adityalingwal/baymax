@@ -26,7 +26,7 @@ export type TaskRecord = {
   shown: boolean;
   created: number;
   admission: Admission | null;
-  topic: string | null; // the front call's short name for the request; never on the card
+  topic: string | null; // the front call's short name for the request; the card shows it as its title
   spokenLine: string | null;
   hiddenQuestion: ClarifyingQuestion | null;
   attempt: Attempt | null;
@@ -91,6 +91,7 @@ export function addRecord(
       taskId,
       state: "thinking",
       words,
+      title: null,
       parentTaskId: null,
       sayBack: null,
       line: null,

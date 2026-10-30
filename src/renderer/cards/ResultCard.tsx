@@ -2,7 +2,7 @@ import type { TaskCard } from "../../shared/cards";
 import type { CardActions } from "../actions";
 import { Answer } from "./Answer";
 import { CardShell, RetryButton, StatusLines } from "./CardFrame";
-import { shownReport } from "./forms";
+import { cardTitle, shownReport } from "./forms";
 import { SourcesRow } from "./SourcesRow";
 
 type ResultCardProps = { card: TaskCard; actions: CardActions };
@@ -13,7 +13,7 @@ export function ResultCard({ card, actions }: ResultCardProps) {
   const report = shownReport(card);
   return (
     <CardShell card={card}>
-      <h3 className="type-title truncate">{card.words}</h3>
+      <h3 className="type-title truncate">{cardTitle(card)}</h3>
       <StatusLines card={card} />
       {spokenLine !== null && <p className="type-body">{spokenLine}</p>}
       {report !== null && (

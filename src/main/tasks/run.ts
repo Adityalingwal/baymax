@@ -198,6 +198,7 @@ export function admit(
   const { card } = record;
   record.admission = { ask: decision.ask };
   record.topic = decision.topic;
+  card.title = record.topic;
   card.sayBack = null;
   card.reply = line;
   card.parentTaskId =

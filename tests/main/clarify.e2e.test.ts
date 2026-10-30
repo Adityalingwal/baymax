@@ -48,6 +48,7 @@ describe("the shown question", () => {
       taskId: "t1",
       state: "clarifying",
       words: "about it",
+      title: "about it",
       parentTaskId: null,
       sayBack: null,
       line: null,

@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Findings } from "../../src/shared/cards";
 import type { FailureCause } from "../../src/shared/engine";
-import { admitAs, admitTask, runToDone, wire } from "./wiring.harness";
+import { ipcChannels } from "../../src/shared/ipc";
+import {
+  admitAs,
+  admitTask,
+  runToDone,
+  streamFront,
+  wire,
+} from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
-import { findings } from "./tasks/harness";
+import { findings, newTask } from "./tasks/harness";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -167,6 +174,19 @@ describe("a result with an empty report", () => {
       spokenLine: "It is 31 degrees in Delhi.",
     });
     expect((await spokenAll(w)).at(-1)).toBe("It is 31 degrees in Delhi.");
+  });
+});
+
+describe("a card's title", () => {
+  it("is the topic once the front call gave one, and the words stay as asked", async () => {
+    const w = wire();
+    w.send(ipcChannels.submitQuestion, { text: "tell me hermes" });
+    expect(w.card("t1")).toMatchObject({ title: null });
+    await streamFront(w, newTask("how Hermes works"), "Checking.");
+    expect(w.card("t1")).toMatchObject({
+      title: "how Hermes works",
+      words: "tell me hermes",
+    });
   });
 });
 

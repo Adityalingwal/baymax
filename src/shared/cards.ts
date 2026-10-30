@@ -39,6 +39,7 @@ export type TaskCard = {
   taskId: TaskId;
   state: TaskState;
   words: string; // the user's words as asked
+  title: string | null; // the front call's short name for the request; null until it gives one
   parentTaskId: TaskId | null;
   sayBack: string | null; // always null since the front call's spoken line replaced the say-back
   line: string | null; // a fixed status or failure line

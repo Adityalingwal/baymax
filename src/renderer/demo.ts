@@ -12,6 +12,7 @@ function demoCard(taskId: TaskId, fields: Partial<TaskCard>): TaskCard {
     taskId,
     state: "thinking",
     words: "",
+    title: null,
     parentTaskId: null,
     sayBack: null,
     line: null,
@@ -69,6 +70,7 @@ const demoCards: TaskCard[] = [
   demoCard("demo-1", {
     state: "done",
     words: "How does Hermes agent work inside?",
+    title: "How Hermes agent works inside",
     sayBack: "how Hermes agent works inside",
     sourcesRead: 4,
     answer: { cardText: hermesAnswer, sources: hermesSources },

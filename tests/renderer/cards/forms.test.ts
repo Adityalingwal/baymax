@@ -3,6 +3,7 @@ import type { Source, TaskState } from "../../../src/shared/cards";
 import {
   canCancel,
   cardForm,
+  cardTitle,
   shownReport,
   sourceGroups,
   stateLabel,
@@ -35,6 +36,15 @@ const stateCases: [TaskState, boolean, string][] = [
   ["failed", false, "Failed"],
   ["cancelled", false, "Cancelled"],
 ];
+
+describe("cardTitle", () => {
+  it.each([
+    { name: "a topic", title: "Hermes", shown: "Hermes" },
+    { name: "no topic yet", title: null, shown: "tell me about hermes" },
+  ])("$name shows $shown", ({ title, shown }) => {
+    expect(cardTitle({ title, words: "tell me about hermes" })).toBe(shown);
+  });
+});
 
 describe("shownReport", () => {
   it.each([

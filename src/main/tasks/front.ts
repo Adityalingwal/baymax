@@ -82,6 +82,7 @@ function clarify(
   const { card } = record;
   const { model } = change;
   record.topic = topic;
+  card.title = record.topic;
   card.state = "clarifying";
   card.sayBack = null;
   card.line = null;
