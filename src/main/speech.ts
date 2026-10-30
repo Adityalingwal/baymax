@@ -11,7 +11,8 @@ import type {
   SpeechLine,
   StopPlayback,
 } from "../shared/ipc";
-import { takeClauses } from "./clauses";
+import { newStreamJob, sendText } from "./speech-stream";
+import type { LineText, StreamJob } from "./speech-stream";
 import type { SaidKind, SaidLine, Timers } from "./tasks/state";
 
 export type VoiceDownCause = "unreachable" | "keyRejected" | "noCredit";
@@ -38,12 +39,6 @@ type SpeechDeps = {
   timers: Timers;
 };
 
-type LineText = {
-  text: string;
-  ended: boolean;
-  changed: (() => void) | null;
-};
-
 // key: the generation (release or typed question) of a talker reply, else null.
 type Line = {
   taskId: TaskId | null;
@@ -54,15 +49,6 @@ type Line = {
 
 // A distinct object per synthesis, so a settled job can tell whether it still owns the slot.
 type Job = { line: Line; abort: AbortController };
-
-// A line on the Aura socket while its text and audio still flow; seq numbers its chunks.
-type StreamJob = {
-  seq: number;
-  taken: number; // characters of the line's text already cut into clauses
-  flushesSent: number;
-  flushesDone: number;
-  textEnded: boolean;
-};
 
 // The line that owns playback until the renderer reports its end; started tells whether its audio began.
 type Playing = {
@@ -295,32 +281,6 @@ function startRest(ctx: SpeechContext, line: Line): void {
   };
 }
 
-// Every send is checked; false means the socket failed and the line takes the socket-failure path.
-function sendClauses(
-  aura: Aura,
-  stream: StreamJob,
-  clauses: string[],
-): boolean {
-  for (const clause of clauses) {
-    if (!aura.speak(clause)) return false;
-    stream.flushesSent += 1;
-    if (!aura.flush()) return false;
-  }
-  return true;
-}
-
-// Text goes out sentence by sentence as it arrives, with a Flush each time.
-function sendText(aura: Aura, stream: StreamJob, line: Line): boolean {
-  const { text, ended } = line.feed;
-  const { clauses, rest } = takeClauses(text.slice(stream.taken), ended);
-  stream.taken = text.length - rest.length;
-  if (!sendClauses(aura, stream, clauses)) return false;
-  if (!ended) return true;
-  stream.textEnded = true;
-  line.feed.changed = null;
-  return true;
-}
-
 function audioDone(ctx: SpeechContext): void {
   const playing = ctx.state.playing;
   const stream = playing?.stream ?? null;
@@ -331,17 +291,11 @@ function audioDone(ctx: SpeechContext): void {
 }
 
 function startStream(ctx: SpeechContext, aura: Aura, line: Line): void {
-  const stream: StreamJob = {
-    seq: 0,
-    taken: 0,
-    flushesSent: 0,
-    flushesDone: 0,
-    textEnded: false,
-  };
+  const stream = newStreamJob();
   if (occupy(ctx, line, stream) === null) return pump(ctx);
   const next = () => {
     if (ctx.state.playing?.stream !== stream) return;
-    if (!sendText(aura, stream, line)) return sendFailed(ctx, aura);
+    if (!sendText(aura, stream, line.feed)) return sendFailed(ctx, aura);
     audioDone(ctx);
   };
   line.feed.changed = next;
