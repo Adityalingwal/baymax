@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ModelOutcome } from "../providers/anthropic";
+import type { ModelOutcome, ModelRequest } from "../providers/anthropic";
 import type { Findings } from "../shared/cards";
 import type { EngineEvent } from "../shared/engine";
 import type { FakeStep } from "./harness";
@@ -211,5 +211,79 @@ describe("runTask a call past the active time", () => {
       row.end,
     ]);
     expect(run.loopRequests()).toHaveLength(row.slowCall);
+  });
+});
+
+// The tool results the worker got back in a request.
+const lastResults = (request: ModelRequest): unknown =>
+  request.messages[request.messages.length - 1].content;
+
+// Limits met with nothing found: the task ends limitHit without findings.
+const nothingFound: EngineEvent = limitHit(null);
+
+describe("runTask limits with nothing found", () => {
+  it("ends limitHit at the 21st search without sending it", async () => {
+    const steps = Array.from({ length: 21 }, (_, index) =>
+      toolUseReply([{ search: `query ${index + 1}` }]),
+    );
+    const searches = Array.from({ length: 21 }, () => hits(pageUrl("one")));
+    const run = await startRun(steps, searches);
+    run.port.send(runTask());
+    const last = (await run.ended()).filter(
+      (event) => event.type !== "progress",
+    );
+    expect(last).toEqual([nothingFound]);
+    expect(run.queries).toHaveLength(20);
+    expect(lastResults(run.workerRequests()[20])).toEqual([
+      expect.objectContaining({
+        content: expect.stringContaining("Searches left: 0."),
+      }),
+    ]);
+  });
+});
+
+describe("runTask active time with nothing found", () => {
+  it("ends limitHit before a tool batch once the active time is used up", async () => {
+    // the brief writer's call takes the first two readings
+    const times = [0, 0, 0, 250_000];
+    const now = () => times.shift() ?? 250_000;
+    const run = await startRun(
+      [toolUseReply([{ search: "hermes" }])],
+      [hits(pageUrl("one"))],
+      now,
+    );
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events).toEqual([nothingFound]);
+    expect(run.queries).toEqual([]);
+  });
+
+  it("ends limitHit when the next worker call would cross a limit", async () => {
+    const costly = toolUseReply([{ search: "hermes" }]);
+    if (costly.ok) costly.message.usage.input_tokens = 248_000;
+    const run = await startRun([costly], [hits(pageUrl("one"))]);
+    run.port.send(runTask());
+    const last = (await run.ended()).filter(
+      (event) => event.type !== "progress",
+    );
+    expect(last).toEqual([nothingFound]);
+    expect(run.loopRequests()).toHaveLength(1);
+  });
+  it("counts a tool batch's time as active time", async () => {
+    const sent: { queries: string[] } = { queries: [] };
+    const now = () => (sent.queries.length > 0 ? 250_000 : 0);
+    const run = await startRun(
+      [toolUseReply([{ search: "hermes" }])],
+      [hits(pageUrl("one"))],
+      now,
+    );
+    sent.queries = run.queries;
+    run.port.send(runTask());
+    expect(await run.ended()).toEqual([
+      expect.objectContaining({ type: "progress" }),
+      nothingFound,
+    ]);
+    expect(run.queries).toEqual(["hermes"]);
+    expect(run.loopRequests()).toHaveLength(1);
   });
 });

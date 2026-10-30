@@ -77,6 +77,20 @@ const rows: Row[] = [
     cardText: `A loop, see [the docs](${pageUrl("one")}).`,
     expected: `A loop, see \\[the docs\\](${pageUrl("one")}).`,
   },
+  // Source markers leave the card; an escaped bracket pair stays as written.
+  ...[
+    ["A loop [s1].", "A loop."],
+    ["31°C [s1][s3].", "31°C."],
+    ["[s1] First", "First"],
+    ["Fact [S1] here", "Fact here"],
+    ["Fact [s1, s2] here", "Fact here"],
+    ["Kept \\[s1\\] pair", "Kept \\[s1\\] pair"],
+  ].map(([cardText, expected]) => ({
+    name: `the markers of ${JSON.stringify(cardText)}`,
+    page: "one",
+    cardText,
+    expected,
+  })),
   {
     name: "a marker inside an autolink",
     page: "one",

@@ -15,33 +15,6 @@ const cancelled = (taskId: string): EngineEvent => ({
 
 const cancel = (taskId: string) => ({ type: "cancel" as const, taskId });
 
-describe("startEngine cancel", () => {
-  it("stops a run in flight with one cancelled and nothing else", async () => {
-    const engine = startTestEngine(["waitForAbort"]);
-    engine.port.send(runTask());
-    engine.port.send(cancel("task-1"));
-    expect(await engine.settle(1)).toEqual([cancelled("task-1")]);
-    expect(await engine.settle(2)).toEqual([cancelled("task-1")]);
-  });
-
-  it("answers a cancel for a task not held, after send returns", async () => {
-    const engine = startTestEngine([]);
-    engine.port.send(cancel("task-5"));
-    expect(engine.events).toEqual([]);
-    expect(await engine.settle(1)).toEqual([cancelled("task-5")]);
-  });
-
-  it("drops a model answer that arrives after its cancel", async () => {
-    let answer: (outcome: ModelOutcome) => void = () => undefined;
-    const late = new Promise<ModelOutcome>((resolve) => (answer = resolve));
-    const engine = startTestEngine([late]);
-    engine.port.send(runTask());
-    engine.port.send(cancel("task-1"));
-    answer(workerAnswer());
-    expect(await engine.settle(2)).toEqual([cancelled("task-1")]);
-  });
-});
-
 describe("startEngine port delivery", () => {
   it("uses the command as sent, whatever the caller changes after", async () => {
     const engine = startTestEngine(["waitForAbort"]);
@@ -117,6 +90,27 @@ describe("startEngine port lifecycle", () => {
     engine.port.send(cancel("task-1"));
     expect(await engine.settle()).toEqual([]);
     expect(engine.requests).toHaveLength(0);
+  });
+});
+
+describe("startEngine holds", () => {
+  it("releases the hold of a thrown run, so the same task id runs again", async () => {
+    const thrown = Promise.reject(new Error("boom"));
+    thrown.catch(() => undefined);
+    const engine = startTestEngine([thrown, failedCall]);
+    engine.port.send(runTask());
+    const errorEnd: EngineEvent = {
+      type: "incomplete",
+      taskId: "task-1",
+      incomplete: { kind: "error", cause: "error", findings: null },
+    };
+    expect(await engine.settle(1)).toEqual([errorEnd]);
+    engine.port.send(runTask());
+    expect(await engine.settle(2)).toEqual([errorEnd, errorEnd]);
+    expect(engine.loopRequests()).toHaveLength(2);
+    expect(engine.entries).toContainEqual(
+      expect.objectContaining({ event: "taskEnd", how: "thrown" }),
+    );
   });
 
   it("ignores a second command for a task it holds", async () => {

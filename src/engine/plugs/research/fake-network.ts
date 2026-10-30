@@ -8,7 +8,8 @@ import type {
 import { connect as netConnect } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Connect, ConnectTarget, LookupAll } from "./connection";
-import type { ReadLimits } from "./read-page";
+import { readPage } from "./read-page";
+import type { PageOutcome, ReadLimits } from "./read-page";
 
 export const testLimits: ReadLimits = {
   maxBytes: 100_000,
@@ -138,4 +139,28 @@ export async function closedPort(): Promise<number> {
   const port = await listen(server);
   await new Promise<void>((resolve) => server.close(() => resolve()));
   return port;
+}
+
+type ReadOptions = {
+  limits?: Partial<ReadLimits>;
+  lookup?: LookupAll;
+  connect?: Connect;
+  signal?: AbortSignal;
+};
+
+// Reads one URL through the fake network, the way each page-reader test does.
+export function readThrough(
+  network: FakeNetwork,
+  url: string,
+  options: ReadOptions = {},
+): Promise<PageOutcome> {
+  return readPage(
+    url,
+    {
+      lookup: options.lookup ?? network.lookup,
+      connect: options.connect ?? network.connect,
+      limits: { ...testLimits, ...options.limits },
+    },
+    options.signal ?? new AbortController().signal,
+  );
 }
