@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { VoicePhase } from "../../../src/shared/ipc";
 import {
+  clickMute,
   initialPill,
   islandShown,
+  pillDelays,
   pillReducer,
 } from "../../../src/renderer/notch/pill";
 import type {
+  PillClose,
   PillEvent,
   PillState,
   PillWord,
@@ -26,6 +29,7 @@ const speaking = phase({
   line: { lineId: "l1", taskId: "t1", kind: "answer" },
 });
 const mute: PillEvent = { kind: "mute-clicked" };
+const mainMuted: PillEvent = { kind: "main-muted", muted: true };
 // The running timer fires.
 const threshold: Step = (state) => ({
   kind: "threshold-elapsed",
@@ -50,13 +54,14 @@ function run(steps: Step[]): PillState {
 type Expected = {
   shown: boolean;
   word?: PillWord;
-  muted?: boolean;
+  label?: PillState["clearLabel"];
   closing?: boolean; // the 800 ms hold is running
+  close?: PillClose;
 };
 
 const rows: { name: string; steps: Step[]; expected: Expected }[] = [
   {
-    name: "a hold past 300 ms shows Listening",
+    name: "a hold past 50 ms shows Listening",
     steps: [listening, threshold],
     expected: { shown: true, word: "Listening" },
   },
@@ -96,7 +101,7 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { shown: true, word: "Speaking" },
   },
   {
-    name: "a key held over Speaking keeps the word until 300 ms",
+    name: "a key held over Speaking keeps the word until 50 ms",
     steps: [speaking, listening],
     expected: { shown: true, word: "Speaking", closing: false },
   },
@@ -113,17 +118,37 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
   {
     name: "mute while speaking shows Muted and starts the 800 ms hold",
     steps: [speaking, mute],
-    expected: { shown: true, muted: true, closing: true },
+    expected: { shown: true, label: "Muted", closing: true },
   },
   {
     name: "the speech ending after a mute does not restart the hold",
     steps: [speaking, mute, idle, hold],
-    expected: { shown: false, muted: true },
+    expected: { shown: false, label: "Muted" },
   },
   {
-    name: "a turn that fails while Thinking closes the pill with no hold",
+    name: "a turn that ends in Thinking closes the pill at once, in the fast close",
     steps: [listening, threshold, thinking, idle],
-    expected: { shown: false, closing: false },
+    expected: { shown: false, closing: false, close: "silent" },
+  },
+  {
+    name: "muted, a turn that ends in Thinking keeps the soft close",
+    steps: [mainMuted, listening, threshold, thinking, idle],
+    expected: { shown: false, closing: false, close: "soft" },
+  },
+  {
+    name: "a tap longer than 50 ms shows the pill and closes it at once",
+    steps: [listening, threshold, idle],
+    expected: { shown: false, closing: false, close: "silent" },
+  },
+  {
+    name: "after speech the close stays soft",
+    steps: [listening, threshold, thinking, speaking, idle, hold],
+    expected: { shown: false, close: "soft" },
+  },
+  {
+    name: "a new opening forgets the last fast close",
+    steps: [listening, threshold, thinking, idle, speaking],
+    expected: { shown: true, close: "soft" },
   },
   {
     name: "a new turn after a failed Thinking opens the pill again",
@@ -133,7 +158,7 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
   {
     name: "mute does nothing unless Baymax speaks",
     steps: [listening, threshold, thinking, mute],
-    expected: { shown: true, muted: false, closing: false },
+    expected: { shown: true, label: null, closing: false },
   },
 ];
 
@@ -143,17 +168,16 @@ describe("pillReducer", () => {
     expect({
       shown: state.shown,
       ...(expected.word === undefined ? {} : { word: state.word }),
-      ...(expected.muted === undefined ? {} : { muted: state.muted }),
+      ...(expected.label === undefined ? {} : { label: state.clearLabel }),
       ...(expected.closing === undefined
         ? {}
         : { closing: state.wait?.kind === "hold" }),
+      ...(expected.close === undefined ? {} : { close: state.close }),
     }).toEqual(expected);
   });
 
-  it("never unmutes on a second click, and keeps the hold from the first", () => {
-    const once = run([speaking, mute]);
-    const twice = pillReducer(once, mute);
-    expect(twice).toBe(once);
+  it("holds the locked delays", () => {
+    expect(pillDelays).toEqual({ thresholdMs: 50, holdMs: 800 });
   });
 
   it("counts the mute hold from the click, not from the speech end", () => {
@@ -173,6 +197,39 @@ describe("pillReducer", () => {
       kind: "answer",
     });
     expect(run([speaking, idle]).line).toBeNull();
+  });
+});
+
+describe("two clicks in a row on the pill's mute", () => {
+  it("toggles the label, following main's mute, with the 800 ms from each click", () => {
+    const once = run([speaking, mute, mainMuted, idle]);
+    const twice = pillReducer(once, mute);
+    expect(once.clearLabel).toBe("Muted");
+    expect(twice.clearLabel).toBe("Unmuted");
+    expect(twice.wait?.token).not.toBe(once.wait?.token);
+    expect(pillReducer(twice, staleHold(once.wait?.token ?? -1)).shown).toBe(
+      true,
+    );
+    const unmuted = pillReducer(twice, { kind: "main-muted", muted: false });
+    expect(pillReducer(unmuted, mute).clearLabel).toBe("Muted");
+  });
+
+  it("asks main to mute, then to unmute", () => {
+    const sent: boolean[] = [];
+    let state = run([speaking]);
+    const click = () =>
+      clickMute(state, {
+        dispatch: (event) => {
+          state = pillReducer(state, event);
+        },
+        setMuted: ({ muted }) => {
+          sent.push(muted);
+        },
+      });
+    click();
+    state = pillReducer(state, mainMuted);
+    click();
+    expect(sent).toEqual([true, false]);
   });
 });
 

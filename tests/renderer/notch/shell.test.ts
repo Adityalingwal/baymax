@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { initialPanel, panelReducer } from "../../../src/renderer/notch/shell";
+import {
+  initialPanel,
+  panelDelays,
+  panelReducer,
+} from "../../../src/renderer/notch/shell";
 import type { PanelEvent, PanelState } from "../../../src/renderer/notch/shell";
 
 type Step = PanelEvent | ((state: PanelState) => PanelEvent);
@@ -27,9 +31,13 @@ const leave: Step = (state) => ({
   kind: "leave-elapsed",
   token: state.leave ?? -1,
 });
+const draftLeave: Step = (state) => ({
+  kind: "draft-leave-elapsed",
+  token: state.draftLeave ?? -1,
+});
 const escape: PanelEvent = { kind: "escape" };
 const closed: PanelEvent = { kind: "closed" };
-const draft = (value: boolean): PanelEvent => ({ kind: "draft", draft: value });
+const draft = (text: string): PanelEvent => ({ kind: "draft", text });
 const mouse = (down: boolean): PanelEvent => ({ kind: "mouse", down });
 const access: PanelEvent = { kind: "access", needed: true };
 const opened: Step[] = [onNotch, dwell];
@@ -46,16 +54,17 @@ type Expected = {
   closing?: boolean;
   dwelling?: boolean;
   leaving?: boolean;
+  draftLeaving?: boolean; // the 3 s timer is running
 };
 
 const rows: { name: string; steps: Step[]; expected: Expected }[] = [
   {
-    name: "resting 150 ms on the notch opens",
+    name: "resting 200 ms on the notch opens",
     steps: opened,
     expected: { open: true, dwelling: false, leaving: false },
   },
   {
-    name: "leaving the notch before 150 ms cancels the dwell",
+    name: "leaving the notch before 200 ms cancels the dwell",
     steps: [onNotch, away, { kind: "dwell-elapsed", token: 1 }],
     expected: { open: false, dwelling: false },
   },
@@ -73,6 +82,11 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     name: "leaving the window starts the close",
     steps: [...opened, gone],
     expected: { open: true, leaving: true },
+  },
+  {
+    name: "a pointer gone from the window with its last point on the panel closes in 300 ms",
+    steps: [...opened, onPanel, gone, leave],
+    expected: { open: false, closing: true },
   },
   {
     name: "the pointer leaving during the grow starts the close timer",
@@ -101,13 +115,39 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { open: true, leaving: true },
   },
   {
-    name: "a draft blocks the hover-exit close",
-    steps: [...opened, draft(true), away],
-    expected: { open: true, leaving: false },
+    name: "a draft holds off the 300 ms close",
+    steps: [...opened, draft("hi"), away],
+    expected: { open: true, leaving: false, draftLeaving: true },
+  },
+  {
+    name: "with a draft and the pointer on the panel, nothing closes",
+    steps: [...opened, draft("hi"), onPanel],
+    expected: { open: true, leaving: false, draftLeaving: false },
+  },
+  {
+    name: "with a draft and the pointer out for 3 s, it closes",
+    steps: [...opened, draft("hi"), away, draftLeave],
+    expected: { open: false, closing: true, draftLeaving: false },
+  },
+  {
+    name: "the pointer back stops the 3 s, and a stale timer does nothing",
+    steps: [
+      ...opened,
+      draft("hi"),
+      away,
+      onPanel,
+      { kind: "draft-leave-elapsed", token: 2 },
+    ],
+    expected: { open: true, draftLeaving: false },
+  },
+  {
+    name: "a held mouse button also holds off the 3 s",
+    steps: [...opened, draft("hi"), mouse(true), away],
+    expected: { open: true, draftLeaving: false },
   },
   {
     name: "clearing the draft while out starts the close",
-    steps: [...opened, draft(true), away, draft(false), leave],
+    steps: [...opened, draft("hi"), away, draft(""), leave],
     expected: { open: false, closing: true },
   },
   {
@@ -122,7 +162,7 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
   },
   {
     name: "Esc closes even with a draft",
-    steps: [...opened, draft(true), escape],
+    steps: [...opened, draft("hi"), escape],
     expected: { open: false, closing: true },
   },
   {
@@ -213,11 +253,36 @@ describe("panelReducer", () => {
       ...(expected.leaving === undefined
         ? {}
         : { leaving: state.leave !== null }),
+      ...(expected.draftLeaving === undefined
+        ? {}
+        : { draftLeaving: state.draftLeave !== null }),
     }).toEqual(expected);
   });
 
-  it("keeps the draft through an Esc close", () => {
-    expect(run([...opened, draft(true), escape]).draft).toBe(true);
+  it.each([
+    { name: "an Esc close", steps: [...opened, draft("hi"), escape] },
+    {
+      name: "the 3 s close",
+      steps: [...opened, draft("hi"), away, draftLeave],
+    },
+  ])("keeps the draft through $name", ({ steps }) => {
+    expect(run(steps).draft).toBe("hi");
+  });
+
+  it("restarts the 3 s when an already non-empty draft is edited outside", () => {
+    const before = run([...opened, draft("hi"), away]);
+    const after = panelReducer(before, draft("hi!"));
+    expect(after.draftLeave).not.toBeNull();
+    expect(after.draftLeave).not.toBe(before.draftLeave);
+    const stale: PanelEvent = {
+      kind: "draft-leave-elapsed",
+      token: before.draftLeave ?? -1,
+    };
+    expect(panelReducer(after, stale).open).toBe(true);
+  });
+
+  it("holds the locked delays", () => {
+    expect(panelDelays).toEqual({ dwellMs: 200, leaveMs: 300, draftMs: 3000 });
   });
 
   it("returns the same state when nothing changes", () => {

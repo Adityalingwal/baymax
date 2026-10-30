@@ -44,6 +44,12 @@ function evaluate(tracker: Tracker): void {
   });
 }
 
+function forgetPointer(tracker: Tracker): void {
+  tracker.point = null;
+  tracker.dispatch({ kind: "pointer-gone" });
+  evaluate(tracker);
+}
+
 function setMouseDown(tracker: Tracker, down: boolean): void {
   if (tracker.mouseDown === down) return;
   tracker.mouseDown = down;
@@ -63,10 +69,16 @@ function listen(tracker: Tracker): () => void {
     const inside =
       x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
     if (inside) return;
-    tracker.point = null;
-    tracker.dispatch({ kind: "pointer-gone" });
-    evaluate(tracker);
+    forgetPointer(tracker);
   };
+  // A leave can report a point inside, or never come, so main watches the cursor while the page holds the mouse.
+  const stopOutside = window.baymax.onPointerOutside(() =>
+    forgetPointer(tracker),
+  );
+  // A Space change closes like Esc: the text stays, and a pointer still on the notch waits to leave first.
+  const stopSpace = window.baymax.onSpaceChanged(() =>
+    tracker.dispatch({ kind: "escape" }),
+  );
   // Only a captured window gets the press, so it always started inside the shape.
   const down = () => setMouseDown(tracker, true);
   const up = () => setMouseDown(tracker, false);
@@ -76,6 +88,8 @@ function listen(tracker: Tracker): () => void {
   window.addEventListener("mouseup", up);
   window.addEventListener("blur", up);
   return () => {
+    stopOutside();
+    stopSpace();
     document.removeEventListener("mousemove", move);
     document.removeEventListener("mouseleave", leave);
     document.removeEventListener("mousedown", down);
@@ -89,7 +103,7 @@ function listen(tracker: Tracker): () => void {
 function useTimer(
   token: number | null,
   ms: number,
-  kind: "dwell-elapsed" | "leave-elapsed",
+  kind: "dwell-elapsed" | "leave-elapsed" | "draft-leave-elapsed",
   dispatch: Dispatch<PanelEvent>,
 ): void {
   useEffect(() => {
@@ -107,7 +121,7 @@ export type PanelPointer = {
 
 export function usePointer(
   zones: PointerZones,
-  holds: { needsAccess: boolean; draft: boolean; shapeKey: unknown },
+  holds: { needsAccess: boolean; draft: string; shapeKey: unknown },
 ): PanelPointer {
   const [state, dispatch] = useReducer(panelReducer, initialPanel);
   const [tracker] = useState<Tracker>(() => ({
@@ -126,14 +140,16 @@ export function usePointer(
     () => dispatch({ kind: "access", needed: needsAccess }),
     [needsAccess],
   );
-  useEffect(() => dispatch({ kind: "draft", draft }), [draft]);
+  useEffect(() => dispatch({ kind: "draft", text: draft }), [draft]);
   // A new window shape means the window moved: whatever the pointer was over is gone.
-  useEffect(() => {
-    tracker.point = null;
-    dispatch({ kind: "pointer-gone" });
-    evaluate(tracker);
-  }, [tracker, shapeKey]);
+  useEffect(() => forgetPointer(tracker), [tracker, shapeKey]);
   useTimer(state.dwell, panelDelays.dwellMs, "dwell-elapsed", dispatch);
   useTimer(state.leave, panelDelays.leaveMs, "leave-elapsed", dispatch);
+  useTimer(
+    state.draftLeave,
+    panelDelays.draftMs,
+    "draft-leave-elapsed",
+    dispatch,
+  );
   return { state, dispatch, frameChanged: () => evaluate(tracker) };
 }

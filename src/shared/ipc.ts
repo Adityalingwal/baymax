@@ -20,13 +20,15 @@ export const ipcChannels = {
   windowShape: "window-shape",
   getWindowShape: "get-window-shape",
   setMouseCapture: "set-mouse-capture",
+  pointerOutside: "pointer-outside",
+  spaceChanged: "space-changed",
   voicePhase: "voice-phase",
   getVoicePhase: "get-voice-phase",
 } as const;
 
 export type HoldState = "idle" | "listening";
 
-// The notch size is estimated from the display width, not detected.
+// Notched: the screen's real notch, measured by main. Otherwise the size of the small pill at rest.
 export type WindowShape = {
   notched: boolean;
   notchWidth: number;
@@ -124,6 +126,8 @@ export type MainToRenderer = {
   [ipcChannels.speechEnd]: SpeechEnd;
   [ipcChannels.stopPlayback]: StopPlayback;
   [ipcChannels.windowShape]: WindowShape;
+  [ipcChannels.pointerOutside]: null;
+  [ipcChannels.spaceChanged]: null;
   [ipcChannels.voicePhase]: VoicePhase;
 };
 
@@ -145,5 +149,7 @@ export type BaymaxApi = {
   reportPlaybackFinished: (payload: PlaybackFinished) => void;
   onWindowShape: (callback: (shape: WindowShape) => void) => () => void;
   setMouseCapture: (payload: SetMouseCapture) => void;
+  onPointerOutside: (callback: () => void) => () => void;
+  onSpaceChanged: (callback: () => void) => () => void;
   onVoicePhase: (callback: (phase: VoicePhase) => void) => () => void;
 };

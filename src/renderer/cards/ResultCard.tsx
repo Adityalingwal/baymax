@@ -17,7 +17,8 @@ export function ResultCard({ card, actions }: ResultCardProps) {
       <StatusLines card={card} />
       {spokenLine !== null && <p className="type-body">{spokenLine}</p>}
       {report !== null && (
-        <div className="max-h-72 overflow-y-auto pr-1">
+        // No height of its own: the card list is the panel's one vertical scroll; only a wide line scrolls sideways here.
+        <div className="overflow-x-auto overflow-y-hidden">
           <Answer markdown={report} />
         </div>
       )}

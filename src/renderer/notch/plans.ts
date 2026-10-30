@@ -1,6 +1,7 @@
 import {
   clamp01,
   cubicBezier,
+  easeOutCubic,
   instant,
   linear,
   makeMotion,
@@ -17,10 +18,11 @@ export function restingFrame(
 ): Frame {
   const on = (shows: boolean) => (shows ? 1 : 0);
   const voice = view === "pill" || view === "island";
+  const { hidden, ...outline } = shape;
   return {
-    ...shape,
+    ...outline,
     content: on(view === "open"),
-    shade: 1,
+    shade: on(hidden !== true),
     pill: on(voice),
     rim: on(view === "pill"),
     card: on(view === "island"),
@@ -28,15 +30,16 @@ export function restingFrame(
   };
 }
 
-// Timings from the locked design: notch-design-locked.md, "Panel close and motion".
+// Timings from the locked design: notch-design-locked.md, "Panel close and motion", with design-lock-timing.md's close.
 export const panelTiming = {
   openMs: 360,
   openEase: cubicBezier(0.22, 1, 0.36, 1),
   contentDelayMs: 90,
   contentMs: 180,
   closeContentMs: 80,
-  closeMs: 220,
+  closeMs: 260, // shared with the pill's silent close
   closeEase: cubicBezier(0.4, 0, 1, 1),
+  resizeMs: 260,
   reducedInMs: 120,
   reducedOutMs: 100,
   slide: 4,
@@ -54,6 +57,12 @@ function openness(current: Frame, keys: PanelKeys): number {
   const span = keys.opened.height - keys.collapsed.height;
   if (span <= 0) return 1;
   return (current.height - keys.collapsed.height) / span;
+}
+
+// A shape closing onto the hidden notch stays drawn until its last frame; going from hidden to hidden it never draws.
+export function whileMoving(current: Frame, target: Frame): Frame {
+  const hidden = current.shade === 0 && target.shade === 0;
+  return { ...target, shade: hidden ? 0 : 1 };
 }
 
 // A fade from the current value: skip is the part already done, so a turned-around fade keeps its pace.
@@ -91,6 +100,30 @@ function planOpen(current: Frame, keys: PanelKeys, now: number): Motion {
   );
 }
 
+// The open panel's size following its content.
+export function planResize(
+  current: Frame,
+  keys: PanelKeys,
+  now: number,
+): Motion {
+  const t = panelTiming;
+  const out = (from: number) => fade(t.closeContentMs, from, 0);
+  return makeMotion(
+    current,
+    restingFrame(keys.opened, "open"),
+    {
+      shape: { delay: 0, duration: t.resizeMs, skip: 0, ease: easeOutCubic },
+      content: fade(t.contentMs, current.content, 1),
+      shade: instant,
+      pill: out(current.pill),
+      rim: out(current.rim),
+      card: out(current.card),
+      ring: out(current.ring),
+    },
+    { now },
+  );
+}
+
 function planClose(current: Frame, keys: PanelKeys, now: number): Motion {
   const t = panelTiming;
   const closedness = 1 - clamp01(openness(current, keys));
@@ -102,7 +135,7 @@ function planClose(current: Frame, keys: PanelKeys, now: number): Motion {
     fade(t.landingMs, from, to, landing);
   return makeMotion(
     current,
-    target,
+    whileMoving(current, target),
     {
       shape: { delay: fadeLeft, duration: t.closeMs, skip, ease: t.closeEase },
       content: fade(t.closeContentMs, current.content, 0),
@@ -112,7 +145,7 @@ function planClose(current: Frame, keys: PanelKeys, now: number): Motion {
       card: back(current.card, target.card),
       ring: back(current.ring, target.ring),
     },
-    { now },
+    { now, end: target },
   );
 }
 

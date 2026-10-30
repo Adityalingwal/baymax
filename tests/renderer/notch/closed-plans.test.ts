@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   closedTiming,
-  easeOutCubic,
   planClosed,
 } from "../../../src/renderer/notch/closed-plans";
-import { motionEnd, sample } from "../../../src/renderer/notch/motion";
+import {
+  easeOutCubic,
+  motionEnd,
+  sample,
+} from "../../../src/renderer/notch/motion";
 import type { Frame } from "../../../src/renderer/notch/motion";
 import type { Silhouette } from "../../../src/renderer/notch/outline";
 import { restingFrame } from "../../../src/renderer/notch/plans";
@@ -114,13 +117,12 @@ describe("the island's close and the ring", () => {
     expect(motionEnd(motion)).toBe(420);
   });
 
-  it("fades the ring out before the pill grows", () => {
+  it("fades the ring out while the pill grows, so the word still arrives within 200 ms", () => {
     const motion = to(restingFrame(ring, "ring"), "pill", pill);
-    expect(sample(motion, closedTiming.ringMs)).toMatchObject({
-      width: 175,
-      ring: 0,
-    });
-    expect(motionEnd(motion)).toBe(closedTiming.ringMs + 420);
+    expect(sample(motion, 100).width).toBeGreaterThan(175);
+    expect(sample(motion, closedTiming.ringMs).ring).toBe(0);
+    expect(motionEnd(motion)).toBe(200);
+    expect(sample(motion, 200)).toEqual(restingFrame(pill, "pill"));
   });
 
   it("with reduced motion swaps at once", () => {
@@ -131,4 +133,29 @@ describe("the island's close and the ring", () => {
     );
     expect(sample(motion, 0)).toEqual(restingFrame(island, "island"));
   });
+});
+
+describe("the hidden notch on a notched Mac", () => {
+  const hidden = { ...notch, hidden: true };
+  const atRest = restingFrame(hidden, "notch");
+
+  it("draws nothing at rest, and a plain notch does", () => {
+    expect(atRest.shade).toBe(0);
+    expect(restingFrame(notch, "notch").shade).toBe(1);
+  });
+
+  it("keeps a shape drawn until its close ends, and from the start of a grow", () => {
+    const close = to(restingFrame(ring, "ring"), "notch", hidden);
+    expect(sample(close, 1).shade).toBe(1);
+    expect(sample(close, 419).shade).toBe(1);
+    expect(sample(close, 420).shade).toBe(0);
+    expect(sample(to(atRest, "ring", ring), 1).shade).toBe(1);
+  });
+
+  it.each([0, 1, 419, 420])(
+    "draws nothing at %i ms when startup plans hidden to hidden",
+    (at) => {
+      expect(sample(to(atRest, "notch", hidden), at).shade).toBe(0);
+    },
+  );
 });

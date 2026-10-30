@@ -1,13 +1,16 @@
-import { clamp01, instant, makeMotion, smootherstep } from "./motion";
-import type { Ease, Frame, Motion, Timing } from "./motion";
+import { easeOutCubic, instant, makeMotion, smootherstep } from "./motion";
+import type { Frame, Motion, Timing } from "./motion";
 import type { Silhouette } from "./outline";
-import { fade, restingFrame } from "./plans";
+import type { PillClose } from "./pill";
+import { fade, panelTiming, restingFrame, whileMoving } from "./plans";
 import type { ClosedView } from "./views";
 
 // Timings from the locked design: "Voice pill", "Closed-panel voice pill: Soft close", "Running task: spinning ring",
-// "Answer island grow". The island's close is not locked; it uses the "Two results together" close (140 ms content, 420 ms shape).
+// "Answer island grow", and design-lock-timing.md. The island's close is not locked; it uses the "Two results together" close (140 ms content, 420 ms shape).
 export const closedTiming = {
   shapeMs: 420,
+  pillGrowMs: 200,
+  silentCloseMs: panelTiming.closeMs,
   wordMs: 140,
   rimMs: 180,
   ringMs: 140,
@@ -19,9 +22,6 @@ export const closedTiming = {
     cardMs: 270,
   },
 } as const;
-
-export const easeOutCubic: Ease = (progress) =>
-  1 - (1 - clamp01(progress)) ** 3;
 
 const soft = (duration: number, from: number, to: number, delay = 0) => ({
   ...fade(duration, from, to, delay),
@@ -52,38 +52,46 @@ function planIsland(current: Frame, target: Frame, now: number): Motion {
   return makeMotion(current, target, timings, { now });
 }
 
-// Arriving layers come in over the last 140 ms of the shape; leaving ones fade first (the word in 140 ms, the lines in 180 ms).
+function softMs(view: ClosedView, close: PillClose): number {
+  const t = closedTiming;
+  if (view === "pill") return t.pillGrowMs;
+  return close === "silent" ? t.silentCloseMs : t.shapeMs;
+}
+
+// Arriving layers come in over the last 140 ms of the shape; leaving ones fade from its start (the word and the ring in 140 ms, the lines in 180 ms).
 function planSoft(
   current: Frame,
   target: Frame,
-  view: ClosedView,
-  now: number,
+  how: { view: ClosedView; close: PillClose; now: number },
 ): Motion {
   const t = closedTiming;
-  // The ring fades out before the shape grows into the pill.
-  const lead = view === "pill" ? current.ring * t.ringMs : 0;
-  const late = lead + t.shapeMs - t.wordMs;
+  const { view, now } = how;
+  const shapeMs = softMs(view, how.close);
+  const late = shapeMs - t.wordMs;
   const layer = (from: number, to: number, outMs: number, inDelay: number) =>
     to > from ? soft(t.wordMs, from, to, inDelay) : soft(outMs, from, to);
   const timings = {
-    shape: { delay: lead, duration: t.shapeMs, skip: 0, ease: smootherstep },
+    shape: { delay: 0, duration: shapeMs, skip: 0, ease: smootherstep },
     content: instant,
     shade: instant,
     pill: layer(current.pill, target.pill, t.wordMs, late),
-    rim: layer(current.rim, target.rim, t.rimMs, lead),
+    rim: layer(current.rim, target.rim, t.rimMs, 0),
     card: layer(current.card, target.card, t.wordMs, late),
     ring: layer(current.ring, target.ring, t.ringMs, late),
   };
-  return makeMotion(current, target, timings, { now });
+  return makeMotion(current, whileMoving(current, target), timings, {
+    now,
+    end: target,
+  });
 }
 
 // The closed shape moving between the notch, the ring, the pill and the island; it always starts from the frame drawn now.
 export function planClosed(
   current: Frame,
-  target: { view: ClosedView; shape: Silhouette },
+  target: { view: ClosedView; shape: Silhouette; close?: PillClose },
   how: { reduced: boolean; now: number },
 ): Motion {
-  const { view, shape } = target;
+  const { view, shape, close = "soft" } = target;
   const rest = restingFrame(shape, view);
   if (how.reduced) {
     const swaps = { content: instant, shade: instant, pill: instant };
@@ -93,5 +101,5 @@ export function planClosed(
   }
   return view === "island"
     ? planIsland(current, rest, how.now)
-    : planSoft(current, rest, view, how.now);
+    : planSoft(current, rest, { view, close, now: how.now });
 }

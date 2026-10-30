@@ -39,6 +39,9 @@ function MuteToggle({ muted, setMuted }: MuteProps) {
   );
 }
 
+// Half the strip's content box less half the notch: on a narrow panel the status never runs behind the notch.
+const rightWing = { maxWidth: "calc(50% - var(--notch-width) / 2)" };
+
 type TopBarProps = {
   accessibility: boolean | null;
   state: DisplayState;
@@ -55,8 +58,13 @@ export function TopBar(props: TopBarProps) {
     <>
       <div className="absolute inset-x-0 top-0 flex h-8 items-center justify-between px-[14px]">
         <span className="type-label">{demo ? "Demo" : ""}</span>
-        <div className="flex items-center gap-2">
-          <span className="type-status">{statusLine(state.tasks)}</span>
+        <div
+          className="flex min-w-0 items-center justify-end gap-2"
+          style={rightWing}
+        >
+          <span className="type-status min-w-0 truncate">
+            {statusLine(state.tasks)}
+          </span>
           <MuteToggle muted={state.muted} setMuted={setMuted} />
         </div>
       </div>
