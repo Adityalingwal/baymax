@@ -11,6 +11,7 @@ import type {
   SpeechLine,
   StopPlayback,
 } from "../shared/ipc";
+import { describeError, guarded, log } from "./speech-log";
 import { newStreamJob, sendText } from "./speech-stream";
 import type { LineText, StreamJob } from "./speech-stream";
 import type { SaidKind, SaidLine, Timers } from "./tasks/state";
@@ -100,27 +101,6 @@ type Failed = Extract<Synthesis, { kind: "failed" }>;
 const playbackDeadlineMs = 60_000;
 const cancelledLimit = 64;
 const everyLine: Matches = () => true;
-
-function log(message: string): void {
-  console.log(`[Speech] ${message}`);
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error
-    ? `${error.name}: ${error.message}`
-    : String(error);
-}
-
-// An injected callback that throws is logged; it never breaks the speech state.
-function guarded(name: string, call: () => void): boolean {
-  try {
-    call();
-    return true;
-  } catch (error) {
-    log(`${name} threw: ${describeError(error)}`);
-    return false;
-  }
-}
 
 // A line that leaves speech, played or not; every drop and every end of playback comes through here once.
 function lineGone(ctx: SpeechContext, line: Line, lineId: LineId | null): void {
