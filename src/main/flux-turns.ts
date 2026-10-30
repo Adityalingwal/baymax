@@ -28,7 +28,6 @@ type Utterance = {
   batch: "no" | "marked" | "sent";
   done: boolean;
   kept: string[];
-  update: string;
   cancelDeadline: () => void;
 };
 
@@ -178,9 +177,11 @@ function pump(state: State): void {
       abandon(state, head);
       continue;
     }
-    // A resolved or dropped utterance still waiting for its final could bind it to this audio's turn.
+    // A resolved, dropped or batched utterance still waiting for its final could bind it to this audio's turn.
     const unsent = head.sentFrames < head.frames.length;
-    const missing = state.awaiting.some((other) => other.done);
+    const missing = state.awaiting.some(
+      (other) => other.done || other.batch !== "no",
+    );
     if (unsent && missing) {
       return restartSocket(state, "an earlier final is still missing");
     }
@@ -222,35 +223,30 @@ function receiveEnd(state: State, id: UtteranceId): void {
   pump(state);
 }
 
-function resolveLatest(state: State, utterance: Utterance): void {
-  state.deps.log("final transcript deadline passed; the latest update is used");
-  const text = joined([...utterance.kept, utterance.update]);
-  const meant = resultOfNothingHeard(utterance) ?? { kind: "empty" as const };
-  deliver(
-    state,
-    utterance,
-    text === "" ? meant : { kind: "words", words: text },
-  );
-  abandon(state, utterance);
-  pump(state);
-}
-
 // At the cap the utterance goes to batch with the PCM it has; with none it is not caught.
 function batchWaitPassed(state: State, utterance: Utterance): void {
   if (utterance.done || utterance.batch === "sent") return;
-  if (utterance.batch === "no" && utterance.onSocket) {
-    return resolveLatest(state, utterance);
-  }
   state.deps.log("no end of frames by the cap; the utterance goes to batch");
   utterance.ended = true;
   startBatch(state, utterance);
 }
 
-// An utterance bound for batch, or whose socket is not open, is never resolved empty here: it waits for its frames.
+// A partial Update is never used, as it can be a question cut short. With every frame here batch starts and the
+// first whole result wins. Otherwise batch waits for the later frames, and the socket restarts so no final comes
+// from the audio it already has.
 function deadlinePassed(state: State, utterance: Utterance): void {
   if (utterance.done || utterance.batch === "sent") return;
-  const open = state.flux?.isOpen() ?? false;
-  if (utterance.batch === "no" && open) return resolveLatest(state, utterance);
+  state.deps.log("final transcript deadline passed");
+  if (utterance.ended) {
+    startBatch(state, utterance);
+    return pump(state);
+  }
+  utterance.batch = "marked";
+  if (utterance.onSocket) {
+    restartSocket(state, "frames still pending at the deadline");
+  }
+  abandon(state, utterance);
+  pump(state);
   utterance.cancelDeadline = state.deps.timers.setTimer(batchWaitMs, () =>
     batchWaitPassed(state, utterance),
   );
@@ -285,14 +281,10 @@ function heard(state: State, event: FluxEvent): void {
   const head = state.awaiting[0];
   if (event.kind === "other") return state.deps.log(`flux: ${event.summary}`);
   if (head === undefined) return state.deps.log(`flux ${event.kind}: no turn`);
-  if (event.kind === "update") {
-    head.update = event.transcript;
-    return;
-  }
+  if (event.kind === "update") return;
   // A timeout ends Flux's turn inside one long hold; its words wait for the rest of that hold.
   if (event.kind === "endOfTurn" && event.trigger === "timeout") {
     head.kept.push(event.transcript);
-    head.update = "";
     return;
   }
   state.awaiting.shift();
@@ -310,7 +302,7 @@ function socketClosed(state: State): void {
   state.awaiting = [];
   for (const utterance of lost) {
     utterance.onSocket = false;
-    if (utterance.done) continue;
+    if (utterance.done || utterance.batch === "sent") continue;
     utterance.batch = "marked";
     if (utterance.ended) startBatch(state, utterance);
   }
@@ -330,7 +322,6 @@ function begin(state: State, id: UtteranceId): void {
     batch: "no",
     done: false,
     kept: [],
-    update: "",
     cancelDeadline: () => undefined,
   };
   state.byId.set(id, utterance);

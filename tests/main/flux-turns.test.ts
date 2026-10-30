@@ -1,51 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Transcription } from "../../src/providers/deepgram";
 import type { FluxEvent } from "../../src/providers/flux";
-import type { Heard, NotCaughtCause } from "../../src/main/recording";
 import {
   createFakeFlux,
   createHarness,
   end,
-  flush,
   frame,
   hold,
+  manual,
   micFailed,
   missed,
-  quietFrame,
+  openHarness,
+  pcmOf,
   resolveCall,
   sendAudio,
+  timeout,
+  update,
   words,
 } from "./recording.harness";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
-
-const manual = (transcript: string): FluxEvent => ({
-  kind: "endOfTurn",
-  trigger: "manual",
-  transcript,
-});
-const timeout = (transcript: string): FluxEvent => ({
-  kind: "endOfTurn",
-  trigger: "timeout",
-  transcript,
-});
-const update = (transcript: string): FluxEvent => ({
-  kind: "update",
-  transcript,
-});
-
-const pcmOf = (h: ReturnType<typeof createHarness>, call: number) => [
-  ...new Uint8Array(h.pending[call].audio, 44),
-];
-
-function openHarness() {
-  const flux = createFakeFlux();
-  const h = createHarness(flux);
-  flux.open();
-  return { flux, h };
-}
 
 describe("ending the turn (L4)", () => {
   it("streams frames while held and sends ForceEndTurn only after the end-of-frames marker", () => {
@@ -113,210 +88,6 @@ describe("turn binding (L3b, L5)", () => {
     flux.emit(manual("first"));
     flux.emit(manual("second"));
     expect(h.heard).toEqual([words(a, "first"), words(b, "second")]);
-  });
-});
-
-const nothingHeard: { name: string; event: FluxEvent }[] = [
-  { name: "the no-turn warning", event: { kind: "noActiveTurn" } },
-  { name: "an empty manual end of turn", event: manual("  ") },
-];
-
-describe.each(nothingHeard)("nothing heard: $name", ({ event }) => {
-  it("under the speech level is silent, with no batch call", () => {
-    const { flux, h } = openHarness();
-    const id = hold(h, "accept");
-    quietFrame(h, id);
-    end(h, id);
-    flux.emit(event);
-    expect(h.heard).toEqual([missed(id, "silent")]);
-    expect(h.transcribe).not.toHaveBeenCalled();
-    expect(flux.sent).not.toContain("restart");
-  });
-
-  it("at the speech level gets its words from the held audio", async () => {
-    const { flux, h } = openHarness();
-    const id = hold(h, "accept");
-    sendAudio(h, id, [1, 2]);
-    flux.emit(event);
-    expect([...new Uint8Array(h.pending[0].audio, 44)]).toEqual([
-      1, 0, 0, 16, 2, 0, 0, 16,
-    ]);
-    await resolveCall(h, 0, { kind: "words", words: "the whisper" });
-    expect(h.heard).toEqual([words(id, "the whisper")]);
-  });
-
-  it("keeps text from before a timeout, under the speech level too", () => {
-    const { flux, h } = openHarness();
-    const id = hold(h, "accept");
-    quietFrame(h, id);
-    end(h, id);
-    flux.emit(timeout("kept words"));
-    flux.emit(event);
-    expect(h.heard).toEqual([words(id, "kept words")]);
-  });
-});
-
-describe.each(nothingHeard)("speech lost: $name", ({ event }) => {
-  it.each<{ name: string; result: Transcription; cause: NotCaughtCause }>([
-    { name: "empty too", result: { kind: "empty" }, cause: "empty" },
-    {
-      name: "failing",
-      result: { kind: "failed", cause: "unreachable", detail: "down" },
-      cause: "unreachable",
-    },
-  ])(
-    "at the speech level with the batch call $name is not caught",
-    async ({ result, cause }) => {
-      const { flux, h } = openHarness();
-      const id = hold(h, "accept");
-      sendAudio(h, id);
-      flux.emit(event);
-      await resolveCall(h, 0, result);
-      expect(h.heard).toEqual([missed(id, cause)]);
-    },
-  );
-});
-
-describe("a speech-level no-turn hold leaves nothing for the next hold", () => {
-  it("restarts the socket, so a hold right after it has only its own words", async () => {
-    const { flux, h } = openHarness();
-    const a = hold(h, "accept");
-    sendAudio(h, a, [1]);
-    flux.emit({ kind: "noActiveTurn" });
-    h.flow.holdStarted();
-    const b = h.last();
-    frame(h, b, 2);
-    flux.open();
-    h.flow.holdEnded("accept");
-    end(h, b);
-    expect(flux.sent).toEqual([
-      "audio 1",
-      "endTurn",
-      "restart",
-      "connectNow",
-      "audio 2",
-      "endTurn",
-    ]);
-    await resolveCall(h, 0, { kind: "words", words: "the whisper" });
-    flux.emit(manual("Hi"));
-    expect(h.heard).toEqual([words(a, "the whisper"), words(b, "Hi")]);
-  });
-
-  it("sends a hold already on that socket to batch whole", async () => {
-    const { flux, h } = openHarness();
-    const a = hold(h, "accept");
-    sendAudio(h, a, [1]);
-    h.flow.holdStarted();
-    const b = h.last();
-    frame(h, b, 2);
-    flux.emit({ kind: "noActiveTurn" });
-    frame(h, b, 3);
-    h.flow.holdEnded("accept");
-    end(h, b);
-    expect(pcmOf(h, 1)).toEqual([2, 0, 0, 16, 3, 0, 0, 16]);
-    await resolveCall(h, 1, { kind: "words", words: "Hi" });
-    expect(h.heard).toEqual([words(b, "Hi")]);
-  });
-});
-
-type BatchAloneRow = {
-  name: string;
-  send: (h: ReturnType<typeof createHarness>, id: string) => void;
-  result: Transcription;
-  heard: (id: string) => Heard;
-};
-
-const batchAloneRows: BatchAloneRow[] = [
-  {
-    name: "silence, batch empty: silent",
-    send: quietFrame,
-    result: { kind: "empty" },
-    heard: (id) => missed(id, "silent"),
-  },
-  {
-    name: "speech level, batch empty: not caught",
-    send: (h, id) => frame(h, id),
-    result: { kind: "empty" },
-    heard: (id) => missed(id, "empty"),
-  },
-  {
-    name: "silence, batch words: the words",
-    send: quietFrame,
-    result: { kind: "words", words: "soft" },
-    heard: (id) => words(id, "soft"),
-  },
-  {
-    name: "silence, batch failed: its own cause",
-    send: quietFrame,
-    result: { kind: "failed", cause: "noCredit", detail: "402" },
-    heard: (id) => missed(id, "noCredit"),
-  },
-];
-
-describe("a hold whose socket is closed goes to batch alone", () => {
-  it.each(batchAloneRows)("$name", async ({ send, result, heard }) => {
-    const h = createHarness(createFakeFlux());
-    const id = hold(h, "accept");
-    send(h, id);
-    end(h, id);
-    await resolveCall(h, 0, result);
-    expect(h.heard).toEqual([heard(id)]);
-  });
-
-  it("keeps text from before a timeout when batch is empty", async () => {
-    const { flux, h } = openHarness();
-    const id = hold(h, "accept");
-    frame(h, id);
-    flux.emit(timeout("kept words"));
-    flux.close();
-    end(h, id);
-    await resolveCall(h, 0, { kind: "empty" });
-    expect(h.heard).toEqual([words(id, "kept words")]);
-  });
-});
-
-describe("the deadline (L5, L8)", () => {
-  it("uses the kept texts and the latest update 2 s after release", () => {
-    const { flux, h } = openHarness();
-    const a = hold(h, "accept");
-    sendAudio(h, a);
-    flux.emit(timeout("one"));
-    flux.emit(update("two"));
-    h.clock.advance(1999);
-    expect(h.heard).toEqual([]);
-    h.clock.advance(1);
-    expect(h.heard).toEqual([words(a, "one two")]);
-  });
-
-  it("restarts the socket before a later hold's audio while that final is missing, so a late final never lands on it", () => {
-    const { flux, h } = openHarness();
-    const a = hold(h, "accept");
-    sendAudio(h, a, [1]);
-    h.clock.advance(2000);
-    h.flow.holdStarted();
-    const b = h.last();
-    frame(h, b, 2);
-    flux.emit(manual("one two three"));
-    flux.open();
-    h.flow.holdEnded("accept");
-    end(h, b);
-    flux.emit(manual("next question"));
-    expect(flux.sent).toEqual([
-      "audio 1",
-      "endTurn",
-      "restart",
-      "audio 2",
-      "endTurn",
-    ]);
-    expect(h.heard).toEqual([missed(a, "empty"), words(b, "next question")]);
-  });
-
-  it("is not caught when nothing was heard by the deadline", () => {
-    const { h } = openHarness();
-    const a = hold(h, "accept");
-    sendAudio(h, a);
-    h.clock.advance(2000);
-    expect(h.heard).toEqual([missed(a, "empty")]);
   });
 });
 
@@ -448,22 +219,6 @@ describe("a socket that closes mid-utterance (L7)", () => {
     expect(h.transcribe).toHaveBeenCalledTimes(1);
     expect(h.heard).toEqual([missed(id, "empty")]);
   });
-
-  it("never sends an utterance resolved by its deadline to batch", async () => {
-    const { flux, h } = openHarness();
-    const id = hold(h, "accept");
-    sendAudio(h, id);
-    flux.emit(update("in time"));
-    h.clock.advance(2000);
-    flux.close();
-    await flush();
-    expect(h.transcribe).not.toHaveBeenCalled();
-    expect(h.heard).toEqual([words(id, "in time")]);
-  });
-});
-
-beforeEach(() => {
-  vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
 
 describe("the deadline of an utterance bound for batch", () => {
@@ -512,10 +267,6 @@ describe("the deadline of an utterance bound for batch", () => {
   });
 });
 
-beforeEach(() => {
-  vi.spyOn(console, "log").mockImplementation(() => undefined);
-});
-
 describe("a final that may never come", () => {
   it("restarts the socket when the earlier deadline passes after the later hold's audio already went out, and sends that hold to batch whole", async () => {
     const { flux, h } = openHarness();
@@ -525,7 +276,6 @@ describe("a final that may never come", () => {
     const b = h.last();
     frame(h, b, 2);
     h.clock.advance(2000);
-    // A's not-caught is dropped: the user is already holding again.
     expect(h.heard).toEqual([]);
     frame(h, b, 3);
     expect(flux.sent).toEqual(["audio 1", "endTurn", "audio 2", "restart"]);
@@ -533,8 +283,8 @@ describe("a final that may never come", () => {
     h.flow.holdEnded("accept");
     end(h, b);
     flux.emit({ kind: "endOfTurn", trigger: "manual", transcript: "stale" });
-    expect(pcmOf(h, 0)).toEqual([2, 0, 0, 16, 3, 0, 0, 16]);
-    await resolveCall(h, 0, { kind: "words", words: "whole b" });
+    expect(pcmOf(h, 1)).toEqual([2, 0, 0, 16, 3, 0, 0, 16]);
+    await resolveCall(h, 1, { kind: "words", words: "whole b" });
     expect(h.heard).toEqual([words(b, "whole b")]);
   });
 });

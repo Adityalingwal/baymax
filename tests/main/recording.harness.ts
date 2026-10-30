@@ -94,6 +94,34 @@ export function createHarness(fakeFlux: FakeFlux | null = null) {
 
 export type Harness = ReturnType<typeof createHarness>;
 
+export function openHarness() {
+  const flux = createFakeFlux();
+  const h = createHarness(flux);
+  flux.open();
+  return { flux, h };
+}
+
+export const pcmOf = (h: Harness, call: number) => [
+  ...new Uint8Array(h.pending[call].audio, 44),
+];
+
+export const manual = (transcript: string): FluxEvent => ({
+  kind: "endOfTurn",
+  trigger: "manual",
+  transcript,
+});
+
+export const timeout = (transcript: string): FluxEvent => ({
+  kind: "endOfTurn",
+  trigger: "timeout",
+  transcript,
+});
+
+export const update = (transcript: string): FluxEvent => ({
+  kind: "update",
+  transcript,
+});
+
 export const flush = () =>
   new Promise<void>((resolve) => setTimeout(resolve, 0));
 
