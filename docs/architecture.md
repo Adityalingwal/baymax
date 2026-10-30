@@ -106,7 +106,7 @@ cards       <--IPC--  display state <- main checks, then routes --> runTask --> 
 | Part | Choice |
 | --- | --- |
 | STT | Deepgram Flux (`flux-general-en`) over one warm WebSocket; backup Nova-3 pre-recorded for one utterance when the socket cannot reconnect |
-| TTS | Deepgram Aura-2 over one warm WebSocket (24 kHz PCM), fed the front call's line clause by clause; backup the Aura-2 REST call |
+| TTS | Deepgram Aura-2 over one warm WebSocket (24 kHz PCM), fed the front call's line sentence by sentence; backup the Aura-2 REST call |
 | Front call | Claude Fable 5.1 at low effort, in main: a spoken line, then the route (`decide` tool) |
 | Brief writer | Claude Sonnet 5.5, with one retry on Claude Opus 5.5; it writes the worker's brief in the engine |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
@@ -271,7 +271,7 @@ It checks the answer's form and its citations, not whether the pages back the cl
 | First spoken line, target | under about 3 s after key release |
 | Flux silence keep-alive | about 100 ms of zero PCM every 5 s |
 | Zero PCM before `ForceEndTurn` | about 200 ms, sent at once |
-| Final transcript deadline after key release | about 2 s, then the latest `Update` |
+| Final transcript deadline after key release | about 2 s, then the held audio goes to Nova-3; a partial `Update` is never used |
 | Searches per task | about 20 |
 | Active time per task | about 4 minutes |
 | Model calls per task | about 30 |
@@ -319,8 +319,8 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/main/platform.ts` | Platform flags and labels |
 | `src/main/recording.ts` | One utterance: recording commands, the mic audio, the transcript in hold order; discarded holds and late transcripts dropped |
 | `src/main/flux-turns.ts` | Flux turns bound to held utterances: sending order, `ForceEndTurn`, the final-transcript deadline and the Nova-3 batch fallback; the held utterance and its end: delivery once, the turn ended on the socket, the batch call |
-| `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, with a deadline on each playing line; a line streams clause by clause over the open Aura socket and uses the Aura-2 REST call, which also reports voice down, when the socket is not open or closes before any audio; a socket that closes after audio drops the rest of the line |
-| `src/main/clauses.ts` | Text cut into clauses for streamed speech; pure |
+| `src/main/speech.ts` | `speak()`: the one playback owner — one line at a time, silenced by the key, mute or cancel, with a deadline on each playing line; a line streams sentence by sentence over the open Aura socket and uses the Aura-2 REST call, which also reports voice down, when the socket is not open or closes before any audio; a socket that closes after audio drops the rest of the line |
+| `src/main/clauses.ts` | Text cut into whole sentences for streamed speech; pure |
 | `src/main/voice.ts` | Voice wiring: hold routing, recording and speech joined to main's state, STT and TTS health, the first-line and final-transcript timing; what voice does with a held utterance's result (its words to main's state, or the line for words not caught); the voice phase the screen shows: listening, the pending turn (thinking) and the speaking line |
 | `src/main/voice-timing.ts` | Dev-log timing of voice: each generation's front-call steps in ms after its release, and gaps where streamed speech ran dry |
 | `src/main/talker.ts` | The front call: one Fable 5.1 streaming call per question or clarifying answer; its line streams into speech, then its `decide` input is handed to main; the two deadlines, attempts and cancel; its instructions, the `decide` tool and the messages it reads |
