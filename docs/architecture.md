@@ -309,6 +309,7 @@ In build week: the time to the first spoken line; mic timing (first word, cold a
 | `src/renderer/playback.ts` | Playback of spoken lines: a whole REST clip, or one line's streamed chunks in seq order until its end |
 | `src/renderer/web-audio.ts` | The Web Audio player: decodes a whole clip, or schedules PCM chunks back to back on one timeline |
 | `src/renderer/notch/` | The shell that unfolds from the notch: the open and close rules, the voice pill's and answer island's lifecycle and the closed view choice (pure), the shape and its motion plans, the running ring, pointer hit-testing and click capture |
+| `src/renderer/cards/` | The task card in each state (running, clarifying, result) with its answer and sources, the form each state takes, and the order of the list |
 | `src/main/` | Main process: hold-key, windows, Deepgram calls, `speak()`, the task list and shown state, the engine behind its port |
 | `src/main/hotkey.ts` | Hold-key detection |
 | `src/main/hold.ts` | Hold state and the accept or discard outcome from key events and the time; pure |
