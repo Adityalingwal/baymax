@@ -50,13 +50,26 @@ export type ChatRow = {
   id: string;
   side: "left" | "right"; // your words on the left, Baymax's on the right
   text: string;
+  reportOf: TaskId | null; // the task whose report this row's button opens
 };
 
-function chatRows(chat: readonly ChatEntry[]): ChatRow[] {
-  return chat.map(({ id, from, text }) => ({
+function reportOfEntry(
+  taskId: TaskId | null,
+  tasks: readonly TaskCard[],
+): TaskId | null {
+  const card = tasks.find((task) => task.taskId === taskId);
+  return card === undefined || shownReport(card) === null ? null : card.taskId;
+}
+
+function chatRows(
+  chat: readonly ChatEntry[],
+  tasks: readonly TaskCard[],
+): ChatRow[] {
+  return chat.map(({ id, from, text, taskId }) => ({
     id,
     side: from === "user" ? "left" : "right",
     text,
+    reportOf: reportOfEntry(taskId, tasks),
   }));
 }
 
@@ -70,7 +83,9 @@ export function panelContent(
   view: PanelView,
   { chat, tasks }: Pick<DisplayState, "chat" | "tasks">,
 ): PanelContent {
-  if (view.tab === "chat") return { kind: "chat", rows: chatRows(chat) };
+  if (view.tab === "chat") {
+    return { kind: "chat", rows: chatRows(chat, tasks) };
+  }
   const card = tasks.find(({ taskId }) => taskId === view.reportOf);
   const report = card === undefined ? null : shownReport(card);
   return card === undefined || report === null

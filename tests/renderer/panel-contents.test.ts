@@ -60,8 +60,20 @@ const atFivePast = new Date(2026, 9, 30, 14, 5).getTime();
 const display = {
   tasks: [card("t1", "A report."), card("t2", "")],
   chat: [
-    { id: "c1", from: "user" as const, text: "hi", at: atFivePast },
-    { id: "c2", from: "baymax" as const, text: "hello", at: atFivePast },
+    {
+      id: "c1",
+      from: "user" as const,
+      text: "hi",
+      at: atFivePast,
+      taskId: null,
+    },
+    {
+      id: "c2",
+      from: "baymax" as const,
+      text: "hello",
+      at: atFivePast,
+      taskId: null,
+    },
   ],
 };
 
@@ -82,6 +94,23 @@ describe("the Chat tab", () => {
         expect.objectContaining({ id: "c1", side: "left", text: "hi" }),
         expect.objectContaining({ id: "c2", side: "right", text: "hello" }),
       ],
+    });
+  });
+});
+
+describe("a Chat row's report button", () => {
+  it.each<{ name: string; taskId: string | null; reportOf: string | null }>([
+    { name: "a result line with a report", taskId: "t1", reportOf: "t1" },
+    { name: "a task with no report", taskId: "t2", reportOf: null },
+    { name: "a task that is gone", taskId: "t9", reportOf: null },
+    { name: "a line of no task", taskId: null, reportOf: null },
+  ])("$name: $reportOf", ({ taskId, reportOf }) => {
+    const chat = [
+      { id: "c1", from: "baymax" as const, text: "x", at: 0, taskId },
+    ];
+    expect(panelContent(run([toChat]), { ...display, chat })).toEqual({
+      kind: "chat",
+      rows: [expect.objectContaining({ reportOf })],
     });
   });
 });
