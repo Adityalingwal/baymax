@@ -22,6 +22,7 @@ import { createSpeech } from "./speech";
 import type { LineFeed, Spoken } from "./speech";
 import { createGapWatch, createTalkerTiming } from "./voice-timing";
 import type { WaitingQuestion } from "./tasks/talk";
+import type { VoiceDownNotice } from "./tasks/record";
 import type { MainState, SaidLine, Timers } from "./tasks/state";
 
 export type VoiceState = Pick<
@@ -79,6 +80,7 @@ type VoiceModel = {
   sttOrder: number;
   ttsUp: boolean;
   told: boolean;
+  downNotice: VoiceDownNotice;
   releasedAt: number | null;
   held: boolean;
   stopped: boolean;
@@ -125,6 +127,7 @@ function createModel(): VoiceModel {
     sttOrder: 0,
     ttsUp: true,
     told: true,
+    downNotice: "voiceUnavailable",
     releasedAt: null,
     held: false,
     stopped: false,
@@ -146,7 +149,7 @@ function tellHealth(model: VoiceModel): void {
   const state = model.state;
   if (state === null || up === model.told) return;
   model.told = up;
-  state.setVoiceAvailable(up);
+  state.setVoiceAvailable(up, model.downNotice);
 }
 
 // An older utterance's result arriving late never overrides a newer one's.
@@ -221,13 +224,17 @@ function lineGone(tracker: Tracker, spoken: Spoken, lineId: LineId | null) {
   }
 }
 
-function createPhaseTracker(send: (phase: VoicePhase) => void): PhaseTracker {
+function createPhaseTracker(
+  send: (phase: VoicePhase) => void,
+  turnPending: (pending: boolean) => void,
+): PhaseTracker {
   const tracker: Tracker = { held: false, pending: null, speaking: null };
   let sent = JSON.stringify(phaseOf(tracker));
   const after =
     <A extends unknown[]>(change: (t: Tracker, ...a: A) => void) =>
     (...args: A): void => {
       change(tracker, ...args);
+      turnPending(tracker.pending !== null);
       const phase = phaseOf(tracker);
       const text = JSON.stringify(phase);
       if (text === sent) return;
@@ -376,8 +383,11 @@ function holdChanged(
 
 function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
   const timing = createTalkerTiming({ now: deps.now, log: deps.log });
-  const phases = createPhaseTracker((phase) =>
-    contained(deps, "sendVoicePhase", () => deps.sendVoicePhase(phase)),
+  let tellSpeech: (pending: boolean) => void = () => undefined;
+  const phases = createPhaseTracker(
+    (phase) =>
+      contained(deps, "sendVoicePhase", () => deps.sendVoicePhase(phase)),
+    (pending) => tellSpeech(pending),
   );
   const gaps = createGapWatch(deps.now, deps.log);
   const recording = createRecording({
@@ -414,6 +424,7 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
     onLineGone: (line, lineId) => phases.lineGone(line, lineId),
     timers: deps.timers,
   });
+  tellSpeech = speech.setTurnPending;
   return { recording, speech, timing, phases };
 }
 
@@ -456,6 +467,7 @@ export function createVoice(deps: VoiceDeps): Voice {
     start: (state) => {
       model.state = state;
       model.sttUp = deps.deepgramKeyPresent;
+      if (!deps.deepgramKeyPresent) model.downNotice = "keyMissing";
       tellHealth(model);
     },
     holdChanged: (holdState, outcome) =>

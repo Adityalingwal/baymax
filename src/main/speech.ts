@@ -12,9 +12,11 @@ import type {
   StopPlayback,
 } from "../shared/ipc";
 import { describeError, guarded, log } from "./speech-log";
+import { createSpeechState, nextLine, takeLine } from "./speech-queue";
+import type { Job, Line, Playing, SpeechState } from "./speech-queue";
 import { newStreamJob, sendText } from "./speech-stream";
-import type { LineText, StreamJob } from "./speech-stream";
-import type { SaidKind, SaidLine, Timers } from "./tasks/state";
+import type { StreamJob } from "./speech-stream";
+import type { SaidLine, Timers } from "./tasks/state";
 
 export type VoiceDownCause = "unreachable" | "keyRejected" | "noCredit";
 
@@ -40,38 +42,6 @@ type SpeechDeps = {
   timers: Timers;
 };
 
-// key: the generation (release or typed question) of a talker reply, else null.
-type Line = {
-  taskId: TaskId | null;
-  kind: SaidKind;
-  key: string | null;
-  feed: LineText;
-  silent?: boolean; // a result with no audio to play: it still gets its turn and its island
-};
-
-// A distinct object per synthesis, so a settled job can tell whether it still owns the slot.
-type Job = { line: Line; abort: AbortController };
-
-// The line that owns playback until the renderer reports its end; started tells whether its audio began.
-type Playing = {
-  lineId: LineId;
-  line: Line;
-  cancelDeadline: () => void;
-  stream: StreamJob | null;
-  started: boolean; // its first audio reached the renderer
-};
-
-type SpeechState = {
-  pending: Line[];
-  synthesizing: Job | null;
-  playing: Playing | null;
-  island: LineId | null; // the result line whose island may still show; a later result line waits for its closing report
-  held: boolean;
-  muted: boolean;
-  cancelled: Set<TaskId>;
-  voiceAvailable: boolean;
-};
-
 type SpeechContext = {
   state: SpeechState;
   deps: SpeechDeps;
@@ -92,6 +62,7 @@ type Speech = {
   islandClosed(lineId: LineId): void;
   releaseResults(): void;
   rendererReset(): void;
+  setTurnPending(pending: boolean): void; // a held question is on its way to its first words
 };
 
 type Audio = Extract<Synthesis, { kind: "audio" }>;
@@ -99,11 +70,25 @@ type Failed = Extract<Synthesis, { kind: "failed" }>;
 
 // A renderer that never reports must not block speech forever.
 const playbackDeadlineMs = 60_000;
+const resultQuietMs = 2_000;
 const cancelledLimit = 64;
 const everyLine: Matches = () => true;
 
+function restartQuiet(ctx: SpeechContext): void {
+  const { state, deps } = ctx;
+  state.cancelQuiet?.();
+  state.cancelQuiet = null;
+  guarded("setTimer", () => {
+    state.cancelQuiet = deps.timers.setTimer(resultQuietMs, () => {
+      state.cancelQuiet = null;
+      pump(ctx);
+    });
+  });
+}
+
 // A line that leaves speech, played or not; every drop and every end of playback comes through here once.
 function lineGone(ctx: SpeechContext, line: Line, lineId: LineId | null): void {
+  if (line.kind !== "answer") restartQuiet(ctx);
   guarded("onLineGone", () => ctx.deps.onLineGone(line, lineId));
 }
 
@@ -366,15 +351,6 @@ function clearSpeech(
   stopPlaying(ctx, clear.matches, clear.sendStop);
 }
 
-// While an island may show, a result line waits and other lines go ahead of it.
-function nextLine({ pending, island }: SpeechState): Line | undefined {
-  return pending.find((line) => island === null || line.kind !== "answer");
-}
-
-function takeLine(state: SpeechState, line: Line): void {
-  state.pending = state.pending.filter((other) => other !== line);
-}
-
 // The open Aura socket streams the line; without it the line goes to the REST call.
 function pump(ctx: SpeechContext): void {
   const { state, aura } = ctx;
@@ -463,6 +439,15 @@ function startHold(ctx: SpeechContext): void {
 function endHold(ctx: SpeechContext): void {
   if (!ctx.state.held) return;
   ctx.state.held = false;
+  restartQuiet(ctx);
+  pump(ctx);
+}
+
+function setTurnPending(ctx: SpeechContext, pending: boolean): void {
+  if (ctx.state.turnPending === pending) return;
+  ctx.state.turnPending = pending;
+  if (pending) return;
+  restartQuiet(ctx);
   pump(ctx);
 }
 
@@ -537,16 +522,7 @@ function forgetRenderer(ctx: SpeechContext): void {
 
 export function createSpeech(deps: SpeechDeps): Speech {
   const ctx: SpeechContext = {
-    state: {
-      pending: [],
-      synthesizing: null,
-      playing: null,
-      island: null,
-      held: false,
-      muted: false,
-      cancelled: new Set(),
-      voiceAvailable: true,
-    },
+    state: createSpeechState(),
     deps,
     aura: null,
   };
@@ -569,5 +545,6 @@ export function createSpeech(deps: SpeechDeps): Speech {
     islandClosed: (lineId) => islandClosed(ctx, lineId),
     releaseResults: () => releaseResults(ctx),
     rendererReset: () => forgetRenderer(ctx),
+    setTurnPending: (pending) => setTurnPending(ctx, pending),
   };
 }

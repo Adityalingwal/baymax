@@ -18,7 +18,7 @@ import type { Harness } from "./voice.harness";
 const line = (text: string): SaidLine => ({
   taskId: "t1",
   text,
-  kind: "answer",
+  kind: "failure",
 });
 
 describe("voice before start", () => {

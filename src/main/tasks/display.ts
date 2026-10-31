@@ -1,4 +1,5 @@
 import type { DisplayState, TaskCard, TaskId } from "../../shared/cards";
+import { fixedLines } from "./lines";
 import type { Model, TaskRecord } from "./record";
 import { activeQuestion } from "./record";
 import type { RecentExchange, TaskSummary, WaitingQuestion } from "./talk";
@@ -30,6 +31,7 @@ export function buildDisplay(model: Model): DisplayState {
     tasks,
     chat: structuredClone(model.chat),
     notice: model.notice,
+    keyMissing: model.notice === fixedLines.keyMissing,
     muted: model.muted,
     voiceAvailable: model.voiceAvailable,
   };

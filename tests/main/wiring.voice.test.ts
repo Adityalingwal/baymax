@@ -114,16 +114,15 @@ describe("main's lines and voice", () => {
     expect(w.speeches).toEqual([]);
   });
 
-  it("shows and says voice down from the start without a Deepgram key", () => {
+  it("shows the key line and holds the panel open from the start without a Deepgram key", () => {
     const w = wire({ deepgramKeyPresent: false });
     expect(w.published).toHaveLength(1);
     expect(w.published[0]).toMatchObject({
       voiceAvailable: false,
-      notice: fixedLines.voiceUnavailable,
+      notice:
+        "One of my keys isn't working. Please check your env file and restart me.",
+      keyMissing: true,
     });
-    expect(w.syntheses.map((call) => call.input)).toEqual([
-      fixedLines.voiceUnavailable,
-    ]);
   });
 });
 
@@ -137,6 +136,7 @@ describe("mute", () => {
     w.send(ipcChannels.setMuted, { muted: false });
     expect(w.published.at(-1)?.muted).toBe(false);
     w.wiring.voice.say({ taskId: "t1", text: "Again.", kind: "answer" });
+    w.advance(2_000);
     expect(w.syntheses.map((call) => call.input)).toEqual(["Again."]);
   });
 });

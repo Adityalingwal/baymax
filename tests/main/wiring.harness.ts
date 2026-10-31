@@ -151,6 +151,7 @@ const audioOf = (text: string): Synthesis => ({
 function playback(
   seen: ReturnType<typeof fakeVoice>["seen"],
   send: (channel: string, payload?: unknown) => void,
+  advance: (ms: number) => void,
 ) {
   let settled = 0;
   const settleNext = async (): Promise<SpeechLine | undefined> => {
@@ -169,6 +170,9 @@ function playback(
     send(ipcChannels.playbackFinished, { lineId, outcome: "ended" });
     // A renderer whose island closes at once, so a later result line can play.
     send(ipcChannels.islandClosed, { lineId });
+    // Past the quiet a result line waits for.
+    advance(2_000);
+    await flush();
   };
   const playAll = async (): Promise<void> => {
     for (let turn = 0; turn < 20 && settled < seen.syntheses.length; turn += 1)
@@ -232,7 +236,7 @@ export function wire(options: Options = {}) {
     ipc.call(channel, payload, sender);
   const card = (taskId: TaskId) =>
     seen.published.at(-1)?.tasks.find((shown) => shown.taskId === taskId);
-  const speech = playback(voice.seen, send);
+  const speech = playback(voice.seen, send, clock.advance);
   return {
     ...seen,
     ...voice.seen,

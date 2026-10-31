@@ -18,6 +18,7 @@ const emptyState: DisplayState = {
   tasks: [],
   chat: [],
   notice: null,
+  keyMissing: false,
   muted: false,
   voiceAvailable: true,
 };
@@ -103,7 +104,7 @@ export function App() {
 
   return (
     <NotchShell
-      needsAccess={accessibility === false}
+      needsAccess={accessibility === false || display.keyMissing}
       draft={draft}
       phase={phase}
       tasks={display.tasks}

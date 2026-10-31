@@ -53,6 +53,7 @@ export type DisplayState = {
   tasks: TaskCard[]; // in the order shown
   chat: ChatEntry[]; // oldest first
   notice: string | null; // a line tied to no card: words not caught, voice unavailable, restarting
+  keyMissing: boolean; // the notice is the missing-key line, which holds the panel open
   muted: boolean;
   voiceAvailable: boolean;
 };

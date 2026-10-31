@@ -130,14 +130,12 @@ describe("the voice phase beside other lines", () => {
     expect(names(h)).toEqual(["speaking", "listening", "idle"]);
   });
 
-  it("shows another task's answer as speaking while a turn waits for its words, then thinks again", async () => {
+  it("holds another task's answer while a turn waits for its words", () => {
     const h = createHarness();
     sendAudio(h, hold(h));
     h.voice.say({ taskId: "t0", text: "Hermes runs a loop.", kind: "answer" });
-    await synthesized(h, 0, audio);
-    expect(lastLine(h)).toMatchObject({ taskId: "t0", kind: "answer" });
-    const lineId = h.speeches[0].lineId;
-    h.voice.playbackFinished({ lineId, outcome: "ended" });
+    h.advance(10_000);
+    expect(h.syntheses).toHaveLength(0);
     expect(h.phases.at(-1)).toEqual(thinking);
   });
 

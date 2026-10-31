@@ -114,9 +114,7 @@ export function TopBar(props: TopBarProps) {
           {needsAccess && (
             <AccessibilityHint openSettings={props.openAccessibilitySettings} />
           )}
-          {state.notice !== null && (
-            <p className="type-body truncate">{state.notice}</p>
-          )}
+          {state.notice !== null && <p className="type-body">{state.notice}</p>}
         </header>
       )}
     </>
