@@ -44,7 +44,8 @@ describe("speak plays one line at a time", () => {
     h.speech.speak(said("third"));
     h.speech.playbackFinished({ lineId: old, outcome: "stopped" });
     expect(h.texts()).toEqual(["first", "second"]);
-    expect(h.timers[1].cancelled).toBe(false);
+    const deadlines = h.timers.filter((timer) => timer.ms === 60_000);
+    expect(deadlines[1].cancelled).toBe(false);
 
     finish(h, current);
     expect(h.texts()).toEqual(["first", "second", "third"]);

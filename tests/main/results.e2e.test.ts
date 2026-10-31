@@ -72,6 +72,7 @@ describe("a result with no audio", () => {
       await flush();
       setUp(w);
       await w.playAll();
+      w.advance(2_000);
       w.voicePhases.length = 0;
       w.port.emit(result("t1", "Hermes is in."));
       await flush();
@@ -146,7 +147,51 @@ describe("one result at a time", () => {
     await flush();
     expect(synthesized(w)).toBe("Hermes is in.");
     await islandClosed(w, lineId);
+    w.advance(2_000);
     expect(synthesized(w)).toBe("Laptops are in.");
+  });
+});
+
+describe("a result and the quiet it waits for", () => {
+  // A running task, a direct reply just finished, and the task's result waiting behind it.
+  async function resultAfterReply(w: Wired) {
+    await admitAs(w, "hermes");
+    await w.playAll();
+    w.send(ipcChannels.submitQuestion, { text: "hello" });
+    await streamFront(w, replyRoute(), "Hello there.");
+    expect(synthesized(w)).toBe("Hello there.");
+    const reply = await w.settleNext();
+    w.port.emit(result("t1", "Hermes is in."));
+    await flush();
+    const lineId = reply?.lineId;
+    w.send(ipcChannels.playbackFinished, { lineId, outcome: "ended" });
+    await flush();
+  }
+
+  it("speaks after 2 s of quiet", async () => {
+    const w = wire();
+    await resultAfterReply(w);
+    w.advance(1_999);
+    expect(synthesized(w)).toBe("Hello there.");
+    w.advance(1);
+    expect(synthesized(w)).toBe("Hermes is in.");
+  });
+
+  it("lets a new question go first and restarts the wait", async () => {
+    const w = wire();
+    await resultAfterReply(w);
+    w.advance(1_000);
+    w.send(ipcChannels.submitQuestion, { text: "thanks" });
+    await streamFront(w, replyRoute(), "You're welcome.");
+    expect(synthesized(w)).toBe("You're welcome.");
+    const reply = await w.settleNext();
+    w.advance(2_000);
+    expect(synthesized(w)).toBe("You're welcome.");
+    const lineId = reply?.lineId;
+    w.send(ipcChannels.playbackFinished, { lineId, outcome: "ended" });
+    await flush();
+    w.advance(2_000);
+    expect(synthesized(w)).toBe("Hermes is in.");
   });
 });
 

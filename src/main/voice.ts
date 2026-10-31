@@ -224,13 +224,17 @@ function lineGone(tracker: Tracker, spoken: Spoken, lineId: LineId | null) {
   }
 }
 
-function createPhaseTracker(send: (phase: VoicePhase) => void): PhaseTracker {
+function createPhaseTracker(
+  send: (phase: VoicePhase) => void,
+  turnPending: (pending: boolean) => void,
+): PhaseTracker {
   const tracker: Tracker = { held: false, pending: null, speaking: null };
   let sent = JSON.stringify(phaseOf(tracker));
   const after =
     <A extends unknown[]>(change: (t: Tracker, ...a: A) => void) =>
     (...args: A): void => {
       change(tracker, ...args);
+      turnPending(tracker.pending !== null);
       const phase = phaseOf(tracker);
       const text = JSON.stringify(phase);
       if (text === sent) return;
@@ -379,8 +383,11 @@ function holdChanged(
 
 function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
   const timing = createTalkerTiming({ now: deps.now, log: deps.log });
-  const phases = createPhaseTracker((phase) =>
-    contained(deps, "sendVoicePhase", () => deps.sendVoicePhase(phase)),
+  let tellSpeech: (pending: boolean) => void = () => undefined;
+  const phases = createPhaseTracker(
+    (phase) =>
+      contained(deps, "sendVoicePhase", () => deps.sendVoicePhase(phase)),
+    (pending) => tellSpeech(pending),
   );
   const gaps = createGapWatch(deps.now, deps.log);
   const recording = createRecording({
@@ -417,6 +424,7 @@ function createFlows(model: VoiceModel, deps: VoiceDeps): Flows {
     onLineGone: (line, lineId) => phases.lineGone(line, lineId),
     timers: deps.timers,
   });
+  tellSpeech = speech.setTurnPending;
   return { recording, speech, timing, phases };
 }
 

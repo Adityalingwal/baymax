@@ -440,6 +440,11 @@ describe("cancelling a failed task", () => {
   });
 });
 
+async function pastTheQuiet(w: ReturnType<typeof wire>): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  w.advance(2_000);
+}
+
 describe("the card's Retry during a failure turn", () => {
   it("while the call generates: aborts it, and the later result is still spoken", async () => {
     const w = wire();
@@ -452,7 +457,7 @@ describe("the card's Retry during a failure turn", () => {
     expect(call.aborted).toBe(true);
     expect(w.card("t1")?.state).toBe("running");
     w.port.emit(newResult);
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await pastTheQuiet(w);
     await w.playAll();
     expect(w.spoken()).toEqual(["Checking hermes.", "Hermes runs a loop."]);
     expect(w.chat()).toEqual([]);
@@ -469,7 +474,7 @@ describe("the card's Retry during a failure turn", () => {
     w.send(ipcChannels.retryTask, { taskId: "t1" });
     expect(w.stops).toEqual([{ lineId: playing?.lineId }]);
     w.port.emit(newResult);
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await pastTheQuiet(w);
     await w.playAll();
     expect(w.spoken()).toEqual([
       "Checking hermes.",
