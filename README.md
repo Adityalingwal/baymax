@@ -1,65 +1,64 @@
 # Baymax
 
-Voice-first personal AI assistant: hold one key, speak, and your work goes to the agent you choose.
+The simplest AI you'll ever talk to.
 
-Status: streaming voice, the talker and the notch panel (31 Oct 2026). Hold the hold-key (Option on macOS), ask a question and release, or type it in the window. While the key is held the microphone streams to Deepgram Flux over a socket kept open from start; when that socket is down, the held clip goes to Deepgram's pre-recorded call instead. Spoken lines stream from a warm Deepgram Aura-2 socket and play as the audio arrives; when that socket is down, a line goes to the Aura-2 REST call. One Fable front call speaks first and then decides: it says a short line (the whole answer when it can give one, the one question when it needs a detail, or a line saying it has started on the work), then calls a decide tool that picks the route (reply, ask, work, stop or retry) and, for work, gives a goal; main checks the decision in code before anything starts, and the worker reads that goal and the user's words. The worker never asks the user anything. The result's spoken line is said as given. Baymax researches the question on the web: a card in the panel's Tasks tab shows the latest progress line, and then the title and the worker's line, with the full report on its own page behind a button and the sources below it. A card appears only for work: replies, questions and failed front calls have none. The Chat tab holds the whole conversation, with an Open report button on a result that has a report. Saying stop cancels a task as its stop button does. When a task fails, its card stays with the cause, what it found and a Retry button, and Baymax says in its own words what went wrong and what to do next, offering to try once more only when that can help; that line goes to the Chat list. A yes to that offer, or Retry, runs the same task again. If no model can speak, the cause is said as written. Running work comes first, then finished tasks, the last to finish first. The top strip holds the Chat and Tasks tabs, a mute toggle and a close control that always closes the panel at once and keeps the field's text; the panel opens on the tab last open. On a Mac that has not given both permissions, the panel opens by itself at launch with a checklist for Accessibility and the microphone; it needs no restart, stays on Ready until the first hold of the key, and then closes and is the normal panel. Otherwise the panel opens when the pointer rests on the notch and closes 300 ms after it leaves; with text in the field it closes after 3 s instead and keeps the text, each key typed outside restarts the 3 s, and the pointer coming back stops it. Esc in the field closes it and keeps the text. With the panel closed, a small pill on the notch shows Listening, Thinking or Speaking (with a mute button) and closes after speech ends; with the panel open, a smaller pill under the notch shows the same states. While tasks run, a small ring spins on the notch; a finished task's title and line show as a card under the notch while Baymax says the line, for 2 s after it while the pointer is off it. A button on a card with a report opens the report right there, and a click elsewhere on the card opens the Tasks tab. A second result waits until the first card has closed. A chat reply and a failed task show only the small pill.
+Hold one key and ask out loud. Baymax looks it up on the web in the background while you keep working, then brings the answer to your screen.
+
+## What it does
+
+- Answers small questions right away, out loud.
+- Works on bigger questions in the background while you stay in your app.
+- Brings back a short spoken line and a card, with the full report and its sources behind a button.
+
+Baymax finds and explains information. It takes no action for you, such as sending email or editing files.
 
 ## Requirements
 
-- Node 22.22.1 or newer, Git 2.32 or newer, and npm
-- macOS or Windows
+- macOS. Baymax is built and tested on a MacBook with a notch. Other Mac sizes and external displays have not been checked, and Windows comes later.
+- Node 22.22.1 or newer, Git 2.32 or newer, and npm.
+- Your own Deepgram, Anthropic and Exa API keys.
 
 ## Setup
 
-1. Install Node 22.22.1 or newer.
-2. Clone the repository:
+1. Clone the repository:
 
    ```bash
    git clone https://github.com/Adityalingwal/baymax.git
    cd baymax
    ```
 
-3. Install the packages:
+2. Install the packages:
 
    ```bash
    npm install
    ```
 
-4. Create your env file in the project root:
+3. Create your env file in the project root:
 
    ```bash
    cp .env.example .env
    ```
 
-5. Fill in the three keys in `.env`. Only main reads it. Keys set only in the shell are not kept across an automatic restart, because main removes them from its environment.
+4. Fill in the three keys in `.env`. Only the Electron main process reads it.
    - `DEEPGRAM_API_KEY`: https://console.deepgram.com
    - `ANTHROPIC_API_KEY`: https://console.anthropic.com
    - `EXA_API_KEY`: https://dashboard.exa.ai
-6. Start the app:
+
+5. Start the app:
 
    ```bash
    npm start
    ```
 
-7. The panel opens from the notch and walks you through Accessibility and the microphone. During `npm start`, macOS lists the terminal app you ran it from, such as Terminal; switch that one on.
-8. Hold Option and say hello.
+6. The panel opens from the notch and walks you through Accessibility and the microphone. macOS lists the terminal app you ran `npm start` from, such as Terminal, so switch that one on. No restart is needed. If your terminal already has both permissions, the panel stays closed and you can go straight to the next step.
 
-The hold-key is Option on macOS and Ctrl+Win on Windows.
+7. Hold the left Option key and say hello.
 
-## Scripts
+## Using it
 
-| Script | What it does |
-| --- | --- |
-| `npm start` | Run the app in development |
-| `npm run package` | Build the app into `out/` (this is also the type-check) |
-| `npm run make` | Build installers (Squirrel on Windows, ZIP on macOS) |
-| `npm run lint` | Run ESLint |
-| `npm run format` | Format all files with Prettier |
-| `npm run format:check` | Check that all files are formatted with Prettier |
-| `npm test` | Run the unit tests with Vitest |
+- Hold the left Option key, speak and release.
+- Rest the pointer on the notch to open the panel, where you can also type.
+- Chat shows your conversation, and Tasks shows your running work and reports.
+- Say "stop" to cancel a task.
 
-## How we work
-
-Team rules for people and agents: [AGENTS.md](AGENTS.md). Design decisions: [docs/architecture.md](docs/architecture.md).
-
-Team: Aditya, Somesh, Kashish, Nitesh.
+How it is built is in [docs/architecture.md](docs/architecture.md).
