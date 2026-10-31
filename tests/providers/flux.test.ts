@@ -104,7 +104,7 @@ describe("Flux socket", () => {
   it("opens the listen URL with the key as a subprotocol", () => {
     const { h } = start();
     expect(h.last().url).toBe(
-      "wss://api.deepgram.com/v2/listen?model=flux-general-en&encoding=linear16&sample_rate=16000&eot_threshold=1.0&eot_timeout_ms=60000",
+      "wss://api.deepgram.com/v2/listen?model=flux-general-en&encoding=linear16&sample_rate=16000&eot_threshold=1.0&eot_timeout_ms=60000&keyterm=Baymax",
     );
     expect(h.last().protocols).toEqual(["token", "dg-key"]);
   });
