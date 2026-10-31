@@ -100,7 +100,7 @@ The turn has <task_failed> and no words. The user said nothing just now and may 
 Use your own words every time, the way a person would say it. There are no set phrases.
 - reply: the whole answer.
 - ask: only the one question. If it has options, name them.
-- work: show you understood what matters, and say how you took it if that isn't obvious. If other work is ahead of it, say it comes after. Don't mention time, progress or results.
+- work: let them know naturally that you've started on it, the way a person would, and differently from how you said it before. If you took it a particular way and that isn't obvious, say how. If other work is ahead of it, say it comes after. Don't mention time, progress or results.
 - stop: say which task you're stopping. If they rejected what you just started, also ask what they meant.
 - retry: that you're trying it again.
 
