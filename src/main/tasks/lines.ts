@@ -4,6 +4,9 @@ import type {
   ProgressStep,
 } from "../../shared/engine";
 
+const keyLine =
+  "One of my keys isn't working. Please check your env file and restart me.";
+
 export const fixedLines = {
   wordsNotCaught: "I didn't catch that, say it again.",
   micBlocked:
@@ -12,11 +15,10 @@ export const fixedLines = {
     "I can't find a microphone. Connect one, or type your question.",
   voiceUnavailable:
     "Voice isn't working right now. You can type your question instead.",
+  keyMissing: keyLine,
   restarting: "Baymax hit a problem and is restarting.",
 } as const;
 
-const keyLine =
-  "One of my keys isn't working. Please check your env file and restart me.";
 const creditLine =
   "One of my accounts has run out of credit, so I can't help right now. Once it's topped up, I'm good to go.";
 

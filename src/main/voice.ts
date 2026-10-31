@@ -22,6 +22,7 @@ import { createSpeech } from "./speech";
 import type { LineFeed, Spoken } from "./speech";
 import { createGapWatch, createTalkerTiming } from "./voice-timing";
 import type { WaitingQuestion } from "./tasks/talk";
+import type { VoiceDownNotice } from "./tasks/record";
 import type { MainState, SaidLine, Timers } from "./tasks/state";
 
 export type VoiceState = Pick<
@@ -79,6 +80,7 @@ type VoiceModel = {
   sttOrder: number;
   ttsUp: boolean;
   told: boolean;
+  downNotice: VoiceDownNotice;
   releasedAt: number | null;
   held: boolean;
   stopped: boolean;
@@ -125,6 +127,7 @@ function createModel(): VoiceModel {
     sttOrder: 0,
     ttsUp: true,
     told: true,
+    downNotice: "voiceUnavailable",
     releasedAt: null,
     held: false,
     stopped: false,
@@ -146,7 +149,7 @@ function tellHealth(model: VoiceModel): void {
   const state = model.state;
   if (state === null || up === model.told) return;
   model.told = up;
-  state.setVoiceAvailable(up);
+  state.setVoiceAvailable(up, model.downNotice);
 }
 
 // An older utterance's result arriving late never overrides a newer one's.
@@ -456,6 +459,7 @@ export function createVoice(deps: VoiceDeps): Voice {
     start: (state) => {
       model.state = state;
       model.sttUp = deps.deepgramKeyPresent;
+      if (!deps.deepgramKeyPresent) model.downNotice = "keyMissing";
       tellHealth(model);
     },
     holdChanged: (holdState, outcome) =>

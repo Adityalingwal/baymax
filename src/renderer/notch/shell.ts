@@ -15,7 +15,7 @@ export type PanelState = {
   hovering: boolean; // in that shape after the pointer really moved: a shape that grew under a still pointer does not count
   draft: string; // the field's text
   mouseDown: boolean; // a button pressed inside the panel is still down
-  needsAccess: boolean; // the Accessibility hint holds the panel open
+  needsAccess: boolean; // the Accessibility hint or the missing-key line holds the panel open
   waitForExit: boolean; // closed by Esc: no reopen until the pointer leaves the notch
   dwell: number | null;
   leave: number | null;

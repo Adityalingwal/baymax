@@ -13,6 +13,7 @@ import type {
   Output,
   SaidKind as RecordSaidKind,
   SaidLine as RecordSaidLine,
+  VoiceDownNotice,
 } from "./record";
 import {
   createModel,
@@ -64,7 +65,7 @@ export type MainState = {
   retryTask: (taskId: TaskId) => void;
   openSource: (payload: OpenSource) => void;
   setMuted: (muted: boolean) => void;
-  setVoiceAvailable: (available: boolean) => void;
+  setVoiceAvailable: (available: boolean, down?: VoiceDownNotice) => void;
   setVoiceIdle: (idle: boolean) => void;
   showNotice: (notice: Notice) => void;
   talkerReplied: (
@@ -87,8 +88,8 @@ export function createMainState(deps: MainStateDeps): MainState {
     retryTask: (taskId) => update((c) => retryTask(c, taskId)),
     openSource: (payload) => update((c) => openSource(c, deps, payload)),
     setMuted: (muted) => update((c) => setMuted(c, muted)),
-    setVoiceAvailable: (available) =>
-      update((c) => setVoiceAvailable(c, available)),
+    setVoiceAvailable: (available, down = "voiceUnavailable") =>
+      update((c) => setVoiceAvailable(c, available, down)),
     setVoiceIdle: (idle) => update((c) => setVoiceIdle(c, idle)),
     showNotice: (notice) => update((c) => showNotice(c, notice)),
     talkerReplied: (taskId, attemptId, reply) =>

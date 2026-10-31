@@ -277,6 +277,8 @@ export function reAskOlderQuestion(change: Change): void {
 export type Notice =
   "wordsNotCaught" | "micBlocked" | "noMicrophone" | "restarting";
 
+export type VoiceDownNotice = "voiceUnavailable" | "keyMissing";
+
 const oneOffLines: readonly string[] = [
   fixedLines.wordsNotCaught,
   fixedLines.micBlocked,
@@ -287,6 +289,7 @@ const oneOffLines: readonly string[] = [
 function rank(notice: string | null): number {
   if (notice === fixedLines.restarting) return 3;
   if (notice === fixedLines.voiceUnavailable) return 2;
+  if (notice === fixedLines.keyMissing) return 2;
   return notice === null ? 0 : 1;
 }
 
@@ -304,18 +307,24 @@ export function showNotice(change: Change, notice: Notice): boolean {
   return true;
 }
 
-export function setVoiceAvailable(change: Change, available: boolean): boolean {
+export function setVoiceAvailable(
+  change: Change,
+  available: boolean,
+  down: VoiceDownNotice,
+): boolean {
   const { model } = change;
   if (model.voiceAvailable === available) {
     return dropped(change, "same voice availability");
   }
   model.voiceAvailable = available;
-  const downLine = fixedLines.voiceUnavailable;
+  const downLine = fixedLines[down];
   if (!available && rank(model.notice) < rank(downLine)) {
     model.notice = downLine;
     say(change, null, downLine, "notice");
   }
-  if (available && model.notice === downLine) model.notice = null;
+  if (available && model.notice === fixedLines.voiceUnavailable) {
+    model.notice = null;
+  }
   return true;
 }
 
