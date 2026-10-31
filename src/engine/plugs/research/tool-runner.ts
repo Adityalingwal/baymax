@@ -132,7 +132,7 @@ function report(
   if (!signal.aborted) runner.progress(step);
 }
 
-// Key and quota failures end the task at once; other failures are told to the worker, and the second one ends it.
+// Key and quota failures end the task at once; other failures are told to the worker, and the second in a row ends it.
 function searchFailed(
   runner: ToolRunner,
   counts: Counts,
@@ -160,6 +160,7 @@ async function search(
   const outcome = await runner.web.search(call.query, signal);
   logTool(runner, "search", outcome.ok ? "ok" : outcome.cause, started);
   if (!outcome.ok) return searchFailed(runner, counts, outcome.cause);
+  counts.failedSearches = 0;
   const content = `${searchHitsForModel(outcome.hits)}\n\n${counterLine(runner, counts)}`;
   return { kind: "result", content, isError: false };
 }

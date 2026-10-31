@@ -123,8 +123,8 @@ export function startEngine(
   // Exa is the one search provider, so its key also reads page contents.
   const contents: ContentsFn =
     fakes.contents ??
-    ((url, signal) =>
-      readPageContents({ url, key: options.searchKey, fetch, signal }));
+    ((url, signal, fresh) =>
+      readPageContents({ url, key: options.searchKey, fetch, signal, fresh }));
   const engine: Engine = {
     deps,
     holds: createHolds(log, side),

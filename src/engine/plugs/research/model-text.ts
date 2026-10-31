@@ -12,8 +12,9 @@ function escapeAttribute(value: string): string {
 }
 
 export function pageForModel(page: ReadPage): string {
+  const cut = page.cut ? ' cut="true"' : "";
   return [
-    `<page source_id="${escapeAttribute(page.id)}" url="${escapeAttribute(page.url)}">`,
+    `<page source_id="${escapeAttribute(page.id)}" url="${escapeAttribute(page.url)}"${cut}>`,
     `title: ${escapeText(page.title)}`,
     "",
     escapeText(page.text),

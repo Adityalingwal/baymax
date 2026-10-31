@@ -18,6 +18,7 @@ import {
   thinkingBlock,
   toolUseReply,
   until,
+  workerAnswer,
 } from "./run.harness";
 import type { FakeSearchStep } from "./run.harness";
 
@@ -105,7 +106,22 @@ describe("a search provider's refusal", () => {
 });
 
 describe("runTask search limits", () => {
-  it("ends searchDown on the second failed search of the task", async () => {
+  it("goes on after a search fails, one succeeds and one fails again", async () => {
+    const { run, last } = await runOf(
+      [
+        toolUseReply([{ search: "hermes" }]),
+        toolUseReply([{ search: "hermes agent" }]),
+        toolUseReply([{ search: "hermes loop" }]),
+        toolUseReply([{ read: pageUrl("one") }]),
+        workerAnswer({ sourceIds: ["s1"] }),
+      ],
+      [searchFailed("timeout"), hits(pageUrl("one")), searchFailed("timeout")],
+    );
+    expect(last).toEqual([expect.objectContaining({ type: "result" })]);
+    expect(run.queries).toHaveLength(3);
+  });
+
+  it("ends searchDown on the second failed search in a row", async () => {
     const { run, last } = await runOf(
       [
         toolUseReply([{ search: "hermes" }]),

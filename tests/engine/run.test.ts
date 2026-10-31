@@ -86,7 +86,7 @@ describe("runTask worker requests", () => {
     ]);
     expect(first.tool_choice).toBeUndefined();
     expect(first.cache_control).toEqual({ type: "ephemeral" });
-    expect(first.thinking).toEqual({ type: "between_tools" });
+    expect(first.thinking).toEqual({ type: "adaptive" });
     expect(first.output_config?.effort).toBe("medium");
     expect(first.output_config?.format?.type).toBe("json_schema");
     expect(first.system).toContain(jsonOnlyLine);

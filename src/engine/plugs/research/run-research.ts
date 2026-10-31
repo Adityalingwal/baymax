@@ -13,6 +13,7 @@ import type { FoundSoFar } from "../../core/holds";
 import type { TaskBudget } from "../../core/limits";
 import type { LoopEnding, ToolTurn } from "../../core/tool-batch";
 import { runWorkerLoop } from "../../core/worker-loop";
+import type { WorkerPrompt } from "../../core/worker-loop";
 import { answerSchema, foundFindings } from "./answer";
 import type { Connect, LookupAll } from "./connection";
 import { runRounds } from "./rounds";
@@ -20,12 +21,7 @@ import type { Rounds, WorkTurn } from "./rounds";
 import { createToolRunner, researchTools } from "./tool-runner";
 import { hostOf } from "./url-rules";
 import { createWebTool } from "./web-tool";
-import {
-  firstWorkerMessage,
-  thinkingFields,
-  workerInstructions,
-  workerThinking,
-} from "./worker-prompt";
+import { firstWorkerMessage, workerInstructions } from "./worker-prompt";
 
 export type RunTaskCommand = Extract<EngineCommand, { type: "runTask" }>;
 
@@ -48,11 +44,12 @@ type ResearchRun = {
 };
 
 // Built once: the prompt start is byte-identical for every step and every task.
-const workerPrompt = {
+const workerPrompt: WorkerPrompt = {
   system: workerInstructions,
   tools: researchTools,
   schema: answerSchema,
-  ...thinkingFields(workerThinking),
+  thinking: { type: "adaptive" },
+  effort: "medium",
 };
 
 type Worker = {

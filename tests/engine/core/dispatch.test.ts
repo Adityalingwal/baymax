@@ -57,7 +57,7 @@ const limitRows: LimitRow[] = [
   },
   {
     name: "dollars when the estimate passes the limit",
-    budget: { ...createTaskBudget(), dollars: 0.495 },
+    budget: { ...createTaskBudget(), dollars: 0.995 },
     limit: "dollars",
   },
 ];
@@ -81,9 +81,9 @@ const sendRows: SendRow[] = [
     activeMs: 0,
     expected: {
       model: "claude-sonnet-5-5",
-      max_tokens: 2048,
-      timeoutMs: 60_000,
-      deadlineMs: 125_000,
+      max_tokens: 16_000,
+      timeoutMs: 120_000,
+      deadlineMs: 240_000,
     },
   },
   {
@@ -92,7 +92,7 @@ const sendRows: SendRow[] = [
     activeMs: 230_000.7,
     expected: {
       model: "claude-sonnet-5-5",
-      max_tokens: 2048,
+      max_tokens: 16_000,
       timeoutMs: 9_999,
       deadlineMs: 9_999,
     },
@@ -103,7 +103,7 @@ const sendRows: SendRow[] = [
     activeMs: 239_999.5,
     expected: {
       model: "claude-sonnet-5-5",
-      max_tokens: 2048,
+      max_tokens: 16_000,
       timeoutMs: 1,
       deadlineMs: 1,
     },

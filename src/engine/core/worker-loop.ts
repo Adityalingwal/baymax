@@ -7,7 +7,7 @@ import { taskLimits } from "./limits";
 import type { LoopEnding, ToolTurn } from "./tool-batch";
 
 // The fixed prompt start (system and tools) plus the fields that stay the same on every step of a run.
-type WorkerPrompt = {
+export type WorkerPrompt = {
   system: string;
   tools: Anthropic.Tool[];
   schema: Record<string, unknown>;

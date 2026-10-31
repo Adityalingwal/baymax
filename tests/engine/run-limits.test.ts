@@ -92,7 +92,7 @@ const limitRows: LimitRow[] = [
     name: "dollars",
     steps: () => {
       const costly = readTwo();
-      if (costly.ok) costly.message.usage.input_tokens = 248_000;
+      if (costly.ok) costly.message.usage.input_tokens = 430_000;
       return [readOne(), costly, readOne()];
     },
     searches: [],
@@ -113,12 +113,12 @@ async function startClocked(row: Omit<LimitRow, "name" | "calls" | "found">) {
 }
 
 describe("the task limits", () => {
-  it("are 30 model calls, 20 searches, 4 minutes and 50 cents", () => {
+  it("are 30 model calls, 20 searches, 4 minutes and a dollar", () => {
     expect(taskLimits).toEqual({
       modelCalls: 30,
       searches: 20,
       activeMs: 240_000,
-      dollars: 0.5,
+      dollars: 1.0,
     });
   });
 });
@@ -140,7 +140,9 @@ describe("runTask limits", () => {
 
 describe("runTask full prompt", () => {
   it("ends limitHit on dollars before a worker call whose history has grown too long", async () => {
-    const reads = Array.from({ length: 90 }, () => ({ read: pageUrl("long") }));
+    const reads = Array.from({ length: 150 }, () => ({
+      read: pageUrl("long"),
+    }));
     const run = await startRun([toolUseReply(reads), readOne()]);
     const text = "Long words about the Hermes agent for the prompt. ".repeat(
       200,
@@ -176,7 +178,7 @@ describe("runTask a valid answer that uses up the budget", () => {
     {
       name: "dollars",
       clock: still,
-      input: 248_000,
+      input: 430_000,
     },
   ])("keeps its line and findings: $name", async ({ clock, input }) => {
     const answer = workerAnswer({ sourceIds: ["s1"] });
@@ -249,7 +251,7 @@ describe("runTask active time with nothing found", () => {
 
   it("ends limitHit when the next worker call would cross a limit", async () => {
     const costly = toolUseReply([{ search: "hermes" }]);
-    if (costly.ok) costly.message.usage.input_tokens = 248_000;
+    if (costly.ok) costly.message.usage.input_tokens = 430_000;
     const run = await startRun([costly], [hits(pageUrl("one"))]);
     run.port.send(runTask());
     const last = (await run.ended()).filter(

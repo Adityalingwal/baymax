@@ -145,7 +145,7 @@ async function readDecided(
   signal: AbortSignal,
 ): Promise<PageOutcome> {
   try {
-    const bytes = await readBody(
+    const { bytes, cut } = await readBody(
       exchange.response,
       decision.encoding,
       limits.maxBytes,
@@ -157,6 +157,7 @@ async function readDecided(
       url: checked.url.href,
       hostname: checked.hostname,
       limits,
+      cutBefore: cut,
     });
   } finally {
     close(exchange);

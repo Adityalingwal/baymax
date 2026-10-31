@@ -20,10 +20,11 @@ export type SearchFn = (
 type ContentsFailure = ExaFailure | "noUsableText";
 export type ContentsOutcome =
   | { ok: true; title: string; text: string } // title is Exa's, trimmed; "" when it gave none
-  | { ok: false; cause: ContentsFailure };
+  | { ok: false; cause: ContentsFailure; tag?: string }; // tag is Exa's own for this URL, for the log
 export type ContentsFn = (
   url: string,
   signal: AbortSignal,
+  fresh: boolean, // true skips Exa's cache and fetches the page again
 ) => Promise<ContentsOutcome>;
 
 function failureFromStatus(status: number): ExaFailure | null {
@@ -122,7 +123,7 @@ function hitsFrom(body: unknown): SearchHit[] | null {
   return hits.every((hit): hit is SearchHit => hit !== null) ? hits : null;
 }
 
-// Exa's lite search with up to 500 characters of highlights per hit: its cheapest call that returns a snippet.
+// Exa's auto search with up to 500 characters of highlights per hit.
 export async function searchWeb(params: {
   query: string;
   key: string;
@@ -136,8 +137,8 @@ export async function searchWeb(params: {
     url: exaSearchUrl,
     body: {
       query,
-      numResults: params.maxResults ?? 5,
-      type: "lite",
+      numResults: params.maxResults ?? 10,
+      type: "auto",
       contents: { highlights: { maxCharacters: snippetChars } },
     },
     key,
@@ -157,7 +158,10 @@ const exaContentsUrl = `https://${exaApiHost}/contents`;
 const maxBodyBytes = 1_000_000;
 const minTextChars = 200;
 
-const noUsableText: ContentsOutcome = { ok: false, cause: "noUsableText" };
+const noUsableText: Extract<ContentsOutcome, { ok: false }> = {
+  ok: false,
+  cause: "noUsableText",
+};
 
 function fieldsOf(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -179,6 +183,18 @@ function succeededInStatuses(statuses: unknown[], url: string): boolean {
   return own.length > 0 && own.every((fields) => fields?.status === "success");
 }
 
+// Exa's error tag for this URL, kept only in its known form so no page or provider text reaches the log.
+function noTextWithTag(statuses: unknown[], url: string): ContentsOutcome {
+  for (const entry of statuses) {
+    const fields = fieldsOf(entry);
+    const tag = fieldsOf(fields?.error)?.tag;
+    if (fields?.id === url && typeof tag === "string") {
+      return /^[A-Z0-9_]+$/.test(tag) ? { ...noUsableText, tag } : noUsableText;
+    }
+  }
+  return noUsableText;
+}
+
 function matchingResult(results: unknown[], url: string) {
   for (const result of results) {
     const fields = fieldsOf(result);
@@ -194,7 +210,7 @@ function outcomeFrom(body: unknown, url: string): ContentsOutcome {
   if (fields === null) return noUsableText;
   const { results, statuses } = fields;
   if (!Array.isArray(results) || !Array.isArray(statuses)) return noUsableText;
-  if (!succeededInStatuses(statuses, url)) return noUsableText;
+  if (!succeededInStatuses(statuses, url)) return noTextWithTag(statuses, url);
   const result = matchingResult(results, url);
   if (result === null || typeof result.text !== "string") return noUsableText;
   const { text } = result;
@@ -211,11 +227,16 @@ export async function readPageContents(params: {
   signal: AbortSignal;
   timeoutMs?: number;
   maxChars?: number;
+  fresh?: boolean;
 }): Promise<ContentsOutcome> {
   const { url, key } = params;
   const reply = await postToExa({
     url: exaContentsUrl,
-    body: { urls: [url], text: { maxCharacters: params.maxChars ?? 20_000 } },
+    body: {
+      urls: [url],
+      text: { maxCharacters: params.maxChars ?? 20_000 },
+      ...(params.fresh === true ? { maxAgeHours: 0 } : {}),
+    },
     key,
     fetch: params.fetch,
     signal: params.signal,

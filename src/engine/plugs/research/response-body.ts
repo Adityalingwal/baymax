@@ -82,7 +82,7 @@ async function readCompressed(
   decompressor: Transform,
   kept: Keeper,
   maxBytes: number,
-): Promise<void> {
+): Promise<boolean> {
   const budget: Budget = { maxBytes, hit: false };
   let origin: "network" | "decompression" | null = null;
   response.on("error", () => (origin ??= "network"));
@@ -95,9 +95,10 @@ async function readCompressed(
   ).catch(() => undefined);
   try {
     await collect(decompressor, kept);
+    return budget.hit;
   } catch (err) {
     // A body cut at the encoded budget ends mid-stream; what was decoded before the cut is kept.
-    if (budget.hit) return;
+    if (budget.hit) return true;
     throw origin === "decompression" ? decompressionError(err) : err;
   }
 }
@@ -107,21 +108,22 @@ export async function readBody(
   encoding: BodyEncoding,
   maxBytes: number,
   signal: AbortSignal,
-): Promise<Buffer> {
+): Promise<{ bytes: Buffer; cut: boolean }> {
   const kept = createKeeper(maxBytes);
+  let hitBudget = false;
   if (encoding === "identity") {
     await collect(response, kept);
   } else {
     const decompressor = addAbortSignal(signal, createDecompressor(encoding));
     try {
-      await readCompressed(response, decompressor, kept, maxBytes);
+      hitBudget = await readCompressed(response, decompressor, kept, maxBytes);
     } finally {
       decompressor.destroy();
       response.destroy();
     }
   }
   signal.throwIfAborted();
-  return kept.bytes();
+  return { bytes: kept.bytes(), cut: hitBudget || kept.full() };
 }
 
 export function decodeText(bytes: Buffer, charset: string | null): string {

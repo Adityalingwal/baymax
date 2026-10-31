@@ -90,6 +90,22 @@ describe("readPageContents", () => {
     expect(String(init.body)).not.toContain(key);
   });
 
+  it("asks for a fresh copy at the top of the body", async () => {
+    const network = fakeFetch(json(exaBody([goodResult])));
+    await readPageContents({
+      url: pageUrl,
+      key,
+      fetch: network.send,
+      signal: never,
+      fresh: true,
+    });
+    expect(JSON.parse(String(network.sent[0].init.body))).toEqual({
+      urls: [pageUrl],
+      text: { maxCharacters: 20_000 },
+      maxAgeHours: 0,
+    });
+  });
+
   it("returns the matching result's title and text", async () => {
     const other = { ...goodResult, id: "https://other.example/", url: "x" };
     const { outcome } = await contents(
@@ -150,7 +166,7 @@ const noTextRows: [string, Reply][] = [
 describe("readPageContents finds no usable text", () => {
   it.each(noTextRows)("in %s", async (_name, reply) => {
     const { outcome } = await contents(reply);
-    expect(outcome).toEqual({ ok: false, cause: "noUsableText" });
+    expect(outcome).toMatchObject({ ok: false, cause: "noUsableText" });
   });
 });
 

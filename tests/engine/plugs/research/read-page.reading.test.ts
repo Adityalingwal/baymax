@@ -220,6 +220,7 @@ describe("readPage byte budgets", () => {
     });
     if (!outcome.ok) throw new Error(`read failed: ${outcome.cause}`);
     expect(outcome.page.text.length).toBeLessThanOrEqual(5_000);
+    expect(outcome.page.cut).toBe(true);
     await vi.waitFor(() => expect(big.closedEarly()).toBe(true));
     expect(big.written()).toBeLessThan(200_000);
   });
@@ -414,6 +415,7 @@ describe("createWebTool reads through Exa Contents", () => {
         url: "http://example.test/one",
         title: "Exa title",
         text: "Exa text\n\nfrom its crawler. Plain words for a reader to keep",
+        cut: true,
       },
     });
     expect(asked).toEqual(["http://example.test/one"]);
