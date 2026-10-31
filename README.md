@@ -41,7 +41,7 @@ Status: streaming voice, the talker and the notch panel (31 Oct 2026). Hold the 
    npm start
    ```
 
-7. The panel opens from the notch and walks you through Accessibility and the microphone; macOS may list the app as Electron during `npm start`.
+7. The panel opens from the notch and walks you through Accessibility and the microphone. During `npm start`, macOS lists the terminal app you ran it from, such as Terminal; switch that one on.
 8. Hold Option and say hello.
 
 The hold-key is Option on macOS and Ctrl+Win on Windows.

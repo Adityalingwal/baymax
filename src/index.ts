@@ -172,7 +172,7 @@ function registerSetupHandlers(): void {
   });
   ipcMain.on(ipcChannels.openAccessibilitySettings, () => {
     if (!isMac) return;
-    // The prompting form is what adds Electron's entry to the list.
+    // The prompting form is what adds the app's entry to the list.
     systemPreferences.isTrustedAccessibilityClient(true);
     openPrivacySettings(privacySettingsUrls.accessibility);
   });
