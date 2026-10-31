@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { FailureCause } from "../../src/shared/engine";
 import { ipcChannels } from "../../src/shared/ipc";
 import {
   ask,
@@ -21,6 +22,83 @@ import {
 import { admitAs, failFront, streamFront, wire } from "./wiring.harness";
 import type { Wired } from "./wiring.harness";
 
+const errorCause =
+  "Something went wrong while I was working on that. Try me again in a bit.";
+
+const noRetry = "Don't offer to try again.";
+
+const keySteps = `Say one of your keys isn't working, and that they should check the env file and restart you. ${noRetry}`;
+const creditSteps = `Say one of your accounts has run out of credit, and that you can't help until it's topped up. ${noRetry}`;
+
+const steadyRows: { kind: FailureCause; step: string }[] = [
+  {
+    kind: "nothingFound",
+    step: `Say you couldn't find it and ask for a detail or a different angle. ${noRetry}`,
+  },
+  {
+    kind: "modelsUnreachable",
+    step: `Say you're having trouble right now and suggest a few minutes later. ${noRetry}`,
+  },
+  {
+    kind: "searchDown",
+    step: `Say you can't look it up right now and suggest asking again in a few minutes. ${noRetry}`,
+  },
+  { kind: "keyRejected", step: keySteps },
+  { kind: "searchKeyRejected", step: keySteps },
+  { kind: "noCredit", step: creditSteps },
+  { kind: "searchQuota", step: creditSteps },
+  {
+    kind: "limitHit",
+    step: `Say it's a bit big for you and ask them to ask about one part of it. ${noRetry}`,
+  },
+];
+
+const nextStepRows: {
+  kind: FailureCause;
+  retried: boolean;
+  step: string;
+  offers: boolean;
+}[] = [
+  ...steadyRows.flatMap((row) => [
+    { ...row, retried: false, offers: false },
+    { ...row, retried: true, offers: false },
+  ]),
+  {
+    kind: "error",
+    retried: false,
+    step: "Say something went wrong while you were working on it and ask if you should try once more.",
+    offers: true,
+  },
+  {
+    kind: "error",
+    retried: true,
+    step: `Say you couldn't get it done and make one short ask that fits the request. ${noRetry}`,
+    offers: false,
+  },
+];
+
+describe("what a failure turn is told to offer", () => {
+  it.each(nextStepRows)(
+    "$kind, retried $retried: next step, offer $offers",
+    async ({ kind, retried, step, offers }) => {
+      const w = wire();
+      await admitAs(w, "hermes");
+      await w.playAll();
+      if (retried) {
+        failTask(w);
+        w.send(ipcChannels.retryTask, { taskId: "t1" });
+      }
+      failTask(w, "t1", kind);
+      expect(lastTurn(w)).toContain(`next step: ${step}\n`);
+      await streamFront(w, replyRoute(), "A line.");
+      await w.playAll();
+      expect(w.card("t1")?.canRetry).toBe(true);
+      ask(w, "ok");
+      expect(lastTurn(w).includes("open retry offer")).toBe(offers);
+    },
+  );
+});
+
 // Enough chat turns to push a task's exchange past the ones kept.
 async function chatAway(w: Wired): Promise<void> {
   for (let i = 0; i < 31; i += 1) {
@@ -38,7 +116,7 @@ describe("a task that fails", () => {
     expect(w.talkerCalls).toHaveLength(2);
     const turn = turnOf(w, 1);
     expect(turn).toContain(
-      "<task_failed>\ntask id: t1\ntitle: hermes\ncause: I hit an error on that question. Try again.\non screen: the pages it read\n</task_failed>",
+      `<task_failed>\ntask id: t1\ntitle: hermes\ncause: ${errorCause}\non screen: some of what it found\nnext step: Say something went wrong while you were working on it and ask if you should try once more.\n</task_failed>`,
     );
     expect(turn).not.toContain("<words>");
     await streamFront(w, replyRoute(), offerLine);
@@ -48,7 +126,7 @@ describe("a task that fails", () => {
     expect(w.card("t1")).toMatchObject({
       state: "failed",
       canRetry: true,
-      line: "I hit an error on that question. Try again.",
+      line: errorCause,
     });
   });
 
@@ -292,7 +370,7 @@ describe("a failure call that fails", () => {
     await failFront(w, "unreachable");
     await w.playAll();
     const line =
-      "That task reached a limit before it had an answer. Try a narrower question or try again.";
+      "That one's a bit big for me. Can you ask about one part of it?";
     expect(w.spoken()).toEqual(["Checking hermes.", line]);
     expect(w.chat()).toEqual([line]);
     expect(w.card("t1")).toMatchObject({
@@ -317,9 +395,8 @@ describe("a failure call that fails", () => {
     call.resolve({ ok: false, failure: "error", detail: "x" });
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await w.playAll();
-    const cause = "I hit an error on that question. Try again.";
-    expect(w.spoken()).toEqual(["Checking hermes.", offerLine, cause]);
-    expect(w.chat()).toEqual([offerLine, cause]);
+    expect(w.spoken()).toEqual(["Checking hermes.", offerLine, errorCause]);
+    expect(w.chat()).toEqual([offerLine, errorCause]);
   });
 });
 

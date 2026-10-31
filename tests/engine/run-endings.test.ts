@@ -18,6 +18,7 @@ import {
   thinkingBlock,
   toolUseReply,
   until,
+  workerAnswer,
 } from "./run.harness";
 import type { FakeSearchStep } from "./run.harness";
 
@@ -105,7 +106,22 @@ describe("a search provider's refusal", () => {
 });
 
 describe("runTask search limits", () => {
-  it("ends searchDown on the second failed search of the task", async () => {
+  it("goes on after a search fails, one succeeds and one fails again", async () => {
+    const { run, last } = await runOf(
+      [
+        toolUseReply([{ search: "hermes" }]),
+        toolUseReply([{ search: "hermes agent" }]),
+        toolUseReply([{ search: "hermes loop" }]),
+        toolUseReply([{ read: pageUrl("one") }]),
+        workerAnswer({ sourceIds: ["s1"] }),
+      ],
+      [searchFailed("timeout"), hits(pageUrl("one")), searchFailed("timeout")],
+    );
+    expect(last).toEqual([expect.objectContaining({ type: "result" })]);
+    expect(run.queries).toHaveLength(3);
+  });
+
+  it("ends searchDown on the second failed search in a row", async () => {
     const { run, last } = await runOf(
       [
         toolUseReply([{ search: "hermes" }]),
@@ -115,6 +131,52 @@ describe("runTask search limits", () => {
     );
     expect(last).toEqual([searchDown]);
     expect(run.queries).toHaveLength(2);
+    expect(run.requests).toHaveLength(2);
+  });
+});
+
+describe("runTask search down with a page read", () => {
+  it("gets the last answer on two failed searches in a row after a read", async () => {
+    const { run, last } = await runOf(
+      [
+        toolUseReply([{ read: pageUrl("one") }]),
+        toolUseReply([{ search: "hermes" }]),
+        toolUseReply([{ search: "hermes agent" }]),
+        workerAnswer({ sourceIds: ["s1"] }),
+      ],
+      [searchFailed("timeout"), searchFailed("unreachable")],
+    );
+    expect(last).toEqual([expect.objectContaining({ type: "result" })]);
+    expect(run.requests.at(-1)?.tool_choice).toEqual({ type: "none" });
+  });
+
+  it("hands the last answer a page read in the batch that ended the run", async () => {
+    const afterTheRead = () =>
+      new Promise<SearchOutcome>((resolve) => {
+        setTimeout(() => resolve(searchFailed("timeout")), 300);
+      });
+    const { run, last } = await runOf(
+      [
+        toolUseReply([
+          { read: pageUrl("one") },
+          { search: "hermes" },
+          { search: "hermes agent" },
+        ]),
+        workerAnswer({ sourceIds: ["s1"] }),
+      ],
+      [afterTheRead(), afterTheRead()],
+    );
+    expect(last).toEqual([expect.objectContaining({ type: "result" })]);
+    expect(lastResults(run.requests[1])).toEqual([
+      expect.objectContaining({
+        content: expect.stringContaining('source_id="s1"'),
+      }),
+      expect.objectContaining({
+        content: expect.stringContaining("Search failed (timeout)"),
+      }),
+      expect.objectContaining({ content: "This call did not run." }),
+      expect.objectContaining({ type: "text" }),
+    ]);
   });
 });
 

@@ -23,6 +23,12 @@ const cancel = { type: "cancel" as const, taskId: "task-1" };
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const readOne = () => toolUseReply([{ read: pageUrl("one") }]);
 const rejected = () => workerAnswer({ line: " " });
+// A read whose reported usage leaves no room for the next call, so the run goes to its last answer.
+const overBudget = () => {
+  const step = readOne();
+  if (step.ok) step.message.usage.input_tokens = 430_000;
+  return step;
+};
 const listOne: Findings = {
   cardText: "- Page one",
   sources: [one],
@@ -59,6 +65,12 @@ const stageRows: StageRow[] = [
     name: "a read",
     steps: () => [readOne(), toolUseReply([{ read: pageUrl("slow") }])],
     at: (sent) => sent.connects === 2,
+    found: listOne,
+  },
+  {
+    name: "the last answer's call",
+    steps: () => [overBudget(), "waitForAbort"],
+    at: (sent) => sent.calls === 2,
     found: listOne,
   },
   {

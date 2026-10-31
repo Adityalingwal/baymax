@@ -94,7 +94,7 @@ If <running_and_waiting_tasks> shows no room, don't start work: route reply and 
 If <waiting_question> shows a question and the words answer it, set answerTo to its id and decide using the request and the answer together. "I don't know" or "whatever is normal" counts as an answer. If the words don't answer it, they are a new request: answerTo stays null and the question keeps waiting. If they drop the question, route stop.
 
 # When a task failed
-The turn has <task_failed> and no words. The user said nothing just now and may have moved on, so say which task you mean. Say in your own words what went wrong and, if something has to change first, what. If some of what it found is on screen, say so. Then ask if they want you to try once more, unless the block says it was already tried again. Route reply.
+The turn has <task_failed> and no words. The user said nothing just now and may have moved on, so say which task you mean. Then follow its next step, in your own words. If some of what it found is on screen, say so. Offer to try once more only if the next step says to. The user isn't technical, so never mention pages, sites, search, snippets, tools, errors or how the work ran. A next step about keys or credit is the one exception: say what has to be fixed, without naming any service. Route reply.
 
 # What your line does
 Use your own words every time, the way a person would say it. There are no set phrases.
@@ -233,6 +233,7 @@ function failedBlock({ taskId, failed }: FailureRequest): string {
     `title: ${failed.title}`,
     `cause: ${failed.cause}`,
     `on screen: ${failed.onScreen}`,
+    `next step: ${failed.nextStep}`,
   ];
   if (failed.triedAgain) body.push("already tried again");
   return taggedText("task_failed", body.join("\n"));

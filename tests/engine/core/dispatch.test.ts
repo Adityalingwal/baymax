@@ -57,7 +57,7 @@ const limitRows: LimitRow[] = [
   },
   {
     name: "dollars when the estimate passes the limit",
-    budget: { ...createTaskBudget(), dollars: 0.495 },
+    budget: { ...createTaskBudget(), dollars: 0.995 },
     limit: "dollars",
   },
 ];
@@ -66,6 +66,7 @@ type SendRow = {
   name: string;
   role: Role;
   activeMs: number;
+  lastAnswer?: boolean;
   expected: {
     model: string;
     max_tokens: number;
@@ -81,9 +82,21 @@ const sendRows: SendRow[] = [
     activeMs: 0,
     expected: {
       model: "claude-sonnet-5-5",
-      max_tokens: 2048,
-      timeoutMs: 60_000,
-      deadlineMs: 125_000,
+      max_tokens: 16_000,
+      timeoutMs: 120_000,
+      deadlineMs: 240_000,
+    },
+  },
+  {
+    name: "the last answer, whatever active time is left",
+    role: "worker",
+    activeMs: 300_000,
+    lastAnswer: true,
+    expected: {
+      model: "claude-sonnet-5-5",
+      max_tokens: 16_000,
+      timeoutMs: 120_000,
+      deadlineMs: 120_000,
     },
   },
   {
@@ -92,7 +105,7 @@ const sendRows: SendRow[] = [
     activeMs: 230_000.7,
     expected: {
       model: "claude-sonnet-5-5",
-      max_tokens: 2048,
+      max_tokens: 16_000,
       timeoutMs: 9_999,
       deadlineMs: 9_999,
     },
@@ -103,7 +116,7 @@ const sendRows: SendRow[] = [
     activeMs: 239_999.5,
     expected: {
       model: "claude-sonnet-5-5",
-      max_tokens: 2048,
+      max_tokens: 16_000,
       timeoutMs: 1,
       deadlineMs: 1,
     },
@@ -138,7 +151,11 @@ describe("dispatch settings", () => {
     const { deps, sent } = setup(okOutcome);
     const signal = new AbortController().signal;
     const budget = { ...createTaskBudget(), activeMs: row.activeMs };
-    await dispatch(deps, jobFor(row.role, budget, signal), request);
+    const job = {
+      ...jobFor(row.role, budget, signal),
+      lastAnswer: row.lastAnswer,
+    };
+    await dispatch(deps, job, request);
     const [{ request: sentRequest, options }] = sent;
     expect(sentRequest).toEqual({
       ...request,
@@ -180,7 +197,9 @@ describe("dispatch counting", () => {
         taskId: "task-1",
         role: "worker",
         model: "claude-sonnet-5-5",
+        maxTokens: 16_000,
         outcome: "ok",
+        stopReason: "end_turn",
         ms: 1_234.5,
         inputTokens: 1_000,
         outputTokens: 500,
@@ -217,7 +236,9 @@ describe("dispatch failures", () => {
           taskId: "task-1",
           role: "worker",
           model: "claude-sonnet-5-5",
+          maxTokens: 16_000,
           outcome: row.failure,
+          stopReason: null,
           ms: 40,
           inputTokens: null,
           outputTokens: null,

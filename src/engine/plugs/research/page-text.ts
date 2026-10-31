@@ -2,7 +2,7 @@ import { convert } from "html-to-text";
 import type { HtmlToTextOptions } from "html-to-text";
 import type { Source } from "../../../shared/cards";
 
-export type ReadPage = Source & { text: string };
+export type ReadPage = Source & { text: string; cut: boolean };
 export type PageText = Omit<ReadPage, "id">; // only the web tool gives ids
 
 export type BodyKind = "html" | "plain";
@@ -67,6 +67,7 @@ export function pageTextFrom(params: {
   hostname: string;
   limits: TextLimits;
   title?: string;
+  cutBefore?: boolean; // the body was already cut before it got here
 }): PageTextResult {
   const { body, kind, url, hostname, limits } = params;
   const parts =
@@ -82,6 +83,11 @@ export function pageTextFrom(params: {
   const title = oneLine.slice(0, maxTitleChars).trim() || hostname;
   return {
     ok: true,
-    page: { url, title, text: text.slice(0, limits.maxChars) },
+    page: {
+      url,
+      title,
+      text: text.slice(0, limits.maxChars),
+      cut: params.cutBefore === true || text.length > limits.maxChars,
+    },
   };
 }

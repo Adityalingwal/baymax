@@ -1,6 +1,7 @@
 import type { TaskId } from "../../shared/cards";
 import { recentExchanges, roomLeft, taskSummaries } from "./display";
 import { appendLine, conversationHistory } from "./history";
+import { failureNext } from "./lines";
 import type { Change, FailureCall, Model, TaskRecord } from "./record";
 import { addChat, nextAttemptId, say, talk } from "./record";
 import type { TalkerReply } from "./talk";
@@ -36,9 +37,9 @@ export function startFailureTurn(change: Change): void {
   const pending = model.pendingFailures.shift();
   const record = pending && model.records.get(pending.taskId);
   if (pending === undefined || record === undefined) return;
-  const { taskId, cause } = pending;
+  const { taskId, cause, kind } = pending;
   const attemptId = nextAttemptId(record);
-  model.failureCall = { attemptId, taskId, cause };
+  model.failureCall = { attemptId, taskId, cause, kind };
   talk(change, {
     kind: "failure",
     attemptId,
@@ -46,7 +47,9 @@ export function startFailureTurn(change: Change): void {
     failed: {
       title: titleOf(record),
       cause,
-      onScreen: record.card.answer === null ? "nothing" : "the pages it read",
+      onScreen:
+        record.card.answer === null ? "nothing" : "some of what it found",
+      nextStep: failureNext(kind, record.retried).nextStep,
       triedAgain: record.retried,
     },
     history: conversationHistory(model.exchanges),
@@ -70,7 +73,7 @@ function openOffer(model: Model, record: TaskRecord): void {
 // The decision is read for nothing: whatever route came back, the task stays failed. With no model to speak, the cause is said as written.
 export function receiveFailureTurn(
   change: Change,
-  { taskId, cause }: FailureCall,
+  { taskId, cause, kind }: FailureCall,
   reply: TalkerReply,
 ): boolean {
   const { model } = change;
@@ -88,7 +91,9 @@ export function receiveFailureTurn(
     return true;
   }
   addChat(change, "baymax", said);
-  if (!record.retried) openOffer(model, record);
+  if (failureNext(kind, record.retried).offersRetry) {
+    openOffer(model, record);
+  }
   return true;
 }
 

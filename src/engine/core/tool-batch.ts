@@ -12,7 +12,11 @@ export type ToolStep =
 
 export type ToolTurn =
   | { kind: "results"; results: Anthropic.ToolResultBlockParam[] }
-  | { kind: "end"; ending: LoopEnding }
+  | {
+      kind: "end";
+      ending: LoopEnding;
+      finished?: Anthropic.ToolResultBlockParam[]; // what the batch's tools found before the ending
+    }
   | { kind: "aborted" };
 
 // A step decided before any await (such as a limit) comes back as a plain value, so the batch stops before starting the next tool.
@@ -55,21 +59,33 @@ function launch<Call>(
   );
 }
 
+function resultOf(
+  id: string,
+  step: Extract<ToolStep, { kind: "result" }>,
+): Anthropic.ToolResultBlockParam {
+  return {
+    type: "tool_result",
+    tool_use_id: id,
+    content: step.content,
+    ...(step.isError ? { is_error: true } : {}),
+  };
+}
+
+function finishedOf<Call extends { id: string }>(
+  calls: Call[],
+  steps: ToolStep[],
+): Anthropic.ToolResultBlockParam[] {
+  return steps.flatMap((step, index) =>
+    step.kind === "result" ? [resultOf(calls[index].id, step)] : [],
+  );
+}
+
 function resultsOf<Call extends { id: string }>(
   calls: Call[],
   steps: ToolStep[],
 ): ToolTurn {
-  const results: Anthropic.ToolResultBlockParam[] = [];
-  for (const [index, step] of steps.entries()) {
-    if (step.kind !== "result") return broken;
-    results.push({
-      type: "tool_result",
-      tool_use_id: calls[index].id,
-      content: step.content,
-      ...(step.isError ? { is_error: true } : {}),
-    });
-  }
-  return { kind: "results", results };
+  if (steps.some((step) => step.kind !== "result")) return broken;
+  return { kind: "results", results: finishedOf(calls, steps) };
 }
 
 // Runs one turn's tool calls together; the first ending aborts the others, and every started tool settles before the turn returns.
@@ -89,6 +105,9 @@ export async function runToolBatch<Call extends { id: string }>(
   const steps = await Promise.all(running);
   signal.removeEventListener("abort", onAbort);
   if (signal.aborted) return { kind: "aborted" };
-  if (batch.ending !== null) return { kind: "end", ending: batch.ending };
+  if (batch.ending !== null) {
+    const finished = finishedOf(calls, steps);
+    return { kind: "end", ending: batch.ending, finished };
+  }
   return resultsOf(calls, steps);
 }

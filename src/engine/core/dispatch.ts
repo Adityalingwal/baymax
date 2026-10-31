@@ -7,7 +7,7 @@ import type {
 } from "../../providers/anthropic";
 import type { TaskId } from "../../shared/cards";
 import type { DevLog } from "./dev-log";
-import { costOf, roles, taskLimits } from "./limits";
+import { costOf, lastAnswerMs, roles, taskLimits } from "./limits";
 import type { Role, TaskBudget } from "./limits";
 
 export type DispatchOutcome =
@@ -22,6 +22,7 @@ export type DispatchJob = {
   role: Role;
   budget: TaskBudget;
   signal: AbortSignal;
+  lastAnswer?: boolean; // the one call past the limits, sent to save the work a run ending short already did
 };
 
 type DispatchRequest = Omit<ModelRequest, "model" | "max_tokens">;
@@ -42,8 +43,21 @@ function limitReached(
   return null;
 }
 
+// A call's deadline is capped by the time left, so one cut off there ran out of time; it says nothing about the provider.
+function ranOutOfTime(job: DispatchJob, outcome: ModelOutcome): boolean {
+  return (
+    !outcome.ok &&
+    outcome.failure === "unreachable" &&
+    job.lastAnswer !== true &&
+    job.budget.activeMs >= taskLimits.activeMs - 1_000
+  );
+}
+
 // The SDK rejects a non-integer timeout, and the clock gives fractions.
-function callTimes(role: Role, budget: TaskBudget) {
+function callTimes({ role, budget, lastAnswer }: DispatchJob) {
+  if (lastAnswer === true) {
+    return { timeoutMs: lastAnswerMs, deadlineMs: lastAnswerMs };
+  }
   const remaining = taskLimits.activeMs - budget.activeMs;
   const attempt = roles[role].timeoutMs;
   return {
@@ -69,7 +83,9 @@ function logCall(
     taskId: job.taskId,
     role: job.role,
     model: roles[job.role].model,
+    maxTokens: roles[job.role].maxTokens,
     outcome: outcome.ok ? "ok" : outcome.failure,
+    stopReason: outcome.ok ? outcome.message.stop_reason : null,
     ms,
     inputTokens: usage ? usage.input_tokens : null,
     outputTokens: usage ? usage.output_tokens : null,
@@ -81,6 +97,15 @@ function logCall(
   });
 }
 
+function limitOutcome(
+  deps: DispatchDeps,
+  job: DispatchJob,
+  limit: keyof TaskBudget,
+): DispatchOutcome {
+  deps.log({ event: "limitHit", taskId: job.taskId, role: job.role, limit });
+  return { ok: false, reason: "limitHit", limit };
+}
+
 export async function dispatch(
   deps: DispatchDeps,
   job: DispatchJob,
@@ -89,16 +114,13 @@ export async function dispatch(
   // A cancelled job sends nothing and spends nothing.
   if (job.signal.aborted)
     return { ok: false, reason: "failed", failure: "aborted" };
-  const limit = limitReached(job, request);
-  if (limit !== null) {
-    deps.log({ event: "limitHit", taskId: job.taskId, role: job.role, limit });
-    return { ok: false, reason: "limitHit", limit };
-  }
+  const limit = job.lastAnswer === true ? null : limitReached(job, request);
+  if (limit !== null) return limitOutcome(deps, job, limit);
   const { model, maxTokens } = roles[job.role];
   const started = deps.now();
   const outcome = await deps.call(
     { ...request, model, max_tokens: maxTokens },
-    { ...callTimes(job.role, job.budget), signal: job.signal },
+    { ...callTimes(job), signal: job.signal },
   );
   const ms = deps.now() - started;
   const dollars = outcome.ok ? costOf(model, outcome.message.usage) : null;
@@ -106,6 +128,7 @@ export async function dispatch(
   job.budget.activeMs += ms;
   job.budget.dollars += dollars ?? 0;
   logCall(deps, job, { outcome, ms, dollars });
+  if (ranOutOfTime(job, outcome)) return limitOutcome(deps, job, "activeMs");
   return outcome.ok
     ? { ok: true, message: outcome.message }
     : { ok: false, reason: "failed", failure: outcome.failure };

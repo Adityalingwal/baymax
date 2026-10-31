@@ -7,7 +7,7 @@ import { taskLimits } from "./limits";
 import type { LoopEnding, ToolTurn } from "./tool-batch";
 
 // The fixed prompt start (system and tools) plus the fields that stay the same on every step of a run.
-type WorkerPrompt = {
+export type WorkerPrompt = {
   system: string;
   tools: Anthropic.Tool[];
   schema: Record<string, unknown>;
@@ -16,14 +16,18 @@ type WorkerPrompt = {
 };
 
 // An answer turn ends the round; "cutOff" is one stopped at the output ceiling, whose text is not whole; "malformed" has no single text to read.
-type LoopOutcome =
+export type LoopOutcome =
   | { kind: "answer"; text: string }
   | { kind: "cutOff" }
   | { kind: "malformed" }
-  | { kind: "end"; ending: LoopEnding }
+  | {
+      kind: "end";
+      ending: LoopEnding;
+      finished?: Anthropic.ToolResultBlockParam[];
+    }
   | { kind: "aborted" };
 
-type WorkerLoop = {
+export type WorkerLoop = {
   deps: DispatchDeps;
   job: DispatchJob;
   prompt: WorkerPrompt;
@@ -117,6 +121,55 @@ async function toolTurn(
   const turn = await loop.runTools(blocks);
   budget.activeMs += loop.deps.now() - started;
   return turn;
+}
+
+// A run ended inside a tool batch leaves its tool calls open, and the API refuses a request with one unanswered. A call that finished hands over its real result.
+function closingMessage(
+  history: Anthropic.MessageParam[],
+  text: string,
+  finished: Anthropic.ToolResultBlockParam[],
+): Anthropic.MessageParam {
+  const last = history.at(-1);
+  const blocks =
+    last?.role === "assistant" && Array.isArray(last.content)
+      ? last.content
+      : [];
+  const results = blocks.flatMap((block): Anthropic.ToolResultBlockParam[] =>
+    block.type === "tool_use"
+      ? [
+          finished.find(({ tool_use_id: id }) => id === block.id) ?? {
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: "This call did not run.",
+            is_error: true,
+          },
+        ]
+      : [],
+  );
+  return { role: "user", content: [...results, { type: "text", text }] };
+}
+
+// One call with no way to use a tool, after a run has ended short. The tools stay in the request: the history holds tool calls, and dropping them is refused.
+export async function runLastAnswer(
+  loop: WorkerLoop,
+  history: Anthropic.MessageParam[],
+  closing: string,
+  finished: Anthropic.ToolResultBlockParam[],
+): Promise<LoopOutcome> {
+  const { deps, job } = loop;
+  history.push(closingMessage(history, closing, finished));
+  const outcome = await dispatch(
+    deps,
+    { ...job, lastAnswer: true },
+    { ...stepRequest(loop.prompt, history), tool_choice: { type: "none" } },
+  );
+  if (job.signal.aborted) return { kind: "aborted" };
+  if (!outcome.ok) return dispatchEnding(outcome);
+  const { message } = outcome;
+  const stop = message.stop_reason;
+  return stop === "end_turn" || stop === "max_tokens"
+    ? answerOf(message)
+    : failed;
 }
 
 // Ends only by an answer, an ending or abort; dispatch's model-call limit bounds the steps.
