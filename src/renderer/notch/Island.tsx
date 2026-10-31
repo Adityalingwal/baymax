@@ -5,6 +5,7 @@ import type { CardActions } from "../actions";
 import { ReportButton } from "../cards/Chevron";
 import { cardTitle, shownReport } from "../cards/forms";
 import { ReportBody } from "../cards/ReportPage";
+import { PillScroll } from "../PillScroll";
 import { islandCardMaxHeight, islandLayout } from "./views";
 
 export type IslandSize = { cardHeight: number; linesAt480: number };
@@ -107,13 +108,17 @@ function CardContents(props: IslandProps) {
         {card?.spokenLine ?? ""}
       </span>
       {reportOpen && card !== null && report !== null && (
-        <div className="mt-[5px] flex min-h-0 flex-col gap-2.5 overflow-y-auto">
+        <PillScroll
+          className="mt-[5px]"
+          contentClassName="flex flex-col gap-2.5"
+          pillRight={-12}
+        >
           <ReportBody
             card={card}
             report={report}
             openSource={props.openSource}
           />
-        </div>
+        </PillScroll>
       )}
     </>
   );

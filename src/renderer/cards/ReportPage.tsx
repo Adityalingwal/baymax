@@ -1,5 +1,6 @@
 import type { TaskCard } from "../../shared/cards";
 import type { CardActions } from "../actions";
+import { PillScroll } from "../PillScroll";
 import { Answer } from "./Answer";
 import { Chevron } from "./Chevron";
 import { cardTitle } from "./forms";
@@ -40,12 +41,12 @@ export function ReportPage({ onBack, ...body }: ReportPageProps) {
         <Chevron direction="left" />
         Back
       </button>
-      <div className="min-h-0 overflow-y-auto">
+      <PillScroll>
         <article className="glass flex flex-col gap-2.5 rounded-[20px] px-4 py-3.5">
           <h3 className="type-title">{cardTitle(body.card)}</h3>
           <ReportBody {...body} />
         </article>
-      </div>
+      </PillScroll>
     </section>
   );
 }

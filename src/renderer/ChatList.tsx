@@ -1,34 +1,32 @@
 import { useLayoutEffect, useRef } from "react";
 import type { ChatRow } from "./panel-contents";
+import { PillScroll } from "./PillScroll";
 
-function Bubble({ row }: { row: ChatRow }) {
-  const look = row.side === "left" ? "chat-you" : "chat-baymax glass";
-  return <div className={`chat-bubble ${look}`}>{row.text}</div>;
+function Message({ row }: { row: ChatRow }) {
+  const you = row.side === "left";
+  return (
+    <div
+      className={`chat-message shrink-0 ${you ? "chat-you" : "chat-baymax"}`}
+    >
+      <div className="chat-label">{you ? "You" : "Baymax"}</div>
+      <div>{row.text}</div>
+    </div>
+  );
 }
 
 // The list follows the newest entry, which sits at the bottom.
 export function ChatList({ rows }: { rows: ChatRow[] }) {
-  const list = useRef<HTMLElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (list.current !== null)
       list.current.scrollTop = list.current.scrollHeight;
   }, [rows.length]);
   if (rows.length === 0) return null;
   return (
-    <section
-      ref={list}
-      className="flex min-h-0 shrink flex-col gap-2 overflow-y-auto"
-    >
+    <PillScroll ref={list} contentClassName="flex flex-col gap-[18px]">
       {rows.map((row) => (
-        <div
-          key={row.id}
-          className={`flex shrink-0 items-end gap-2 ${row.side === "right" ? "justify-end" : ""}`}
-        >
-          {row.side === "left" && <Bubble row={row} />}
-          <span className="chat-time">{row.time}</span>
-          {row.side === "right" && <Bubble row={row} />}
-        </div>
+        <Message key={row.id} row={row} />
       ))}
-    </section>
+    </PillScroll>
   );
 }

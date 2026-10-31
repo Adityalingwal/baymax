@@ -20,7 +20,7 @@ export type PanelViewEvent =
   | { kind: "open-result" };
 
 // Kept while the panel is closed, so it opens on the tab last open.
-export const initialView: PanelView = { tab: "tasks", reportOf: null };
+export const initialView: PanelView = { tab: "chat", reportOf: null };
 
 export function viewReducer(view: PanelView, event: PanelViewEvent): PanelView {
   switch (event.kind) {
@@ -50,18 +50,13 @@ export type ChatRow = {
   id: string;
   side: "left" | "right"; // your words on the left, Baymax's on the right
   text: string;
-  time: string;
 };
 
 function chatRows(chat: readonly ChatEntry[]): ChatRow[] {
-  return chat.map(({ id, from, text, at }) => ({
+  return chat.map(({ id, from, text }) => ({
     id,
     side: from === "user" ? "left" : "right",
     text,
-    time: new Date(at).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    }),
   }));
 }
 
