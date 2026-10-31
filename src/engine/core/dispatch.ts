@@ -43,6 +43,16 @@ function limitReached(
   return null;
 }
 
+// A call's deadline is capped by the time left, so one cut off there ran out of time; it says nothing about the provider.
+function ranOutOfTime(job: DispatchJob, outcome: ModelOutcome): boolean {
+  return (
+    !outcome.ok &&
+    outcome.failure === "unreachable" &&
+    job.lastAnswer !== true &&
+    job.budget.activeMs >= taskLimits.activeMs - 1_000
+  );
+}
+
 // The SDK rejects a non-integer timeout, and the clock gives fractions.
 function callTimes({ role, budget, lastAnswer }: DispatchJob) {
   if (lastAnswer === true) {
@@ -87,6 +97,15 @@ function logCall(
   });
 }
 
+function limitOutcome(
+  deps: DispatchDeps,
+  job: DispatchJob,
+  limit: keyof TaskBudget,
+): DispatchOutcome {
+  deps.log({ event: "limitHit", taskId: job.taskId, role: job.role, limit });
+  return { ok: false, reason: "limitHit", limit };
+}
+
 export async function dispatch(
   deps: DispatchDeps,
   job: DispatchJob,
@@ -96,10 +115,7 @@ export async function dispatch(
   if (job.signal.aborted)
     return { ok: false, reason: "failed", failure: "aborted" };
   const limit = job.lastAnswer === true ? null : limitReached(job, request);
-  if (limit !== null) {
-    deps.log({ event: "limitHit", taskId: job.taskId, role: job.role, limit });
-    return { ok: false, reason: "limitHit", limit };
-  }
+  if (limit !== null) return limitOutcome(deps, job, limit);
   const { model, maxTokens } = roles[job.role];
   const started = deps.now();
   const outcome = await deps.call(
@@ -112,6 +128,7 @@ export async function dispatch(
   job.budget.activeMs += ms;
   job.budget.dollars += dollars ?? 0;
   logCall(deps, job, { outcome, ms, dollars });
+  if (ranOutOfTime(job, outcome)) return limitOutcome(deps, job, "activeMs");
   return outcome.ok
     ? { ok: true, message: outcome.message }
     : { ok: false, reason: "failed", failure: outcome.failure };

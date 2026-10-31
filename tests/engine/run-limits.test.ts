@@ -97,6 +97,18 @@ const limitRows: LimitRow[] = [
     open: 1,
   },
   {
+    name: "active time running out during a model call",
+    steps: () => [
+      readOne(),
+      { ok: false, failure: "unreachable", detail: "deadline" },
+      lastAnswer(),
+    ],
+    searches: [],
+    clock: (seen) => (seen.calls >= 2 ? 240_000 : 0),
+    calls: 3,
+    open: 0,
+  },
+  {
     name: "active time used by a tool batch",
     steps: () => [readOne(), readTwo(), lastAnswer()],
     searches: [],
@@ -129,7 +141,7 @@ const limitRows: LimitRow[] = [
 const notRun = "This call did not run.";
 
 const closing =
-  "Stop working now. There are no more searches or reads. Write your final JSON answer from the pages you have read. In the line, just say what you found: no set phrase, no apology, and nothing about stopping or limits.";
+  "Stop working now. There are no more searches or reads. Write your final JSON answer from the pages you have read. Write the report and the line as usual: the report holds the full answer, the line only the main finding. Use no set phrase and no apology, and say nothing about stopping or limits in either one.";
 
 // Every tool call in the request's history, and every result that answers one.
 function toolIds(request: ModelRequest) {
