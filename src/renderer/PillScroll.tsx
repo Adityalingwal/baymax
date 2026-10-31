@@ -2,7 +2,9 @@ import { useLayoutEffect, useRef } from "react";
 import type { ReactNode, RefObject, UIEventHandler } from "react";
 import { prefersReducedMotion } from "./notch/useMotion";
 
-const centreInset = 33;
+const pillInset = 4;
+const shortestPill = 34;
+const smallestOverflow = 24; // with less than this to scroll, no pill shows
 const restAfterMs = 1600;
 const glideShare = 0.12;
 const dragGlideShare = 0.4;
@@ -18,15 +20,25 @@ function scrollRange(scroller: HTMLElement): number {
   return scroller.scrollHeight - scroller.clientHeight;
 }
 
-function centreTravel(scroller: HTMLElement): number {
-  return scroller.clientHeight - 2 * centreInset;
+// Its length follows the list's; travel at or below zero means a scroller too small for the pill to move in.
+function pillSize(scroller: HTMLElement): { length: number; travel: number } {
+  const { clientHeight, scrollHeight } = scroller;
+  const track = clientHeight - 2 * pillInset;
+  const length = Math.max(
+    shortestPill,
+    Math.round((clientHeight / scrollHeight) * track),
+  );
+  return { length, travel: track - length };
 }
 
-function pillCentre(scroller: HTMLElement): number {
-  const track = centreTravel(scroller);
-  if (track < 0) return scroller.clientHeight / 2;
+function pillCentre(
+  scroller: HTMLElement,
+  { length, travel }: { length: number; travel: number },
+): number {
+  if (travel <= 0) return scroller.clientHeight / 2;
   const share = scroller.scrollTop / scrollRange(scroller);
-  return centreInset + Math.min(1, Math.max(0, share)) * track;
+  const moved = Math.min(1, Math.max(0, share)) * travel;
+  return pillInset + length / 2 + moved;
 }
 
 // Written straight to the element: a React render per frame would be too slow.
@@ -92,9 +104,9 @@ function listenForDrag(
       end();
       return;
     }
-    const track = centreTravel(scroller);
-    if (track <= 0) return;
-    const moved = (event.clientY - start.y) / track;
+    const { travel } = pillSize(scroller);
+    if (travel <= 0) return;
+    const moved = (event.clientY - start.y) / travel;
     scroller.scrollTop = start.scrollTop + moved * scrollRange(scroller);
   };
   // Not on pointerdown: cancelling that hides the press from the panel's own mouse tracking, which keeps the panel open during a drag.
@@ -156,14 +168,16 @@ function startPill(parts: PillParts): () => void {
   const look = startLook(pill);
   let placed = false;
   const place = () => {
-    const scrollable = scrollRange(scroller) > 0;
+    const scrollable = scrollRange(scroller) >= smallestOverflow;
     pill.hidden = !scrollable;
     if (!scrollable) {
       placed = false;
       look.set({ hovering: false });
       return;
     }
-    const centre = pillCentre(scroller);
+    const size = pillSize(scroller);
+    pill.style.height = `${size.length}px`;
+    const centre = pillCentre(scroller, size);
     if (placed) {
       glide.glideTo(centre, look.dragging() ? dragGlideShare : glideShare);
     } else {
