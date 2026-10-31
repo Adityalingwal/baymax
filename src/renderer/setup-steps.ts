@@ -25,6 +25,24 @@ export function setupReady(state: SetupState): boolean {
   return state.accessibility === "granted" && state.microphone === "granted";
 }
 
+// With no Deepgram key a hold cannot work, so the checklist and its notice stay until the app is run again.
+export function setupCanEnd(state: SetupState, keyMissing: boolean): boolean {
+  return state.needed && setupReady(state) && !keyMissing;
+}
+
+export type ChecklistStage = "setup" | "ended" | "closed" | "gone";
+
+// After setup ends the checklist stays through the panel's close, so the close never flashes the normal contents; the next open is the normal panel for good.
+export function nextChecklistStage(
+  stage: ChecklistStage,
+  ended: boolean,
+  open: boolean,
+): ChecklistStage {
+  if (stage === "gone" || !ended) return stage;
+  if (stage === "closed") return open ? "gone" : "closed";
+  return open ? "ended" : "closed";
+}
+
 function accessibilityRow(state: SetupState, clicks: SetupClicks): SetupRow {
   const row = { name: "Accessibility", dimmed: false };
   switch (state.accessibility) {

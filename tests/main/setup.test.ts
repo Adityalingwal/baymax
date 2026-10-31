@@ -89,6 +89,14 @@ const rows: Row[] = [
     ticking: true,
   },
   {
+    name: "a throwing start with both granted still shows the checklist, so the failure is explained",
+    launch: { trusted: true, mic: "granted" },
+    throwing: true,
+    state: { needed: true, accessibility: "failed", microphone: "granted" },
+    starts: 1,
+    ticking: false,
+  },
+  {
     name: "a denied microphone stays denied",
     launch: { trusted: true, mic: "denied" },
     state: { needed: true, accessibility: "granted", microphone: "denied" },
@@ -147,5 +155,30 @@ describe("first-run setup in main", () => {
         expect(published[index]).toMatchObject(change);
       });
     }
+  });
+
+  it("off macOS a throwing start reaches the restart path", () => {
+    const row = {
+      name: "",
+      isMac: false,
+      launch: { trusted: false, mic: "unknown" },
+      throwing: true,
+      state: { needed: false, accessibility: "granted", microphone: "granted" },
+      starts: 1,
+      ticking: false,
+    } satisfies Row;
+    expect(() => launch(row)).toThrow("hook refused");
+  });
+
+  it("stop ends the rechecks when the app quits", () => {
+    const { setup, clock } = launch({
+      name: "",
+      launch: { trusted: false, mic: "not-determined" },
+      state: { needed: true, accessibility: "missing", microphone: "ask" },
+      starts: 0,
+      ticking: true,
+    });
+    setup.stop();
+    expect(clock.pending()).toBe(0);
   });
 });

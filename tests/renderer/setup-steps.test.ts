@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  nextChecklistStage,
   noClicks,
+  setupCanEnd,
   setupReady,
   setupRows,
 } from "../../src/renderer/setup-steps";
@@ -169,6 +171,51 @@ describe("what each setup row shows", () => {
       );
     },
   );
+});
+
+describe("the end of setup", () => {
+  const ready: SetupState = {
+    needed: true,
+    accessibility: "granted",
+    microphone: "granted",
+  };
+
+  it.each<{
+    name: string;
+    state: SetupState;
+    keyMissing: boolean;
+    can: boolean;
+  }>([
+    { name: "ready", state: ready, keyMissing: false, can: true },
+    { name: "a missing key", state: ready, keyMissing: true, can: false },
+    {
+      name: "setup not needed",
+      state: { ...ready, needed: false },
+      keyMissing: false,
+      can: false,
+    },
+    {
+      name: "the microphone still missing",
+      state: { ...ready, microphone: "ask" },
+      keyMissing: false,
+      can: false,
+    },
+  ])("the first hold with $name: $can", ({ state, keyMissing, can }) => {
+    expect(setupCanEnd(state, keyMissing)).toBe(can);
+  });
+
+  it("keeps the checklist through one close, then the normal panel stays for good", () => {
+    const opens = [true, false, true, false, true];
+    const stages = opens.reduce<ReturnType<typeof nextChecklistStage>[]>(
+      (seen, open) => [
+        ...seen,
+        nextChecklistStage(seen.at(-1) ?? "setup", true, open),
+      ],
+      [],
+    );
+    expect(stages).toEqual(["ended", "closed", "gone", "gone", "gone"]);
+    expect(nextChecklistStage("setup", false, true)).toBe("setup");
+  });
 });
 
 describe("the Ready flag", () => {

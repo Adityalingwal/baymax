@@ -12,7 +12,8 @@ import { initialView, panelContent, viewReducer } from "./panel-contents";
 import type { PanelContent, PanelTab, PanelViewEvent } from "./panel-contents";
 import { startPlayback } from "./playback";
 import { SetupChecklist } from "./SetupChecklist";
-import { setupReady } from "./setup-steps";
+import { nextChecklistStage, setupCanEnd } from "./setup-steps";
+import type { ChecklistStage } from "./setup-steps";
 import { TextBox } from "./TextBox";
 import { TopBar } from "./TopBar";
 
@@ -57,24 +58,24 @@ function useMainState() {
 type Setup = { state: SetupState; showing: boolean; ended: boolean };
 
 // Setup ends on a move to listening with both granted, so a hold already running when the last grant lands does not end it.
-function useSetup(phase: VoicePhase["phase"]): Setup {
+function useSetup(phase: VoicePhase["phase"], keyMissing: boolean): Setup {
   const [state, setState] = useState(noSetup);
   const [ended, setEnded] = useState(false);
   useEffect(() => window.baymax.onSetupState(setState), []);
-  const showing = state.needed && !ended;
   const canEnd = useRef(false);
-  canEnd.current = showing && setupReady(state);
+  canEnd.current = !ended && setupCanEnd(state, keyMissing);
   useEffect(() => {
     if (phase === "listening" && canEnd.current) setEnded(true);
   }, [phase]);
-  return { state, showing, ended };
+  return { state, showing: state.needed && !ended, ended };
 }
 
-// After setup ends the checklist stays until the panel next opens, so the panel's close never flashes the normal contents.
 function useChecklistShows(setup: Setup, open: boolean): boolean {
-  const closedSinceEnd = useRef(false);
-  if (setup.ended && !open) closedSinceEnd.current = true;
-  return setup.showing || (setup.ended && !(closedSinceEnd.current && open));
+  const stage = useRef<ChecklistStage>("setup");
+  stage.current = nextChecklistStage(stage.current, setup.ended, open);
+  return (
+    setup.showing || stage.current === "ended" || stage.current === "closed"
+  );
 }
 
 type PanelBodyProps = {
@@ -170,7 +171,7 @@ function OpenPanel(props: OpenPanelProps) {
 
 export function App() {
   const { holdKeyLabel, display, phase } = useMainState();
-  const setup = useSetup(phase.phase);
+  const setup = useSetup(phase.phase, display.keyMissing);
   const actions: CardActions = window.baymax;
   const [draft, setDraft] = useState("");
   const [view, changeView] = useReducer(viewReducer, initialView);

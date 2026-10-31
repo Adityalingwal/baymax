@@ -117,9 +117,9 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
     }
     case "close-control":
       return closeAtOnce(state, true);
-    // The first hold after setup: its pill takes over, and the panel opens again as usual.
+    // The first hold after setup: its pill takes over, and a pointer resting on the notch must not reopen the panel over it.
     case "setup-done":
-      return closeAtOnce(state, state.waitForExit);
+      return closeAtOnce(state, state.waitForExit || state.inNotch);
     // Each change drops the running timer, so a key typed outside restarts the 3 s.
     case "draft":
       return event.text === state.draft

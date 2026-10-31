@@ -81,20 +81,17 @@ function recheck(run: Run): void {
 
 function initialState(run: Run): SetupState {
   const { deps } = run;
+  // Off macOS no row can explain a failed start, so the throw goes to the restart path.
   if (!deps.isMac) {
-    startHoldKeyOnce(run, false);
-    return {
-      needed: false,
-      accessibility: accessibilityFrom(run, true),
-      microphone: "granted",
-    };
+    deps.startHoldKey();
+    return { needed: false, accessibility: "granted", microphone: "granted" };
   }
   const trusted = deps.isTrusted();
   const microphone = microphoneFrom(deps.microphoneStatus());
   if (trusted) startHoldKeyOnce(run, false);
   else deps.log("[Hotkey] Waiting for Accessibility permission");
   return {
-    needed: !trusted || microphone !== "granted",
+    needed: !trusted || microphone !== "granted" || run.holdKeyFailed,
     accessibility: accessibilityFrom(run, trusted),
     microphone,
   };

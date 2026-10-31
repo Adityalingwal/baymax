@@ -271,6 +271,11 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { open: false, closing: true, waitForExit: false },
   },
   {
+    name: "a pointer resting on the notch at that hold does not reopen the panel over the pill",
+    steps: [onNotch, access, setupDone],
+    expected: { open: false, dwelling: false, waitForExit: true },
+  },
+  {
     name: "a click on the answer island opens the panel at once",
     steps: [onPanel, { kind: "open-result" }],
     expected: { open: true, dwelling: false, leaving: false },
