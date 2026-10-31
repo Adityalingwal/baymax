@@ -115,7 +115,9 @@ describe("runTask nothing found without reading a page", () => {
     );
     run.port.send(runTask());
     const events = await run.ended();
-    expect(JSON.stringify(run.requests[2].messages.at(-1))).toContain(notRead);
+    expect(run.requests[2].messages.at(-1)?.content).toBe(
+      `<check_result>\n${notRead}\n</check_result>\n\nRead one of those pages now, then write the whole answer as the JSON object. In sourceIds, name only pages you read.`,
+    );
     expect(events.at(-1)).toEqual(result({ ...goodFindings, sources: [one] }));
   });
 

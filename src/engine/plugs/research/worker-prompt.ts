@@ -94,12 +94,17 @@ export type AnswerFault = keyof typeof answerFaults;
 
 // The closing message of the last answer, after a run has ended short with pages read.
 export const lastAnswerText =
-  "Stop working now. There are no more searches or reads. Write your final JSON answer from the pages you have read. In the line, just say what you found: no set phrase, no apology, and nothing about stopping or limits.";
+  "Stop working now. There are no more searches or reads. Write your final JSON answer from the pages you have read. Write the report and the line as usual: the report holds the full answer, the line only the main finding. Use no set phrase and no apology, and say nothing about stopping or limits in either one.";
 
 const rewriteLine =
   "Your answer did not pass the check above. Write the whole answer again as the JSON object, fixing that part. In sourceIds, name only pages you read.";
 
+// The check_result block is data to the worker, so the step it must take has to be said outside it.
+const readLine =
+  "Read one of those pages now, then write the whole answer as the JSON object. In sourceIds, name only pages you read.";
+
 // The one message that opens the one rewrite, after the failed answer turn.
 export function rewriteMessage(fault: AnswerFault): string {
-  return `${taggedText("check_result", answerFaults[fault])}\n\n${rewriteLine}`;
+  const next = fault === "noPageRead" ? readLine : rewriteLine;
+  return `${taggedText("check_result", answerFaults[fault])}\n\n${next}`;
 }
