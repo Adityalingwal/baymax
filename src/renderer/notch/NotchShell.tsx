@@ -264,10 +264,10 @@ function PanelLayer(props: PanelLayerProps) {
 }
 
 function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
-  const { frame, phase, tasks, setMuted } = props;
+  const { frame, phase, tasks, muted, setMuted } = props;
   const fullReport = props.fullReportOpen;
   const { island, dispatch } = useIsland(tasks);
-  const voice = usePill(phase, islandSpeaks(island, phase), props.muted);
+  const voice = usePill(phase, islandSpeaks(island, phase), muted);
   const closed = useClosedShape(voice.pill, island, tasks, {
     shape: frame.shape,
     wide: islandLayout.wideWidth,
@@ -305,11 +305,7 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
         {props.children}
       </PanelLayer>
       {open && (
-        <VoiceRail
-          phase={phase.phase}
-          muted={props.muted}
-          notchHeight={frame.shape.notchHeight}
-        />
+        <VoiceRail phase={phase.phase} muted={muted} shape={frame.shape} />
       )}
     </div>
   );
