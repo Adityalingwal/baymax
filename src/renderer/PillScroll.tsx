@@ -107,6 +107,16 @@ function listenForDrag(
   pill.addEventListener("pointercancel", end, { signal });
 }
 
+function listenForWheel(
+  { scroller, pill }: PillParts,
+  signal: AbortSignal,
+): void {
+  const wheel = (event: WheelEvent) => {
+    scroller.scrollTop += event.deltaY;
+  };
+  pill.addEventListener("wheel", wheel, { passive: true, signal });
+}
+
 type PillLookInput = {
   hovering: boolean;
   dragging: boolean;
@@ -173,6 +183,7 @@ function startPill(parts: PillParts): () => void {
   const hover = (hovering: boolean) => () => look.set({ hovering });
   pill.addEventListener("pointerenter", hover(true), { signal });
   pill.addEventListener("pointerleave", hover(false), { signal });
+  listenForWheel(parts, signal);
   listenForDrag(parts, signal, (dragging) => look.set({ dragging }));
   // Its first report comes after every layout effect, so a parent's own scroll position is already set.
   const observer = new ResizeObserver(place);
