@@ -106,12 +106,18 @@ function startRounds(run: ResearchRun): Rounds {
     parent: run.command.parent,
   });
   const history: Anthropic.MessageParam[] = [{ role: "user", content: first }];
-  const runTools = createToolRunner({ web, deps: run.deps, job, progress });
+  const { runTools, seen } = createToolRunner({
+    web,
+    deps: run.deps,
+    job,
+    progress,
+  });
   const worker = { run, endShort, history, runTools };
   return {
     deps: run.deps,
     taskId,
     pages: web.pages,
+    seen,
     history,
     work: () => work(worker),
     keep: (findings) => (kept = findings),

@@ -16,7 +16,14 @@ type ToolRunner = {
   progress: (step: ProgressStep) => void;
 };
 
-type Counts = { searches: number; failedSearches: number };
+type Counts = {
+  searches: number;
+  failedSearches: number;
+  hitsSeen: number;
+  readsTried: number; // a refused or failed read counts as tried
+};
+
+export type ToolsSeen = Pick<Counts, "hitsSeen" | "readsTried">;
 
 type ResearchCall =
   | { id: string; tool: "search"; query: string }
@@ -161,6 +168,7 @@ async function search(
   logTool(runner, "search", outcome.ok ? "ok" : outcome.cause, started);
   if (!outcome.ok) return searchFailed(runner, counts, outcome.cause);
   counts.failedSearches = 0;
+  counts.hitsSeen += outcome.hits.length;
   const content = `${searchHitsForModel(outcome.hits)}\n\n${counterLine(runner, counts)}`;
   return { kind: "result", content, isError: false };
 }
@@ -197,7 +205,10 @@ function startTool(
   signal: AbortSignal,
 ): ToolStep | Promise<ToolStep> {
   if (signal.aborted) return { kind: "aborted" };
-  if (call.tool === "read") return read(runner, counts, call, signal);
+  if (call.tool === "read") {
+    counts.readsTried += 1;
+    return read(runner, counts, call, signal);
+  }
   if (counts.searches >= taskLimits.searches) {
     logTool(runner, "search", "limitHit", runner.deps.now());
     return { kind: "end", ending: { kind: "limitHit" } };
@@ -207,11 +218,19 @@ function startTool(
 }
 
 // One runner per task: its counts last for the whole run.
-export function createToolRunner(
-  runner: ToolRunner,
-): (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn> {
-  const counts: Counts = { searches: 0, failedSearches: 0 };
-  return async (blocks) => {
+export function createToolRunner(runner: ToolRunner): {
+  runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
+  seen: () => ToolsSeen;
+} {
+  const counts: Counts = {
+    searches: 0,
+    failedSearches: 0,
+    hitsSeen: 0,
+    readsTried: 0,
+  };
+  const runTools = async (
+    blocks: Anthropic.ToolUseBlock[],
+  ): Promise<ToolTurn> => {
     const calls = parseCalls(blocks);
     if (calls === null) {
       runner.deps.log({
@@ -228,4 +247,5 @@ export function createToolRunner(
       startTool(runner, counts, call, signal),
     );
   };
+  return { runTools, seen: () => ({ ...counts }) };
 }

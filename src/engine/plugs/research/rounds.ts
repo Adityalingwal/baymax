@@ -4,6 +4,7 @@ import type { EngineEvent, FailureCause } from "../../../shared/engine";
 import type { DispatchDeps } from "../../core/dispatch";
 import { checkAnswer, foundFindings, parseAnswer } from "./answer";
 import type { ReadPage } from "./page-text";
+import type { ToolsSeen } from "./tool-runner";
 import { rewriteMessage } from "./worker-prompt";
 import type { AnswerFault } from "./worker-prompt";
 
@@ -23,6 +24,7 @@ export type Rounds = {
   deps: DispatchDeps;
   taskId: TaskId;
   pages: () => ReadPage[];
+  seen: () => ToolsSeen;
   history: Anthropic.MessageParam[];
   work: () => Promise<WorkTurn>;
   keep: (findings: Findings) => void; // told only a card that passed the check, so a cancel racing the result still carries it
@@ -48,11 +50,25 @@ function malformedTurn(rounds: Rounds): RoundEnd {
   return { kind: "fault", fault: "malformed" };
 }
 
-function checkedTurn(rounds: Rounds, json: string): RoundEnd {
+// Gave up on search results without trying a single page.
+function neverRead(rounds: Rounds): boolean {
+  const { hitsSeen, readsTried } = rounds.seen();
+  return hitsSeen > 0 && readsTried === 0 && rounds.pages().length === 0;
+}
+
+function checkedTurn(
+  rounds: Rounds,
+  json: string,
+  firstRound: boolean,
+): RoundEnd {
   const { taskId } = rounds;
   const answer = parseAnswer(json);
   if (answer === null) return malformedTurn(rounds);
   const check = checkAnswer(answer, rounds.pages());
+  if (firstRound && check.kind === "nothingFound" && neverRead(rounds)) {
+    logCheck(rounds, "noPageRead");
+    return { kind: "fault", fault: "noPageRead" };
+  }
   logCheck(rounds, check.kind === "invalid" ? check.fault : null);
   if (check.kind === "invalid") return { kind: "fault", fault: check.fault };
   if (check.kind === "nothingFound") {
@@ -72,22 +88,25 @@ function checkedTurn(rounds: Rounds, json: string): RoundEnd {
   return { kind: "event", event };
 }
 
-async function answerRound(rounds: Rounds): Promise<RoundEnd> {
+async function answerRound(
+  rounds: Rounds,
+  firstRound: boolean,
+): Promise<RoundEnd> {
   const work = await rounds.work();
   if (work.kind !== "turn") return work;
   if (work.turn.kind === "cutOff") return { kind: "fault", fault: "cutOff" };
   if (work.turn.kind === "malformed") return malformedTurn(rounds);
-  return checkedTurn(rounds, work.turn.text);
+  return checkedTurn(rounds, work.turn.text, firstRound);
 }
 
-// One answer and, for a cut-off, malformed or invalid one, exactly one rewrite with its fault named.
+// One answer and, for a cut-off, malformed or invalid one, or one that gave up without reading, exactly one rewrite with its fault named.
 export async function runRounds(rounds: Rounds): Promise<EngineEvent | null> {
-  let end = await answerRound(rounds);
+  let end = await answerRound(rounds, true);
   if (end.kind === "fault") {
     const { fault } = end;
     rounds.deps.log({ event: "answerRewrite", taskId: rounds.taskId, fault });
     rounds.history.push({ role: "user", content: rewriteMessage(fault) });
-    end = await answerRound(rounds);
+    end = await answerRound(rounds, false);
   }
   if (end.kind === "fault") return rounds.endShort("error");
   return end.kind === "event" ? end.event : null;
