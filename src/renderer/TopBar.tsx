@@ -3,25 +3,6 @@ import type { CardActions } from "./actions";
 import { SpeakerIcon } from "./notch/VoicePill";
 import type { PanelTab } from "./panel-contents";
 
-function AccessibilityHint({ openSettings }: { openSettings: () => void }) {
-  return (
-    <div className="flex flex-col items-start gap-2">
-      <p className="type-body">
-        Grant Accessibility access to the running app, then restart. During{" "}
-        <code>npm start</code> macOS may list it as Electron; packaged builds
-        show Baymax.
-      </p>
-      <button
-        type="button"
-        className="action action-secondary glass"
-        onClick={openSettings}
-      >
-        Open Accessibility settings
-      </button>
-    </div>
-  );
-}
-
 const tabNames: { tab: PanelTab; name: string }[] = [
   { tab: "chat", name: "Chat" },
   { tab: "tasks", name: "Tasks" },
@@ -68,7 +49,7 @@ function MuteToggle({ muted, setMuted }: MuteProps) {
   );
 }
 
-function CloseControl({ onClose }: { onClose: () => void }) {
+export function CloseControl({ onClose }: { onClose: () => void }) {
   return (
     <button
       type="button"
@@ -89,17 +70,14 @@ function CloseControl({ onClose }: { onClose: () => void }) {
 }
 
 type TopBarProps = TabsProps & {
-  accessibility: boolean | null;
   state: DisplayState;
   setMuted: CardActions["setMuted"];
   onClose: () => void;
-  openAccessibilitySettings: () => void;
 };
 
-// The 32 pt top strip (content only in its wings), then the Accessibility hint and the notice when there is one.
+// The 32 pt top strip (content only in its wings), then the notice when there is one.
 export function TopBar(props: TopBarProps) {
-  const { accessibility, state, setMuted } = props;
-  const needsAccess = accessibility === false;
+  const { state, setMuted } = props;
   return (
     <>
       <div className="absolute inset-x-0 top-0 flex h-8 items-center justify-between px-[14px]">
@@ -109,12 +87,9 @@ export function TopBar(props: TopBarProps) {
           <CloseControl onClose={props.onClose} />
         </div>
       </div>
-      {(needsAccess || state.notice !== null) && (
+      {state.notice !== null && (
         <header className="flex flex-col gap-2">
-          {needsAccess && (
-            <AccessibilityHint openSettings={props.openAccessibilitySettings} />
-          )}
-          {state.notice !== null && <p className="type-body">{state.notice}</p>}
+          <p className="type-body">{state.notice}</p>
         </header>
       )}
     </>

@@ -122,6 +122,16 @@ const actionRows: ActionRow[] = [
     act: () => api.openAccessibilitySettings(),
     expected: [ipcChannels.openAccessibilitySettings],
   },
+  {
+    name: "askMicrophone",
+    act: () => api.askMicrophone(),
+    expected: [ipcChannels.askMicrophone],
+  },
+  {
+    name: "openMicrophoneSettings",
+    act: () => api.openMicrophoneSettings(),
+    expected: [ipcChannels.openMicrophoneSettings],
+  },
 ];
 
 describe("preload actions", () => {
@@ -213,6 +223,13 @@ const subscriptionRows: SubscriptionRow[] = [
     payload: { phase: "thinking" },
     replay: [[ipcChannels.getVoicePhase]],
   },
+  {
+    name: "onSetupState",
+    subscribe: (callback) => api.onSetupState(callback),
+    channel: ipcChannels.setupState,
+    payload: { needed: true, accessibility: "missing", microphone: "ask" },
+    replay: [[ipcChannels.getSetupState]],
+  },
 ];
 
 describe("preload subscriptions", () => {
@@ -253,7 +270,7 @@ describe("preload subscriptions", () => {
 
 describe("preload getStartupInfo", () => {
   it("invokes on its channel and resolves with main's answer", async () => {
-    const info = { accessibility: true, holdKeyLabel: "Right Option" };
+    const info = { holdKeyLabel: "Right Option" };
     fake.ipcRenderer.invoke.mockResolvedValue(info);
     await expect(api.getStartupInfo()).resolves.toEqual(info);
     expect(fake.ipcRenderer.invoke.mock.calls).toEqual([

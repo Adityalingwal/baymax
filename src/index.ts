@@ -7,8 +7,10 @@ import { startEngine } from "./engine";
 import { loadEnvFile } from "./main/env-file";
 import { startHoldKey, stopHoldKey } from "./main/hotkey";
 import { loadKeys } from "./main/keys";
-import { holdKeyLabel, isMac } from "./main/platform";
+import { holdKeyLabel, isMac, privacySettingsUrls } from "./main/platform";
 import { createRestart } from "./main/restart";
+import { startSetup } from "./main/setup";
+import type { Setup } from "./main/setup";
 import { createMainWindow } from "./main/window";
 import { wireMain } from "./main/wiring";
 import type { Wiring, WiringDeps } from "./main/wiring";
@@ -23,6 +25,7 @@ import type { MainToRenderer, StartupInfo, VoicePhase } from "./shared/ipc";
 const startedAt = Date.now();
 let mainWindow: BrowserWindow | null = null;
 let wiring: Wiring | null = null;
+let setup: Setup | null = null;
 let workStopped = false;
 let voicePhase: VoicePhase = { phase: "idle" };
 // Set once the talker has a key: a key press opens its connection before the question needs it.
@@ -33,6 +36,7 @@ const restart = createRestart({
   showNotice: () => wiring?.state.showNotice("restarting"),
   stopWork: () => {
     workStopped = true;
+    setup?.stop();
     stopHoldKey();
     wiring?.close();
   },
@@ -70,11 +74,6 @@ if (!gotSingleInstanceLock) {
 // `npm start` runs the generic Electron binary; show our name in the menu bar and Dock.
 if (isMac) {
   app.setName("Baymax");
-}
-
-function getAccessibilityStatus(): boolean | null {
-  if (!isMac) return null;
-  return systemPreferences.isTrustedAccessibilityClient(false);
 }
 
 function sendToWindow<C extends keyof MainToRenderer>(
@@ -158,27 +157,66 @@ async function startEngineAndWiring(): Promise<Wiring> {
   });
 }
 
-function registerHoldHandlers(accessibilityAtStartup: boolean | null): void {
+function openPrivacySettings(url: string): void {
+  shell.openExternal(url).catch((error: unknown) => {
+    console.error("[Setup] Failed to open settings:", error);
+  });
+}
+
+// Only fired by the explicit buttons in the window.
+function registerSetupHandlers(): void {
+  ipcMain.on(ipcChannels.getSetupState, (event) => {
+    if (setup !== null) {
+      event.sender.send(ipcChannels.setupState, setup.current());
+    }
+  });
+  ipcMain.on(ipcChannels.openAccessibilitySettings, () => {
+    if (!isMac) return;
+    // The prompting form is what adds Electron's entry to the list.
+    systemPreferences.isTrustedAccessibilityClient(true);
+    openPrivacySettings(privacySettingsUrls.accessibility);
+  });
+  ipcMain.on(ipcChannels.askMicrophone, () => {
+    if (!isMac) return;
+    systemPreferences
+      .askForMediaAccess("microphone")
+      .then(() => setup?.recheck())
+      .catch((error: unknown) => {
+        console.error("[Setup] Failed to ask for the microphone:", error);
+      });
+  });
+  ipcMain.on(ipcChannels.openMicrophoneSettings, () => {
+    if (isMac) openPrivacySettings(privacySettingsUrls.microphone);
+  });
+}
+
+function registerHoldHandlers(): void {
   ipcMain.handle(ipcChannels.getStartupInfo, (): StartupInfo => ({
-    accessibility: accessibilityAtStartup,
     holdKeyLabel,
   }));
 
   ipcMain.on(ipcChannels.getVoicePhase, (event) => {
     event.sender.send(ipcChannels.voicePhase, voicePhase);
   });
+}
 
-  // Only fired by the explicit button in the window.
-  ipcMain.on(ipcChannels.openAccessibilitySettings, () => {
-    if (!isMac) return;
-    systemPreferences.isTrustedAccessibilityClient(true);
-    shell
-      .openExternal(
-        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-      )
-      .catch((error: unknown) => {
-        console.error("[Accessibility] Failed to open settings:", error);
-      });
+function startSetupChecks(started: Wiring): Setup {
+  return startSetup({
+    isMac,
+    isTrusted: () => systemPreferences.isTrustedAccessibilityClient(false),
+    microphoneStatus: () =>
+      systemPreferences.getMediaAccessStatus("microphone"),
+    startHoldKey: () =>
+      startHoldKey((state, outcome) => {
+        if (state === "listening") warmTalker();
+        started.voice.holdChanged(state, outcome);
+      }),
+    publish: (state) => sendToWindow(ipcChannels.setupState, state),
+    setTimer,
+    log: (message, error) => {
+      if (error === undefined) console.log(message);
+      else console.error(message, error);
+    },
   });
 }
 
@@ -190,9 +228,8 @@ async function startApp(): Promise<void> {
     return;
   }
   wiring = started;
-  // One snapshot for both the hook guard and the renderer hint, so they never disagree.
-  const accessibilityAtStartup = getAccessibilityStatus();
-  registerHoldHandlers(accessibilityAtStartup);
+  registerHoldHandlers();
+  registerSetupHandlers();
 
   mainWindow = createMainWindow();
   mainWindow.on("closed", () => {
@@ -206,16 +243,7 @@ async function startApp(): Promise<void> {
     started.voice.rendererReset(),
   );
 
-  if (!isMac || accessibilityAtStartup) {
-    startHoldKey((state, outcome) => {
-      if (state === "listening") warmTalker();
-      started.voice.holdChanged(state, outcome);
-    });
-  } else {
-    console.log(
-      "[Hotkey] Waiting for Accessibility permission; listener not started",
-    );
-  }
+  setup = startSetupChecks(started);
 }
 
 if (gotSingleInstanceLock) {
@@ -236,6 +264,7 @@ if (gotSingleInstanceLock) {
   });
 
   app.on("will-quit", () => {
+    setup?.stop();
     stopHoldKey();
     wiring?.close();
   });

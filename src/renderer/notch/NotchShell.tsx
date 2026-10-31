@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { Dispatch, KeyboardEvent, ReactNode } from "react";
 import type { TaskCard, TaskId } from "../../shared/cards";
 import type { VoicePhase } from "../../shared/ipc";
 import type { CardActions } from "../actions";
@@ -15,6 +15,7 @@ import {
 import type { OutlineGeometry } from "./outline";
 import { clickMute } from "./pill";
 import { RunningRing } from "./RunningRing";
+import type { PanelEvent } from "./shell";
 import { useClosedShape } from "./useClosedShape";
 import type { ClosedShape } from "./useClosedShape";
 import { useShellMotion } from "./useMotion";
@@ -30,6 +31,7 @@ import { VoicePill } from "./VoicePill";
 
 type NotchShellProps = {
   needsAccess: boolean;
+  closeForHold: boolean; // goes true once, on the first hold after setup: the panel closes at once, in spite of needsAccess
   draft: string; // the field's text: with text, the panel closes 3 s after the pointer leaves instead of 300 ms
   phase: VoicePhase;
   tasks: TaskCard[];
@@ -38,7 +40,7 @@ type NotchShellProps = {
   openSource: CardActions["openSource"];
   fullReportOpen: boolean; // the panel takes its full-report size
   onOpenResult: () => void; // a click on the answer island's card
-  children: (closePanel: () => void) => ReactNode;
+  children: (closePanel: () => void, open: boolean) => ReactNode;
 };
 
 const rowGap = 12;
@@ -109,15 +111,27 @@ function useShapes(
   ]);
 }
 
-type PanelInput = Pick<NotchShellProps, "needsAccess" | "draft"> & {
+type PanelInput = Pick<
+  NotchShellProps,
+  "needsAccess" | "closeForHold" | "draft"
+> & {
   frame: WindowGeometry;
   closed: ClosedShape;
   fullReport: boolean;
 };
 
+function useCloseForHold(
+  closeForHold: boolean,
+  dispatch: Dispatch<PanelEvent>,
+): void {
+  useEffect(() => {
+    if (closeForHold) dispatch({ kind: "setup-done" });
+  }, [closeForHold, dispatch]);
+}
+
 // Joins the pointer rules to the motion: the pointer decides open or closed, the motion draws it and reports back.
 function usePanel(input: PanelInput) {
-  const { needsAccess, draft, frame, closed, fullReport } = input;
+  const { needsAccess, closeForHold, draft, frame, closed, fullReport } = input;
   const [content, setContent] = useState<HTMLElement | null>(null);
   const size = useContentSize(content);
   const shapes = useShapes(frame, size, closed, fullReport);
@@ -131,6 +145,7 @@ function usePanel(input: PanelInput) {
     draft,
     shapeKey: frame.shape,
   });
+  useCloseForHold(closeForHold, pointer.dispatch);
   const motion = useShellMotion({
     open: pointer.state.open,
     keys: shapes.keys,
@@ -252,7 +267,7 @@ function PanelLayer(props: PanelLayerProps) {
       aria-hidden={!panel.open}
       inert={!panel.open}
     >
-      {children(() => panel.dispatch({ kind: "close-control" }))}
+      {children(() => panel.dispatch({ kind: "close-control" }), panel.open)}
     </main>
   );
 }
