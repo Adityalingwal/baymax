@@ -159,8 +159,9 @@ async function spokenAll(w: Wired): Promise<string[]> {
 const found: Findings = { cardText: "- Page one", sources: [] };
 
 const limitLine =
-  "That task reached a limit before it had an answer. Try a narrower question or try again.";
-const errorLine = "I hit an error on that question. Try again.";
+  "That one's a bit big for me. Can you ask about one part of it?";
+const errorLine =
+  "Something went wrong while I was working on that. Try me again in a bit.";
 
 type FailedRow = {
   name: string;
@@ -213,37 +214,37 @@ const failedRows: FailedRow[] = [
     name: "models unreachable",
     cause: "modelsUnreachable",
     answer: found,
-    line: "I can't reach my models right now. Try again in a few minutes.",
+    line: "I'm having a little trouble right now. Try me again in a few minutes.",
   },
   {
     name: "search down",
     cause: "searchDown",
     answer: found,
-    line: "Search isn't working right now. Try again in a few minutes.",
+    line: "I can't look that up right now. Ask me again in a few minutes.",
   },
   {
     name: "a rejected model key",
     cause: "keyRejected",
     answer: found,
-    line: "Baymax's model service rejected its key. Please tell the person who set up Baymax.",
+    line: "One of my keys isn't working. Please check your env file and restart me.",
   },
   {
     name: "no credit",
     cause: "noCredit",
     answer: null,
-    line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
+    line: "One of my accounts has run out of credit, so I can't help right now. Once it's topped up, I'm good to go.",
   },
   {
     name: "a rejected search key",
     cause: "searchKeyRejected",
     answer: null,
-    line: "Baymax's search service rejected its key. Please tell the person who set up Baymax.",
+    line: "One of my keys isn't working. Please check your env file and restart me.",
   },
   {
     name: "a reached search quota",
     cause: "searchQuota",
     answer: found,
-    line: "Baymax's search service has reached its quota. Please tell the person who set up Baymax.",
+    line: "One of my accounts has run out of credit, so I can't help right now. Once it's topped up, I'm good to go.",
   },
 ];
 
@@ -295,7 +296,7 @@ describe("a failed task through the wiring", () => {
       expect(w.talkerCalls).toHaveLength(2);
       const turn = String(w.talkerCalls[1].request.messages.at(-1)?.content);
       expect(turn).toContain(`cause: ${line}\n`);
-      const shown = answer === null ? "nothing" : "the pages it read";
+      const shown = answer === null ? "nothing" : "some of what it found";
       expect(turn).toContain(`on screen: ${shown}\n`);
       expect(await spokenAll(w)).toEqual(["Checking hermes."]);
     },

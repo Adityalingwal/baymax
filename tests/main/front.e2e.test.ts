@@ -184,7 +184,7 @@ const silentLine = "Something went wrong on my side. Ask again.";
 const stalledLine =
   "Something went wrong on my side, so nothing started. Ask again.";
 const modelsLine =
-  "I can't reach my models right now. Try again in a few minutes.";
+  "I'm having a little trouble right now. Try me again in a few minutes.";
 
 // The front call speaks its text, then fails or ends with no tool.
 async function speakThen(w: Wired, text: string, end: ModelFailure | "noTool") {
@@ -210,17 +210,17 @@ const failures: Fail[] = [
   {
     name: "a rejected key with nothing spoken",
     fail: (w) => failFront(w, "keyRejected"),
-    line: "Baymax's model service rejected its key. Please tell the person who set up Baymax.",
+    line: "One of my keys isn't working. Please check your env file and restart me.",
     spoken: [
-      "Baymax's model service rejected its key. Please tell the person who set up Baymax.",
+      "One of my keys isn't working. Please check your env file and restart me.",
     ],
   },
   {
     name: "no credit with nothing spoken",
     fail: (w) => failFront(w, "noCredit"),
-    line: "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
+    line: "One of my accounts has run out of credit, so I can't help right now. Once it's topped up, I'm good to go.",
     spoken: [
-      "Baymax's model service has no credit left. Please tell the person who set up Baymax.",
+      "One of my accounts has run out of credit, so I can't help right now. Once it's topped up, I'm good to go.",
     ],
   },
   {

@@ -59,7 +59,8 @@ export type FailureRequest = TalkContext & {
   failed: {
     title: string;
     cause: string; // plain words: a line from lines.ts, or the worker's own sentence
-    onScreen: "the pages it read" | "nothing";
+    onScreen: "some of what it found" | "nothing";
+    nextStep: string; // from lines.ts: main decides what the talker offers
     triedAgain: boolean;
   };
 };
