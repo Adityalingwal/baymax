@@ -117,7 +117,7 @@ describe("the older of two spoken questions", () => {
     {
       name: "the latest is stopped",
       release: (w: Wired) => answerWith(w, "drop it", stopRoute("t2")),
-      chat: ["Which one for t1?"],
+      chat: ["drop it", "Okay.", "Which one for t1?"],
     },
   ])(
     "re-asks the older once and shows it in Chat when $name",
@@ -312,7 +312,12 @@ describe("a question that goes away", () => {
     await answerWith(w, "never mind", stopRoute("t1"), "Dropping that.");
     expect(w.wiring.state.waitingQuestion()).toBeNull();
     expect(w.published.at(-1)?.tasks).toEqual([]);
-    expect(w.chat()).toEqual(["about it", "Which one for t1?"]);
+    expect(w.chat()).toEqual([
+      "about it",
+      "Which one for t1?",
+      "never mind",
+      "Dropping that.",
+    ]);
     await flush();
     await w.playAll();
     expect(w.spoken()).toEqual(["Which one for t1?", "Dropping that."]);

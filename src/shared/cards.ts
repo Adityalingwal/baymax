@@ -41,12 +41,13 @@ export type TaskCard = {
   finishOrder: number | null; // grows with each shown task that ends; null while it has not, also after a retry
 };
 
-// One side of the conversation: what the user said, or what Baymax said that was no task's card.
+// One side of the conversation: what the user said, or what Baymax said.
 export type ChatEntry = {
   id: string;
   from: "user" | "baymax";
   text: string;
   at: number; // milliseconds since the epoch
+  taskId: TaskId | null; // the task whose result line this is, else null
 };
 
 export type DisplayState = {

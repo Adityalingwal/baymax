@@ -53,6 +53,9 @@ const steadyRows: { kind: FailureCause; step: string }[] = [
   },
 ];
 
+// What admitAs(w, "hermes") leaves in Chat.
+const started = ["tell me hermes", "Checking hermes."];
+
 const nextStepRows: {
   kind: FailureCause;
   retried: boolean;
@@ -122,7 +125,7 @@ describe("a task that fails", () => {
     await streamFront(w, replyRoute(), offerLine);
     await w.playAll();
     expect(w.spoken()).toEqual(["Checking hermes.", offerLine]);
-    expect(w.chat()).toEqual([offerLine]);
+    expect(w.chat()).toEqual([...started, offerLine]);
     expect(w.card("t1")).toMatchObject({
       state: "failed",
       canRetry: true,
@@ -178,7 +181,7 @@ describe("a failure turn's decision", () => {
       expect(w.port.sent).toHaveLength(1);
       expect(w.card("t1")?.state).toBe("failed");
       expect(w.published.at(-1)?.tasks).toHaveLength(1);
-      expect(w.chat()).toEqual([offerLine]);
+      expect(w.chat()).toEqual([...started, offerLine]);
     },
   );
 });
@@ -334,7 +337,7 @@ describe("a failure turn's wait", () => {
     failTask(w);
     expect(w.talkerCalls).toHaveLength(2);
     await streamFront(w, replyRoute(), offerLine);
-    expect(w.chat()).toEqual([offerLine]);
+    expect(w.chat()).toEqual([...started, offerLine]);
     expect(w.syntheses).toHaveLength(said);
   });
 
@@ -372,7 +375,7 @@ describe("a failure call that fails", () => {
     const line =
       "That one's a bit big for me. Can you ask about one part of it?";
     expect(w.spoken()).toEqual(["Checking hermes.", line]);
-    expect(w.chat()).toEqual([line]);
+    expect(w.chat()).toEqual([...started, line]);
     expect(w.card("t1")).toMatchObject({
       state: "failed",
       line,
@@ -396,7 +399,7 @@ describe("a failure call that fails", () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await w.playAll();
     expect(w.spoken()).toEqual(["Checking hermes.", offerLine, errorCause]);
-    expect(w.chat()).toEqual([offerLine, errorCause]);
+    expect(w.chat()).toEqual([...started, offerLine, errorCause]);
   });
 });
 
@@ -415,7 +418,7 @@ describe("cancelling a failed task", () => {
     expect(w.port.sent).toHaveLength(sent);
   });
 
-  it("while its call generates: the call is aborted and nothing joins Chat", async () => {
+  it("while its call generates: the call is aborted and nothing more joins Chat", async () => {
     const w = wire();
     await admitAs(w, "hermes");
     await w.playAll();
@@ -423,7 +426,7 @@ describe("cancelling a failed task", () => {
     w.send(ipcChannels.cancelTask, { taskId: "t1" });
     expect(w.talkerCalls[1].aborted).toBe(true);
     expect(w.card("t1")?.state).toBe("cancelled");
-    expect(w.chat()).toEqual([]);
+    expect(w.chat()).toEqual(started);
   });
 
   it("while its line plays: the line stops and its offer is gone", async () => {
@@ -460,7 +463,7 @@ describe("the card's Retry during a failure turn", () => {
     await pastTheQuiet(w);
     await w.playAll();
     expect(w.spoken()).toEqual(["Checking hermes.", "Hermes runs a loop."]);
-    expect(w.chat()).toEqual([]);
+    expect(w.chat()).toEqual([...started, "Hermes runs a loop."]);
     expect(w.card("t1")?.state).toBe("done");
   });
 

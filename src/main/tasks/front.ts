@@ -112,20 +112,17 @@ function applyDecision(
   decision: Decision,
   line: string,
 ): boolean {
+  addChatTurn(change, attempt.parts.words, line);
   if (decision.route === "stop") {
     cancelTask(change, decision.taskId);
     endSpoken(change, record);
     return true;
   }
   if (decision.route === "retry") {
-    addChatTurn(change, attempt.parts.words, line);
     setExchangeTask(change.model.exchanges, attempt.order, decision.taskId);
     retryTask(change, decision.taskId);
     endSpoken(change, record);
     return true;
-  }
-  if (decision.route !== "work" || decision.answerTo !== null) {
-    addChatTurn(change, attempt.parts.words, line);
   }
   const target = resolveTarget(change, record, decision);
   if (target === null) return true;

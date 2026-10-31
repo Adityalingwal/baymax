@@ -38,8 +38,20 @@ describe("the routes of a front decision", () => {
     await streamFront(w, replyRoute(), "You're welcome!");
     expect(tasksShown(w)).toEqual([]);
     expect(w.published.at(-1)?.chat).toEqual([
-      { id: "c1", from: "user", text: "thanks!", at: clockStart + 5 },
-      { id: "c2", from: "baymax", text: "You're welcome!", at: clockStart + 5 },
+      {
+        id: "c1",
+        from: "user",
+        text: "thanks!",
+        at: clockStart + 5,
+        taskId: null,
+      },
+      {
+        id: "c2",
+        from: "baymax",
+        text: "You're welcome!",
+        at: clockStart + 5,
+        taskId: null,
+      },
     ]);
     expect(w.port.sent).toEqual([]);
     expect(await spokenAll(w)).toEqual(["You're welcome!"]);
@@ -81,8 +93,21 @@ describe("the work route", () => {
         parent: null,
       },
     ]);
-    expect(w.chat()).toEqual([]);
+    expect(w.chat()).toEqual(["will it rain?", "I'll check the forecast."]);
     expect(await spokenAll(w)).toEqual(["I'll check the forecast."]);
+  });
+
+  it("a finished task's line joins Chat with its task id, even muted", async () => {
+    const w = wire();
+    await admitAs(w, "hermes");
+    w.send(ipcChannels.setMuted, { muted: true });
+    w.port.emit(result("t1", "Hermes runs a loop."));
+    const chat = w.published.at(-1)?.chat ?? [];
+    expect(chat.map(({ text, taskId }) => ({ text, taskId }))).toEqual([
+      { text: "tell me hermes", taskId: null },
+      { text: "Checking hermes.", taskId: null },
+      { text: "Hermes runs a loop.", taskId: "t1" },
+    ]);
   });
 });
 
@@ -96,7 +121,7 @@ describe("the routes of a front decision while work runs", () => {
     expect(tasksShown(w).map((card) => card.taskId)).toEqual(["t1"]);
     expect(w.card("t1")?.state).toBe("running");
     expect(w.port.sent).toHaveLength(sent);
-    expect(w.chat()).toEqual(["book a cab", "I can't book cabs."]);
+    expect(w.chat().slice(-2)).toEqual(["book a cab", "I can't book cabs."]);
   });
 
   it("stop on a running task: the engine gets a cancel, the stop line finishes playing and no card is left", async () => {
@@ -113,7 +138,7 @@ describe("the routes of a front decision while work runs", () => {
       "Stopping hermes.",
     ]);
     expect(w.stops).toEqual([]);
-    expect(w.chat()).toEqual([]);
+    expect(w.chat().slice(-2)).toEqual(["stop that", "Stopping hermes."]);
   });
 
   it("stop on a queued task: it ends at once and the running one carries on", async () => {

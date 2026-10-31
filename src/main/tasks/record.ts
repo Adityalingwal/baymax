@@ -222,11 +222,12 @@ export function addChat(
   change: Change,
   from: ChatEntry["from"],
   text: string,
+  taskId: TaskId | null = null,
 ): void {
   const { model } = change;
   model.chatEntries += 1;
   const at = change.now().getTime();
-  model.chat.push({ id: `c${model.chatEntries}`, from, text, at });
+  model.chat.push({ id: `c${model.chatEntries}`, from, text, at, taskId });
   if (model.chat.length > CHAT_LIMIT) model.chat.shift();
 }
 

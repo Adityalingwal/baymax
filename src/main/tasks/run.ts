@@ -7,6 +7,7 @@ import { failedLine, stepText } from "./lines";
 import type { Admission, Change, Input, Model, TaskRecord } from "./record";
 import {
   abandonAttempt,
+  addChat,
   dropped,
   dropQuestion,
   hold,
@@ -63,6 +64,7 @@ function endDone(
   record.card.line = null;
   const { taskId } = record.card;
   appendLine(change.model, record.card, spokenLine);
+  addChat(change, "baymax", spokenLine, taskId);
   say(change, taskId, spokenLine, "answer");
 }
 
