@@ -24,7 +24,7 @@ export type Silhouette = {
   hidden?: boolean; // resting on it draws nothing
 };
 
-// The panel shape.s ear and corner sizes.
+// The panel shape's ear and corner sizes.
 export const panelShape = { ear: 24, rx: 26, ry: 28, strip: 32 } as const;
 export const pillShape: Silhouette = {
   width: 360,
