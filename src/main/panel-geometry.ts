@@ -4,7 +4,7 @@ type DisplayBounds = Pick<Electron.Display, "bounds">;
 
 export type NotchSizes = ReadonlyMap<number, { width: number; height: number }>;
 
-// Fits the widest panel (640 pt) with its 24 pt ears and its tallest (560 pt); the window never resizes, only the black shape inside it moves.
+// Fits the widest shape, the answer island at 640 pt, with its 24 pt ears, and the tallest (560 pt); the window never resizes, only the black shape inside it moves.
 const panelWindow = { width: 688, height: 560, screenGap: 16 } as const;
 
 // The small pill at rest when no notch was measured, sized from one real notch (139 x 25 points on a 1280-point-wide display).

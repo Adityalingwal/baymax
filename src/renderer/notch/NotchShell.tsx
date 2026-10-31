@@ -8,7 +8,6 @@ import {
   notchZone,
   openSilhouette,
   panelBox,
-  panelLimits,
   panelShape,
   silhouettePath,
 } from "./outline";
@@ -27,6 +26,7 @@ import type { WindowGeometry } from "./useWindowShape";
 import { islandSpeaks } from "./answer-island";
 import type { IslandState } from "./answer-island";
 import { useIsland, useIslandFollows } from "./useIsland";
+import { islandLayout } from "./views";
 import { VoicePill } from "./VoicePill";
 
 type NotchShellProps = {
@@ -52,30 +52,22 @@ function isTextField(target: EventTarget): target is HTMLElement {
   );
 }
 
-type ContentSize = { width: number; height: number };
-
-// The content's natural width within the panel's limits, and its full height from y = 0, its top padding included.
-function useContentSize(element: HTMLElement | null): ContentSize {
-  const [size, setSize] = useState<ContentSize>({ width: 0, height: 0 });
+// The content's full height from y = 0, its top padding included.
+function useContentHeight(element: HTMLElement | null): number {
+  const [height, setHeight] = useState(0);
   useEffect(() => {
     if (element === null) return;
-    const measure = () => {
-      const width = element.offsetWidth;
-      const height = element.offsetHeight;
-      setSize((now) =>
-        now.width === width && now.height === height ? now : { width, height },
-      );
-    };
+    const measure = () => setHeight(element.offsetHeight);
     const observer = new ResizeObserver(measure);
     observer.observe(element, { box: "border-box" });
     return () => observer.disconnect();
   }, [element]);
-  return size;
+  return height;
 }
 
 function useShapes(
   frame: WindowGeometry,
-  content: ContentSize,
+  contentHeight: number,
   closed: ClosedShape,
   fullReport: boolean,
 ) {
@@ -86,8 +78,7 @@ function useShapes(
       width,
       height: frame.height,
       shape,
-      contentWidth: content.width,
-      contentHeight: content.height,
+      contentHeight,
       fullReport,
     };
     const opened = openSilhouette(geometry);
@@ -99,16 +90,7 @@ function useShapes(
       opened: { kind: "path" as const, path: silhouettePath(width, opened) },
     };
     return { keys, zones };
-  }, [
-    width,
-    frame.height,
-    shape,
-    content.width,
-    content.height,
-    fullReport,
-    collapsed,
-    view,
-  ]);
+  }, [width, frame.height, shape, contentHeight, fullReport, collapsed, view]);
 }
 
 type PanelInput = Pick<
@@ -133,8 +115,8 @@ function useCloseForHold(
 function usePanel(input: PanelInput) {
   const { needsAccess, closeForHold, draft, frame, closed, fullReport } = input;
   const [content, setContent] = useState<HTMLElement | null>(null);
-  const size = useContentSize(content);
-  const shapes = useShapes(frame, size, closed, fullReport);
+  const contentHeight = useContentHeight(content);
+  const shapes = useShapes(frame, contentHeight, closed, fullReport);
   const visible = useRef<() => string>(() => "");
   const zones = useMemo(
     () => ({ ...shapes.zones, visible: () => visible.current() }),
@@ -258,7 +240,7 @@ function PanelLayer(props: PanelLayerProps) {
   return (
     <main
       ref={panel.contentElement}
-      className="panel-type absolute inset-x-0 top-0 mx-auto flex w-fit flex-col"
+      className="panel-type absolute inset-x-0 top-0 mx-auto flex flex-col"
       style={{
         ...panelBox(frame.height, fullReport, frame.shape.notchWidth),
         gap: rowGap,
@@ -279,7 +261,7 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
   const voice = usePill(phase, islandSpeaks(island, phase), props.muted);
   const closed = useClosedShape(voice.pill, island, tasks, {
     shape: frame.shape,
-    wide: panelLimits.reportWidth,
+    wide: islandLayout.wideWidth,
   });
   const panel = usePanel({ ...props, closed, fullReport });
   const { open, layers } = panel;

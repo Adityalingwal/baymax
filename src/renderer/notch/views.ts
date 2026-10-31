@@ -40,6 +40,7 @@ export function isAnswerLine(
 
 export const islandLayout = {
   width: 480,
+  wideWidth: 640, // for an open report or a line that needs four lines
   maxLines: 3,
   strip: 32,
   gap: 4, // between the strip and the card, as in the selected preview
@@ -55,7 +56,7 @@ export function islandCardMaxHeight(windowHeight: number): number {
   return height - strip - gap - bottom;
 }
 
-// Up to three lines at 480 pt; a fourth widens the island to the panel's width instead of cutting the text.
+// Up to three lines at 480 pt; a fourth widens the island instead of cutting the text.
 export function islandWidth(linesAt480: number, wide: number): number {
   return linesAt480 <= islandLayout.maxLines ? islandLayout.width : wide;
 }

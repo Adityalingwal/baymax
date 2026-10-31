@@ -5,7 +5,6 @@ export type OutlineGeometry = {
   width: number;
   height: number;
   shape: WindowShape;
-  contentWidth: number;
   contentHeight: number;
   fullReport: boolean;
 };
@@ -53,11 +52,9 @@ export function ringSilhouette(shape: WindowShape): Silhouette {
   };
 }
 
-// The panel fits its content between these: design-lock-shape.md, "Panel size". The window fits the widest with its ears.
+// The panel's one width, and the most its height can follow its content.
 export const panelLimits = {
-  minWidth: 420,
-  maxWidth: 520,
-  reportWidth: 640,
+  width: 520,
   maxHeight: 420,
   reportHeight: 560,
   wing: 126, // beside the notch, so the top strip's tabs and controls never run under it
@@ -69,12 +66,11 @@ export function panelBox(
   fullReport: boolean,
   notchWidth: number,
 ) {
-  const { minWidth, maxWidth, reportWidth, maxHeight, reportHeight, wing } =
-    panelLimits;
-  const narrowest = Math.max(minWidth, notchWidth + 2 * wing);
+  const { width, maxHeight, reportHeight, wing } = panelLimits;
+  const panelWidth = Math.max(width, notchWidth + 2 * wing);
   return {
-    minWidth: fullReport ? reportWidth : narrowest,
-    maxWidth: fullReport ? reportWidth : Math.max(maxWidth, narrowest),
+    minWidth: panelWidth,
+    maxWidth: panelWidth,
     maxHeight: Math.min(fullReport ? reportHeight : maxHeight, windowHeight),
   };
 }
@@ -105,10 +101,7 @@ export function openSilhouette(geometry: OutlineGeometry): Silhouette {
   );
   const content = Math.min(geometry.contentHeight, box.maxHeight);
   return {
-    width: Math.min(
-      box.maxWidth,
-      Math.max(box.minWidth, geometry.contentWidth),
-    ),
+    width: box.maxWidth,
     height: Math.max(content, strip + ry),
     ear,
     rx,

@@ -49,7 +49,7 @@ function silhouetteFor(
   }
 }
 
-// What the closed notch shows and its shape; wide: the panel's full-report width, for an open report or a line that needs four lines.
+// What the closed notch shows and its shape; wide: the island's wide size.
 export function useClosedShape(
   pill: PillState,
   answerIsland: IslandState,
