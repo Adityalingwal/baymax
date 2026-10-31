@@ -304,7 +304,13 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
       <PanelLayer panel={panel} frame={frame} fullReport={fullReport}>
         {props.children}
       </PanelLayer>
-      {open && <VoiceRail phase={phase.phase} muted={props.muted} />}
+      {open && (
+        <VoiceRail
+          phase={phase.phase}
+          muted={props.muted}
+          notchHeight={frame.shape.notchHeight}
+        />
+      )}
     </div>
   );
 }

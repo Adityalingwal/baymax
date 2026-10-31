@@ -427,7 +427,6 @@ body {
 /* The voice state under the notch while the panel is open; it never takes a click or a scroll. */
 .wave-rail-anchor {
   position: absolute;
-  top: 29px;
   left: 50%;
   z-index: 3;
   transform: translateX(-50%);

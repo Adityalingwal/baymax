@@ -9,15 +9,22 @@ const words = {
   speaking: "Speaking",
 } as const;
 
-type VoiceRailProps = { phase: VoicePhase["phase"]; muted: boolean };
+const belowNotch = 4;
+
+type VoiceRailProps = {
+  phase: VoicePhase["phase"];
+  muted: boolean;
+  notchHeight: number;
+};
 
 // The voice state under the notch while the panel is open. The bars do not follow real audio.
-export function VoiceRail({ phase, muted }: VoiceRailProps) {
+export function VoiceRail({ phase, muted, notchHeight }: VoiceRailProps) {
   if (phase === "idle") return null;
   const silent = phase === "speaking" && muted;
   return (
     <div
       className="wave-rail-anchor"
+      style={{ top: notchHeight + belowNotch }}
       data-state={words[phase]}
       data-muted={silent}
     >
