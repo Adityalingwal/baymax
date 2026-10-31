@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { Dispatch } from "react";
-import type { DisplayState } from "../shared/cards";
+import type { DisplayState, TaskId } from "../shared/cards";
 import type { SetupState, VoicePhase } from "../shared/ipc";
 import type { CardActions } from "./actions";
 import { ReportPage } from "./cards/ReportPage";
@@ -86,16 +86,18 @@ type PanelBodyProps = {
 
 function PanelBody({ content, actions, changeView }: PanelBodyProps) {
   const keptScroll = useRef(0);
+  const onOpenReport = (taskId: TaskId) =>
+    changeView({ kind: "open-report", taskId });
   switch (content.kind) {
     case "chat":
-      return <ChatList rows={content.rows} />;
+      return <ChatList rows={content.rows} onOpenReport={onOpenReport} />;
     case "tasks":
       return (
         <TasksList
           cards={content.cards}
           actions={actions}
           keptScroll={keptScroll}
-          onOpenReport={(taskId) => changeView({ kind: "open-report", taskId })}
+          onOpenReport={onOpenReport}
         />
       );
     case "report":
@@ -191,7 +193,7 @@ export function App() {
       fullReportOpen={content.kind === "report"}
       onOpenResult={() => changeView({ kind: "open-result" })}
     >
-      {(closePanel, open) => (
+      {(closePanel, open, viewClicked) => (
         <OpenPanel
           setup={setup}
           open={open}
@@ -200,7 +202,10 @@ export function App() {
           holdKeyLabel={holdKeyLabel}
           tab={view.tab}
           content={content}
-          changeView={changeView}
+          changeView={(event) => {
+            viewClicked();
+            changeView(event);
+          }}
           onDraft={setDraft}
         />
       )}

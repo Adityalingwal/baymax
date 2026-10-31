@@ -16,7 +16,6 @@ const notched: OutlineGeometry = {
   width: 688,
   height: 560,
   shape: { notched: true, notchWidth: 139, notchHeight: 25 },
-  contentWidth: 470,
   contentHeight: 300,
   fullReport: false,
 };
@@ -81,7 +80,7 @@ describe("silhouettePath", () => {
     {
       name: "the open panel's ears flare 24 points past its body",
       shape: openSilhouette(notched),
-      box: { left: 61, right: 579, top: 0, bottom: 300 },
+      box: { left: 36, right: 604, top: 0, bottom: 300 },
     },
     {
       name: "the pill's ears flare 14 points past its body",
@@ -140,7 +139,7 @@ const heightRows: HeightRow[] = [
 describe("silhouettePath segments", () => {
   it("draws the open panel segment by segment, its ears' control points 30% from the corner", () => {
     expect(silhouettePath(688, openSilhouette(notched))).toBe(
-      "M85,0 H603 C586.2,0 579,16.8 579,24 V272 C579,290.2 569.9,300 553,300 H135 C118.1,300 109,290.2 109,272 V24 C109,16.8 101.8,0 85,0 Z",
+      "M60,0 H628 C611.2,0 604,16.8 604,24 V272 C604,290.2 594.9,300 578,300 H110 C93.1,300 84,290.2 84,272 V24 C84,16.8 76.8,0 60,0 Z",
     );
   });
 
@@ -170,75 +169,57 @@ type SizeRow = {
 
 const sizeRows: SizeRow[] = [
   {
-    name: "on a wide notch the minimum follows it, keeping the wings",
-    change: {
-      contentWidth: 200,
-      shape: { notched: true, notchWidth: 185, notchHeight: 25 },
-    },
-    width: 437,
-    height: 300,
-  },
-  {
-    name: "on a very wide notch the maximum gives way too",
-    change: {
-      contentWidth: 900,
-      shape: { notched: true, notchWidth: 300, notchHeight: 25 },
-    },
-    width: 552,
-    height: 300,
-  },
-  {
-    name: "short content takes the minimum width",
-    change: { contentWidth: 200 },
-    width: 420,
-    height: 300,
-  },
-  {
-    name: "the width follows the longest line between the limits",
+    name: "the panel is 520 wide and its height follows its content",
     change: {},
-    width: 470,
+    width: 520,
     height: 300,
   },
   {
-    name: "longer text stops at the maximum width",
-    change: { contentWidth: 900 },
+    name: "on a wide notch it stays 520",
+    change: { shape: { notched: true, notchWidth: 185, notchHeight: 25 } },
     width: 520,
+    height: 300,
+  },
+  {
+    name: "on a very wide notch it gives way, keeping the wings",
+    change: { shape: { notched: true, notchWidth: 300, notchHeight: 25 } },
+    width: 552,
     height: 300,
   },
   {
     name: "the height stops at its maximum",
     change: { contentHeight: 900 },
-    width: 470,
+    width: 520,
     height: 420,
   },
   {
-    name: "a full report is 640 wide and up to 560 tall",
+    name: "a full report keeps the width and is up to 560 tall",
     change: { fullReport: true, contentHeight: 900 },
-    width: 640,
+    width: 520,
     height: 560,
   },
   {
-    name: "a short report keeps its own height at the report's width",
+    name: "a short report keeps its own height",
     change: { fullReport: true },
-    width: 640,
+    width: 520,
     height: 300,
   },
   {
     name: "on a short screen the height stops at the window",
     change: { height: 340, contentHeight: 900 },
-    width: 470,
+    width: 520,
     height: 340,
   },
   {
     name: "on a short screen a full report also stops at the window",
     change: { height: 484, fullReport: true, contentHeight: 900 },
-    width: 640,
+    width: 520,
     height: 484,
   },
   {
     name: "it is never shorter than its strip and corners",
     change: { contentHeight: 0 },
-    width: 470,
+    width: 520,
     height: 60,
   },
 ];

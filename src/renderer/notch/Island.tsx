@@ -12,7 +12,7 @@ export type IslandSize = { cardHeight: number; linesAt480: number };
 
 type IslandProps = {
   card: TaskCard | null;
-  width: number; // the island's body width: 480, or the panel's width for a long line or an open report
+  width: number; // the island's body width: 480, or its wide size for a long line or an open report
   windowWidth: number;
   windowHeight: number;
   interactive: boolean;
