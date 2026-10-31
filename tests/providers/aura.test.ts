@@ -54,10 +54,10 @@ describe("Aura messages", () => {
 });
 
 describe("Aura socket", () => {
-  it("opens the speak URL for 24 kHz linear16 with the key as a subprotocol", () => {
+  it("opens the speak URL for 16 kHz linear16 with the key as a subprotocol", () => {
     const { h } = start();
     expect(h.last().url).toBe(
-      "wss://api.deepgram.com/v1/speak?model=aura-2-thalia-en&encoding=linear16&sample_rate=24000",
+      "wss://api.deepgram.com/v1/speak?model=aura-2-thalia-en&encoding=linear16&sample_rate=16000",
     );
     expect(h.last().protocols).toEqual(["token", "dg-key"]);
   });

@@ -106,7 +106,7 @@ cards       <--IPC--  display state <- main checks, then routes --> runTask --> 
 | Part | Choice |
 | --- | --- |
 | STT | Deepgram Flux (`flux-general-en`) over one warm WebSocket; backup Nova-3 pre-recorded for one utterance when the socket cannot reconnect |
-| TTS | Deepgram Aura-2 over one warm WebSocket (24 kHz PCM), fed the front call's line sentence by sentence; backup the Aura-2 REST call |
+| TTS | Deepgram Aura-2 over one warm WebSocket (16 kHz PCM), fed the front call's line sentence by sentence; backup the Aura-2 REST call |
 | Front call | Claude Fable 5.1 at low effort, in main: a spoken line, then the route (`decide` tool) |
 | Worker | Claude Sonnet 5.5, picked in code by `pickWorkerModel`, the seam Jev plugs into later |
 | Web | One `web` tool owned by Baymax: a search provider (Exa, called with plain `fetch`) and page reads through Exa Contents, with Baymax's own plain reader as the fallback |

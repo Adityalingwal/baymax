@@ -54,8 +54,8 @@ describe("a line on the Aura socket (L10)", () => {
     aura.flushed();
     const lineId = h.chunks[0].lineId;
     expect(h.chunks.map(({ seq, sampleRate }) => [seq, sampleRate])).toEqual([
-      [0, 24_000],
-      [1, 24_000],
+      [0, 16_000],
+      [1, 16_000],
     ]);
     expect(h.chunks.every((chunk) => chunk.lineId === lineId)).toBe(true);
     expect(h.ends).toEqual([{ lineId }]);

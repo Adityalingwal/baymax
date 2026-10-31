@@ -26,11 +26,11 @@ export type AuraParams = {
   log: (message: string) => void;
 };
 
-// Aura-2 sends raw 24 kHz 16-bit mono PCM in many small binary messages.
-export const auraSampleRate = 24_000;
+// Aura-2 sends raw 16 kHz 16-bit mono PCM in many small binary messages.
+export const auraSampleRate = 16_000;
 
 const auraUrl =
-  "wss://api.deepgram.com/v1/speak?model=aura-2-thalia-en&encoding=linear16&sample_rate=24000";
+  "wss://api.deepgram.com/v1/speak?model=aura-2-thalia-en&encoding=linear16&sample_rate=16000";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
