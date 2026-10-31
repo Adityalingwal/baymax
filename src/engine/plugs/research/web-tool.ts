@@ -97,7 +97,18 @@ function hostedPage(
   return outcome.ok ? outcome : null;
 }
 
+// What the log needs from one read through Exa, beyond what the kept page shows.
+type ExaNote = {
+  host: string;
+  freshTried: boolean;
+  exaTag: string | null;
+};
+
+const tagOf = (outcome: ContentsOutcome): string | null =>
+  outcome.ok ? null : (outcome.tag ?? null);
+
 type Readers = {
+  noteExa: (note: ExaNote) => void;
   contents: ContentsFn;
   lookup: LookupAll;
   connect: Connect;
@@ -111,13 +122,17 @@ async function readHosted(
   signal: AbortSignal,
 ): Promise<PageOutcome | null> {
   const href = checked.url.href;
+  const host = checked.hostname;
   const hosted = await readers.contents(href, signal, false);
   if (signal.aborted) return aborted;
   const page = hostedPage(checked, hosted, readers.limits);
   if (page !== null || (!hosted.ok && hosted.cause !== "noUsableText")) {
+    readers.noteExa({ host, freshTried: false, exaTag: tagOf(hosted) });
     return page;
   }
   const fresh = await readers.contents(href, signal, true);
+  const exaTag = tagOf(fresh) ?? tagOf(hosted);
+  readers.noteExa({ host, freshTried: true, exaTag });
   if (signal.aborted) return aborted;
   return hostedPage(checked, fresh, readers.limits);
 }
@@ -139,10 +154,12 @@ type WebToolOptions = {
   lookup?: LookupAll;
   connect?: Connect;
   limits?: Partial<ReadLimits>;
+  noteExa?: (note: ExaNote) => void;
 };
 
 function readersFrom(options: WebToolOptions): Readers {
   return {
+    noteExa: options.noteExa ?? (() => undefined),
     contents: options.contents,
     lookup: options.lookup ?? lookupHost,
     connect: options.connect ?? connectSocket,

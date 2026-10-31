@@ -102,7 +102,10 @@ async function lastAnswer(worker: Worker): Promise<WorkTurn> {
 
 function startRounds(run: ResearchRun): Rounds {
   const { taskId } = run.task;
-  const web = createWebTool(run.access);
+  const web = createWebTool({
+    ...run.access,
+    noteExa: (note) => run.deps.log({ event: "exaRead", taskId, ...note }),
+  });
   let kept: Findings | null = null;
   run.found.current = () => foundFindings(kept, web.pages());
   // A valid answer ends the run at once, so a run that ends short shows only the pages it read.

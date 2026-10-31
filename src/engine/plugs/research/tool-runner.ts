@@ -101,12 +101,14 @@ function counterLine(runner: ToolRunner, counts: Counts): string {
   return `Pages read: ${pages}. Searches left: ${searches}. Steps left: ${Math.max(0, steps)}.`;
 }
 
+type LogFields = Record<string, string | number | boolean | null>;
+
 function logTool(
   runner: ToolRunner,
   tool: ResearchCall["tool"],
   outcome: string,
   started: number,
-  extra: Record<string, string | null> = {},
+  extra: LogFields = {},
 ): void {
   runner.deps.log({
     event: "toolCall",
@@ -119,14 +121,17 @@ function logTool(
 }
 
 // Hostnames only: where the worker asked to read, and where a kept page really came from.
-function readLogFields(
-  asked: string,
-  outcome: ReadOutcome,
-): Record<string, string | null> {
+function readLogFields(asked: string, outcome: ReadOutcome): LogFields {
   const host = hostOf(asked);
   if (outcome.ok) {
-    const { id, url } = outcome.page;
-    return { host, sourceId: id, keptHost: hostOf(url) };
+    const { id, url, text, cut } = outcome.page;
+    return {
+      host,
+      sourceId: id,
+      keptHost: hostOf(url),
+      chars: text.length,
+      cut,
+    };
   }
   return outcome.cause === "refused" ? { host, rule: outcome.rule } : { host };
 }
@@ -165,7 +170,10 @@ async function search(
   if (signal.aborted) return { kind: "aborted" };
   const started = runner.deps.now();
   const outcome = await runner.web.search(call.query, signal);
-  logTool(runner, "search", outcome.ok ? "ok" : outcome.cause, started);
+  logTool(runner, "search", outcome.ok ? "ok" : outcome.cause, started, {
+    query: call.query,
+    results: outcome.ok ? outcome.hits.length : null,
+  });
   if (!outcome.ok) return searchFailed(runner, counts, outcome.cause);
   counts.failedSearches = 0;
   counts.hitsSeen += outcome.hits.length;

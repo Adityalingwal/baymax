@@ -99,13 +99,20 @@ async function lastAnswerRound(
   rounds: Rounds,
   cause: FailureCause,
 ): Promise<RoundEnd> {
+  const ended = (how: string, end: RoundEnd): RoundEnd => {
+    const { taskId } = rounds;
+    rounds.deps.log({ event: "lastAnswer", taskId, cause, how });
+    return end;
+  };
+  const short = () => shortEvent(rounds, cause);
   const work = await rounds.lastAnswer();
-  if (work.kind === "aborted") return work;
-  if (work.kind !== "turn" || work.turn.kind !== "answer") {
-    return shortEvent(rounds, cause);
-  }
+  if (work.kind === "aborted") return ended("cancelled", work);
+  if (work.kind === "short") return ended("failedCall", short());
+  if (work.turn.kind !== "answer") return ended(work.turn.kind, short());
   const end = checkedTurn(rounds, work.turn.text, false);
-  return end.kind === "fault" ? shortEvent(rounds, cause) : end;
+  if (end.kind === "fault") return ended(end.fault, short());
+  const isResult = end.kind === "event" && end.event.type === "result";
+  return ended(isResult ? "result" : "nothingFound", end);
 }
 
 const savedByLastAnswer: readonly FailureCause[] = ["limitHit", "searchDown"];

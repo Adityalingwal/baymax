@@ -10,7 +10,7 @@ import type {
   EnginePort,
   EngineStartOptions,
 } from "../shared/engine";
-import { guardLog, writeDevLog } from "./core/dev-log";
+import { createTaskTally, guardLog, writeDevLog } from "./core/dev-log";
 import type { DevLog } from "./core/dev-log";
 import type { DispatchDeps } from "./core/dispatch";
 import { cancelHold, closeHolds, createHolds, startHold } from "./core/holds";
@@ -49,10 +49,12 @@ function startRun(engine: Engine, command: RunTaskCommand): void {
   const { taskId } = command;
   const { deps, holds } = engine;
   const found: FoundSoFar = { current: () => null };
+  const budget = createTaskBudget();
+  const tally = createTaskTally(deps.log);
   const run = (signal: AbortSignal) =>
     runResearch({
-      deps,
-      task: { taskId, budget: createTaskBudget(), signal },
+      deps: { ...deps, log: tally.log },
+      task: { taskId, budget, signal },
       command,
       access: engine.access,
       today: engine.today(),
@@ -69,7 +71,14 @@ function startRun(engine: Engine, command: RunTaskCommand): void {
         how = endOf(signal.aborted ? null : event);
         return event;
       } finally {
-        deps.log({ event: "taskEnd", taskId, how });
+        deps.log({
+          event: "taskEnd",
+          taskId,
+          how,
+          ...tally.totals(),
+          dollars: budget.dollars,
+          modelCalls: budget.modelCalls,
+        });
       }
     },
     found: () => found.current(),
