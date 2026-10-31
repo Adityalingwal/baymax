@@ -17,9 +17,7 @@ export function TasksList(props: TasksListProps) {
   useLayoutEffect(() => {
     if (list.current !== null) list.current.scrollTop = keptScroll.current;
   }, [keptScroll]);
-  if (cards.length === 0) {
-    return <p className="type-empty">No tasks right now</p>;
-  }
+  if (cards.length === 0) return null;
   return (
     <section
       ref={list}

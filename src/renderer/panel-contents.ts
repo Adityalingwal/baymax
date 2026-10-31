@@ -20,7 +20,7 @@ export type PanelViewEvent =
   | { kind: "open-result" };
 
 // Kept while the panel is closed, so it opens on the tab last open.
-export const initialView: PanelView = { tab: "tasks", reportOf: null };
+export const initialView: PanelView = { tab: "chat", reportOf: null };
 
 export function viewReducer(view: PanelView, event: PanelViewEvent): PanelView {
   switch (event.kind) {

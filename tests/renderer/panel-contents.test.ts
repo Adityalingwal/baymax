@@ -23,7 +23,7 @@ function run(events: PanelViewEvent[]) {
 
 describe("which tab opens", () => {
   it.each<{ name: string; events: PanelViewEvent[]; tab: PanelTab }>([
-    { name: "the first time: Tasks", events: [], tab: "tasks" },
+    { name: "the first time: Chat", events: [], tab: "chat" },
     { name: "after Chat: the last open", events: [toChat], tab: "chat" },
     {
       name: "after going back to Tasks: the last open",
@@ -88,7 +88,7 @@ describe("the Chat tab", () => {
 
 describe("what the panel shows", () => {
   it.each<{ name: string; events: PanelViewEvent[]; kind: string }>([
-    { name: "the Tasks list at first", events: [], kind: "tasks" },
+    { name: "Chat at first", events: [], kind: "chat" },
     {
       name: "the report page from a card",
       events: [openReport],
