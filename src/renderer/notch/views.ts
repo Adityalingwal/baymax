@@ -3,8 +3,7 @@ import type { VoicePhase } from "../../shared/ipc";
 import { isRunning } from "../cards/list";
 import { panelLimits } from "./outline";
 
-// What the notch shows with the panel closed. Sizes and rules: notch-design-locked.md,
-// "Running task: spinning ring", "Voice pill", "Task finish" and "Answer island grow".
+// What the notch shows with the panel closed.
 export type ClosedView = "notch" | "ring" | "pill" | "island" | "report";
 
 type ViewInput = {

@@ -1,4 +1,4 @@
-// When the panel opens and closes. Rules and timings: notch-design-locked.md, "Panel close and motion", with design-lock-timing.md's updates.
+// When the panel opens and closes.
 export const panelDelays = {
   dwellMs: 200,
   leaveMs: 300,

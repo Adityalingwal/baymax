@@ -1,7 +1,6 @@
 import type { SetMuted, SpeakingLine, VoicePhase } from "../../shared/ipc";
 
-// The closed-panel voice pill and the answer island it grows into. Rules and timings: notch-design-locked.md,
-// "Voice pill", the pill close and mute sections, and "Task finish", with design-lock-timing.md's updates.
+// The closed-panel voice pill and the answer island it grows into.
 export const pillDelays = { thresholdMs: 50, holdMs: 800 } as const;
 
 export type PillWord = "Listening" | "Thinking" | "Speaking";

@@ -5,8 +5,7 @@ import type { PillClose } from "./pill";
 import { fade, panelTiming, restingFrame, whileMoving } from "./plans";
 import type { ClosedView } from "./views";
 
-// Timings from the locked design: "Voice pill", "Closed-panel voice pill: Soft close", "Running task: spinning ring",
-// "Answer island grow", "Report expand/fold", and design-lock-timing.md. The island's close is not locked; it uses the "Two results together" close (140 ms content, 420 ms shape).
+// Motion timings with the panel closed. The island closes with 140 ms content and 420 ms shape.
 export const closedTiming = {
   shapeMs: 420,
   pillGrowMs: 200,
