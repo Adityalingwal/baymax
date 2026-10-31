@@ -41,7 +41,6 @@ export type WindowShape = {
 };
 
 export type StartupInfo = {
-  accessibility: boolean | null;
   holdKeyLabel: string;
 };
 

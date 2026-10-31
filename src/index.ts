@@ -76,11 +76,6 @@ if (isMac) {
   app.setName("Baymax");
 }
 
-function getAccessibilityStatus(): boolean | null {
-  if (!isMac) return null;
-  return systemPreferences.isTrustedAccessibilityClient(false);
-}
-
 function sendToWindow<C extends keyof MainToRenderer>(
   channel: C,
   payload: MainToRenderer[C],
@@ -197,7 +192,6 @@ function registerSetupHandlers(): void {
 
 function registerHoldHandlers(): void {
   ipcMain.handle(ipcChannels.getStartupInfo, (): StartupInfo => ({
-    accessibility: getAccessibilityStatus(),
     holdKeyLabel,
   }));
 

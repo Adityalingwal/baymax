@@ -44,6 +44,7 @@ const draftLeave: Step = (state) => ({
 });
 const escape: PanelEvent = { kind: "escape" };
 const closeControl: PanelEvent = { kind: "close-control" };
+const setupDone: PanelEvent = { kind: "setup-done" };
 const closed: PanelEvent = { kind: "closed" };
 const draft = (text: string): PanelEvent => ({ kind: "draft", text });
 const mouse = (down: boolean): PanelEvent => ({ kind: "mouse", down });
@@ -63,6 +64,7 @@ type Expected = {
   dwelling?: boolean;
   leaving?: boolean;
   draftLeaving?: boolean; // the 3 s timer is running
+  waitForExit?: boolean;
 };
 
 const rows: { name: string; steps: Step[]; expected: Expected }[] = [
@@ -77,7 +79,7 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { open: false, closing: true, draftLeaving: false },
   },
   {
-    name: "the close control closes over the Accessibility hint",
+    name: "the close control closes over the setup checklist",
     steps: [access, closeControl],
     expected: { open: false, closing: true },
   },
@@ -254,14 +256,19 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { open: true, closing: false },
   },
   {
-    name: "the Accessibility hint opens the panel by itself",
+    name: "the setup checklist opens the panel by itself",
     steps: [access],
     expected: { open: true },
   },
   {
-    name: "the Accessibility hint holds through Esc and the pointer out",
+    name: "the setup checklist holds through Esc and the pointer out",
     steps: [access, onPanel, escape, away],
     expected: { open: true, leaving: false },
+  },
+  {
+    name: "the first hold after setup closes while needsAccess holds, with no wait for the pointer to leave",
+    steps: [access, setupDone],
+    expected: { open: false, closing: true, waitForExit: false },
   },
   {
     name: "a click on the answer island opens the panel at once",
@@ -274,6 +281,26 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { open: true, closing: false },
   },
 ];
+
+// Only the fields a row names.
+function shown(state: PanelState, expected: Expected): Expected {
+  return {
+    open: state.open,
+    ...(expected.closing === undefined ? {} : { closing: state.closing }),
+    ...(expected.dwelling === undefined
+      ? {}
+      : { dwelling: state.dwell !== null }),
+    ...(expected.leaving === undefined
+      ? {}
+      : { leaving: state.leave !== null }),
+    ...(expected.draftLeaving === undefined
+      ? {}
+      : { draftLeaving: state.draftLeave !== null }),
+    ...(expected.waitForExit === undefined
+      ? {}
+      : { waitForExit: state.waitForExit }),
+  };
+}
 
 describe("a pointer hovering the shape", () => {
   // The shape grows or shrinks under a pointer that does not move.
@@ -318,19 +345,7 @@ describe("a pointer hovering the shape", () => {
 describe("panelReducer", () => {
   it.each(rows)("$name", ({ steps, expected }) => {
     const state = run(steps);
-    expect({
-      open: state.open,
-      ...(expected.closing === undefined ? {} : { closing: state.closing }),
-      ...(expected.dwelling === undefined
-        ? {}
-        : { dwelling: state.dwell !== null }),
-      ...(expected.leaving === undefined
-        ? {}
-        : { leaving: state.leave !== null }),
-      ...(expected.draftLeaving === undefined
-        ? {}
-        : { draftLeaving: state.draftLeave !== null }),
-    }).toEqual(expected);
+    expect(shown(state, expected)).toEqual(expected);
   });
 
   it.each([

@@ -15,7 +15,7 @@ export type PanelState = {
   hovering: boolean; // in that shape after the pointer really moved: a shape that grew under a still pointer does not count
   draft: string; // the field's text
   mouseDown: boolean; // a button pressed inside the panel is still down
-  needsAccess: boolean; // the Accessibility hint or the missing-key line holds the panel open
+  needsAccess: boolean; // the setup checklist or the missing-key line holds the panel open
   waitForExit: boolean; // closed by Esc: no reopen until the pointer leaves the notch
   dwell: number | null;
   leave: number | null;
@@ -37,6 +37,7 @@ export type PanelEvent =
   | { kind: "draft-leave-elapsed"; token: number }
   | { kind: "escape" }
   | { kind: "close-control" }
+  | { kind: "setup-done" }
   | { kind: "draft"; text: string }
   | { kind: "mouse"; down: boolean }
   | { kind: "access"; needed: boolean }
@@ -63,6 +64,13 @@ export const initialPanel: PanelState = {
 function close(state: PanelState): PanelState {
   if (!state.open || state.needsAccess) return state;
   return { ...state, open: false, closing: true };
+}
+
+// Closes in every state, even over the setup checklist, so nothing can trap the user; the text stays.
+function closeAtOnce(state: PanelState, waitForExit: boolean): PanelState {
+  return state.open
+    ? { ...state, open: false, closing: true, waitForExit }
+    : state;
 }
 
 function pointerMoved(
@@ -107,11 +115,11 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
       const closed = close(state);
       return closed === state ? state : { ...closed, waitForExit: true };
     }
-    // Closes in every state, even over the Accessibility hint, so nothing can trap the user; the text stays.
     case "close-control":
-      return state.open
-        ? { ...state, open: false, closing: true, waitForExit: true }
-        : state;
+      return closeAtOnce(state, true);
+    // The first hold after setup: its pill takes over, and the panel opens again as usual.
+    case "setup-done":
+      return closeAtOnce(state, state.waitForExit);
     // Each change drops the running timer, so a key typed outside restarts the 3 s.
     case "draft":
       return event.text === state.draft

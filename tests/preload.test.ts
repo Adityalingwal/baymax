@@ -270,7 +270,7 @@ describe("preload subscriptions", () => {
 
 describe("preload getStartupInfo", () => {
   it("invokes on its channel and resolves with main's answer", async () => {
-    const info = { accessibility: true, holdKeyLabel: "Right Option" };
+    const info = { holdKeyLabel: "Right Option" };
     fake.ipcRenderer.invoke.mockResolvedValue(info);
     await expect(api.getStartupInfo()).resolves.toEqual(info);
     expect(fake.ipcRenderer.invoke.mock.calls).toEqual([
