@@ -580,11 +580,9 @@ body {
   }
 }
 
-/* The first-run setup checklist: a 460 pt panel, less its 14 pt side padding. */
 .setup {
   flex: none;
-  align-self: center;
-  width: 432px;
+  width: 100%;
 }
 
 .setup-card {
