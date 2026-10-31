@@ -23,7 +23,8 @@ function subscribeWithReplay<C extends keyof MainToRenderer>(
   replayChannel:
     | typeof ipcChannels.getDisplayState
     | typeof ipcChannels.getWindowShape
-    | typeof ipcChannels.getVoicePhase,
+    | typeof ipcChannels.getVoicePhase
+    | typeof ipcChannels.getSetupState,
   callback: (payload: MainToRenderer[C]) => void,
 ): () => void {
   const cleanup = subscribe(channel, callback);
@@ -43,6 +44,18 @@ const api: BaymaxApi = {
   getStartupInfo: () => ipcRenderer.invoke(ipcChannels.getStartupInfo),
   openAccessibilitySettings: () => {
     ipcRenderer.send(ipcChannels.openAccessibilitySettings);
+  },
+  onSetupState: (callback) =>
+    subscribeWithReplay(
+      ipcChannels.setupState,
+      ipcChannels.getSetupState,
+      callback,
+    ),
+  askMicrophone: () => {
+    ipcRenderer.send(ipcChannels.askMicrophone);
+  },
+  openMicrophoneSettings: () => {
+    ipcRenderer.send(ipcChannels.openMicrophoneSettings);
   },
   onDisplayState: (callback) =>
     subscribeWithReplay(

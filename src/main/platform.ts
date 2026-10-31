@@ -17,6 +17,14 @@ export const holdKeys: readonly number[] = isMac
 // A panel window shows over full-screen apps without taking focus; other platforms get a normal window.
 export const panelWindowType: string | undefined = isMac ? "panel" : undefined;
 
+// The Privacy panes of System Settings; these links exist only on a Mac.
+export const privacySettingsUrls = {
+  accessibility:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+  microphone:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+} as const;
+
 type ProcessCall = (file: string, args: readonly string[]) => Promise<string>;
 
 type ScreenReading = {

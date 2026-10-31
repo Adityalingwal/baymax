@@ -122,6 +122,16 @@ const actionRows: ActionRow[] = [
     act: () => api.openAccessibilitySettings(),
     expected: [ipcChannels.openAccessibilitySettings],
   },
+  {
+    name: "askMicrophone",
+    act: () => api.askMicrophone(),
+    expected: [ipcChannels.askMicrophone],
+  },
+  {
+    name: "openMicrophoneSettings",
+    act: () => api.openMicrophoneSettings(),
+    expected: [ipcChannels.openMicrophoneSettings],
+  },
 ];
 
 describe("preload actions", () => {
@@ -212,6 +222,13 @@ const subscriptionRows: SubscriptionRow[] = [
     channel: ipcChannels.voicePhase,
     payload: { phase: "thinking" },
     replay: [[ipcChannels.getVoicePhase]],
+  },
+  {
+    name: "onSetupState",
+    subscribe: (callback) => api.onSetupState(callback),
+    channel: ipcChannels.setupState,
+    payload: { needed: true, accessibility: "missing", microphone: "ask" },
+    replay: [[ipcChannels.getSetupState]],
   },
 ];
 

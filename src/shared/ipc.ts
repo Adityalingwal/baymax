@@ -3,6 +3,10 @@ import type { DisplayState, TaskId, UtteranceId } from "./cards";
 export const ipcChannels = {
   getStartupInfo: "get-startup-info",
   openAccessibilitySettings: "open-accessibility-settings",
+  setupState: "setup-state",
+  getSetupState: "get-setup-state",
+  askMicrophone: "ask-microphone",
+  openMicrophoneSettings: "open-microphone-settings",
   displayState: "display-state",
   getDisplayState: "get-display-state",
   submitQuestion: "submit-question",
@@ -39,6 +43,13 @@ export type WindowShape = {
 export type StartupInfo = {
   accessibility: boolean | null;
   holdKeyLabel: string;
+};
+
+// The first-run checklist's facts on macOS; needed is false off macOS and when both were granted at launch.
+export type SetupState = {
+  needed: boolean;
+  accessibility: "missing" | "granted" | "failed"; // failed: granted, but the hold-key would not start
+  microphone: "ask" | "denied" | "granted";
 };
 
 export type LineId = string;
@@ -133,11 +144,15 @@ export type MainToRenderer = {
   [ipcChannels.pointerOutside]: null;
   [ipcChannels.spaceChanged]: null;
   [ipcChannels.voicePhase]: VoicePhase;
+  [ipcChannels.setupState]: SetupState;
 };
 
 export type BaymaxApi = {
   getStartupInfo: () => Promise<StartupInfo>;
   openAccessibilitySettings: () => void;
+  onSetupState: (callback: (state: SetupState) => void) => () => void;
+  askMicrophone: () => void;
+  openMicrophoneSettings: () => void;
   onDisplayState: (callback: (state: DisplayState) => void) => () => void;
   submitQuestion: (payload: SubmitQuestion) => void;
   cancelTask: (payload: TaskAction) => void;
