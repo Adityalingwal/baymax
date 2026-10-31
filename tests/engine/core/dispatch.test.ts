@@ -66,6 +66,7 @@ type SendRow = {
   name: string;
   role: Role;
   activeMs: number;
+  lastAnswer?: boolean;
   expected: {
     model: string;
     max_tokens: number;
@@ -84,6 +85,18 @@ const sendRows: SendRow[] = [
       max_tokens: 16_000,
       timeoutMs: 120_000,
       deadlineMs: 240_000,
+    },
+  },
+  {
+    name: "the last answer, whatever active time is left",
+    role: "worker",
+    activeMs: 300_000,
+    lastAnswer: true,
+    expected: {
+      model: "claude-sonnet-5-5",
+      max_tokens: 16_000,
+      timeoutMs: 120_000,
+      deadlineMs: 120_000,
     },
   },
   {
@@ -138,7 +151,11 @@ describe("dispatch settings", () => {
     const { deps, sent } = setup(okOutcome);
     const signal = new AbortController().signal;
     const budget = { ...createTaskBudget(), activeMs: row.activeMs };
-    await dispatch(deps, jobFor(row.role, budget, signal), request);
+    const job = {
+      ...jobFor(row.role, budget, signal),
+      lastAnswer: row.lastAnswer,
+    };
+    await dispatch(deps, job, request);
     const [{ request: sentRequest, options }] = sent;
     expect(sentRequest).toEqual({
       ...request,

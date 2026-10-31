@@ -7,7 +7,7 @@ import type {
 } from "../../providers/anthropic";
 import type { TaskId } from "../../shared/cards";
 import type { DevLog } from "./dev-log";
-import { costOf, roles, taskLimits } from "./limits";
+import { costOf, lastAnswerMs, roles, taskLimits } from "./limits";
 import type { Role, TaskBudget } from "./limits";
 
 export type DispatchOutcome =
@@ -22,6 +22,7 @@ export type DispatchJob = {
   role: Role;
   budget: TaskBudget;
   signal: AbortSignal;
+  lastAnswer?: boolean; // the one call past the limits, sent to save the work a run ending short already did
 };
 
 type DispatchRequest = Omit<ModelRequest, "model" | "max_tokens">;
@@ -43,7 +44,10 @@ function limitReached(
 }
 
 // The SDK rejects a non-integer timeout, and the clock gives fractions.
-function callTimes(role: Role, budget: TaskBudget) {
+function callTimes({ role, budget, lastAnswer }: DispatchJob) {
+  if (lastAnswer === true) {
+    return { timeoutMs: lastAnswerMs, deadlineMs: lastAnswerMs };
+  }
   const remaining = taskLimits.activeMs - budget.activeMs;
   const attempt = roles[role].timeoutMs;
   return {
@@ -89,7 +93,7 @@ export async function dispatch(
   // A cancelled job sends nothing and spends nothing.
   if (job.signal.aborted)
     return { ok: false, reason: "failed", failure: "aborted" };
-  const limit = limitReached(job, request);
+  const limit = job.lastAnswer === true ? null : limitReached(job, request);
   if (limit !== null) {
     deps.log({ event: "limitHit", taskId: job.taskId, role: job.role, limit });
     return { ok: false, reason: "limitHit", limit };
@@ -98,7 +102,7 @@ export async function dispatch(
   const started = deps.now();
   const outcome = await deps.call(
     { ...request, model, max_tokens: maxTokens },
-    { ...callTimes(job.role, job.budget), signal: job.signal },
+    { ...callTimes(job), signal: job.signal },
   );
   const ms = deps.now() - started;
   const dollars = outcome.ok ? costOf(model, outcome.message.usage) : null;

@@ -16,7 +16,7 @@ export type WorkTurn =
         | { kind: "cutOff" }
         | { kind: "malformed" };
     }
-  | { kind: "event"; event: EngineEvent }
+  | { kind: "short"; cause: FailureCause }
   | { kind: "aborted" };
 
 // One task's conversation: the rewrite appends to the same history, so the cached prefix holds.
@@ -27,6 +27,7 @@ export type Rounds = {
   seen: () => ToolsSeen;
   history: Anthropic.MessageParam[];
   work: () => Promise<WorkTurn>;
+  lastAnswer: () => Promise<WorkTurn>; // one call, for a run that ended short with pages read
   keep: (findings: Findings) => void; // told only a card that passed the check, so a cancel racing the result still carries it
   endShort: (cause: FailureCause) => EngineEvent;
 };
@@ -88,12 +89,39 @@ function checkedTurn(
   return { kind: "event", event };
 }
 
+const shortEvent = (rounds: Rounds, cause: FailureCause): RoundEnd => ({
+  kind: "event",
+  event: rounds.endShort(cause),
+});
+
+// The last chance to save the work: only a valid or nothing-found answer counts, and it never gets a rewrite.
+async function lastAnswerRound(
+  rounds: Rounds,
+  cause: FailureCause,
+): Promise<RoundEnd> {
+  const work = await rounds.lastAnswer();
+  if (work.kind === "aborted") return work;
+  if (work.kind !== "turn" || work.turn.kind !== "answer") {
+    return shortEvent(rounds, cause);
+  }
+  const end = checkedTurn(rounds, work.turn.text, false);
+  return end.kind === "fault" ? shortEvent(rounds, cause) : end;
+}
+
+const savedByLastAnswer: readonly FailureCause[] = ["limitHit", "searchDown"];
+
 async function answerRound(
   rounds: Rounds,
   firstRound: boolean,
 ): Promise<RoundEnd> {
   const work = await rounds.work();
-  if (work.kind !== "turn") return work;
+  if (work.kind === "aborted") return work;
+  if (work.kind === "short") {
+    const { cause } = work;
+    return savedByLastAnswer.includes(cause) && rounds.pages().length > 0
+      ? lastAnswerRound(rounds, cause)
+      : shortEvent(rounds, cause);
+  }
   if (work.turn.kind === "cutOff") return { kind: "fault", fault: "cutOff" };
   if (work.turn.kind === "malformed") return malformedTurn(rounds);
   return checkedTurn(rounds, work.turn.text, firstRound);

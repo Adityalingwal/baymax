@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ModelRequest } from "../../src/providers/anthropic";
+import type { ModelOutcome, ModelRequest } from "../../src/providers/anthropic";
 import type { Findings } from "../../src/shared/cards";
 import type { EngineEvent } from "../../src/shared/engine";
+import { fakeMessage } from "./harness";
 import type { FakeStep } from "./harness";
 import {
   closeRuns,
@@ -37,6 +38,20 @@ const listTwo: Findings = {
 const limitHit = (findings: Findings | null): EngineEvent =>
   failed("limitHit", findings);
 
+const lastAnswer = () => workerAnswer({ sourceIds: ["s1"] });
+
+const overBudget = (step: ModelOutcome): ModelOutcome => {
+  if (step.ok) step.message.usage.input_tokens = 430_000;
+  return step;
+};
+
+const answerWithLine: EngineEvent = {
+  type: "result",
+  taskId: "task-1",
+  spokenLine: goodAnswer.line,
+  findings: { cardText: goodAnswer.report, sources: [one] },
+};
+
 // The fake clock reads what the run has done so far, so a chosen call or batch takes the whole active time.
 type Seen = { calls: number; connects: number };
 type LimitRow = {
@@ -44,8 +59,8 @@ type LimitRow = {
   steps: () => FakeStep[];
   searches: FakeSearchStep[];
   clock: (seen: Seen) => number;
-  calls: number;
-  found: Findings;
+  calls: number; // the last answer included
+  open: number; // tool calls the run ended inside
 };
 
 const still = () => 0;
@@ -53,11 +68,11 @@ const still = () => 0;
 const limitRows: LimitRow[] = [
   {
     name: "model calls",
-    steps: () => Array.from({ length: 31 }, readOne),
+    steps: () => [...Array.from({ length: 30 }, readOne), lastAnswer()],
     searches: [],
     clock: still,
-    calls: 30,
-    found: listOne,
+    calls: 31,
+    open: 0,
   },
   {
     name: "searches",
@@ -66,43 +81,72 @@ const limitRows: LimitRow[] = [
       ...Array.from({ length: 21 }, (_, index) =>
         toolUseReply([{ search: `query ${index + 1}` }]),
       ),
+      lastAnswer(),
     ],
     searches: Array.from({ length: 20 }, () => hits(pageUrl("one"))),
     clock: still,
-    calls: 22,
-    found: listOne,
+    calls: 23,
+    open: 1,
   },
   {
     name: "active time used by a model call",
-    steps: () => [readOne(), readTwo()],
+    steps: () => [readOne(), readTwo(), lastAnswer()],
     searches: [],
     clock: (seen) => (seen.calls >= 2 ? 250_000 : 0),
-    calls: 2,
-    found: listOne,
+    calls: 3,
+    open: 1,
   },
   {
     name: "active time used by a tool batch",
-    steps: () => [readOne(), readTwo(), readOne()],
+    steps: () => [readOne(), readTwo(), lastAnswer()],
     searches: [],
     clock: (seen) => (seen.connects >= 2 ? 250_000 : 0),
-    calls: 2,
-    found: listTwo,
+    calls: 3,
+    open: 0,
   },
   {
     name: "dollars",
-    steps: () => {
-      const costly = readTwo();
-      if (costly.ok) costly.message.usage.input_tokens = 430_000;
-      return [readOne(), costly, readOne()];
-    },
+    steps: () => [readOne(), overBudget(readTwo()), lastAnswer()],
     searches: [],
     clock: still,
-    calls: 2,
-    found: listTwo,
+    calls: 3,
+    open: 0,
+  },
+  {
+    name: "dollars in the rewrite round",
+    steps: () => [
+      readOne(),
+      overBudget(workerAnswer({ line: " ", sourceIds: ["s1"] })),
+      lastAnswer(),
+    ],
+    searches: [],
+    clock: still,
+    calls: 3,
+    open: 0,
   },
 ];
 
-async function startClocked(row: Omit<LimitRow, "name" | "calls" | "found">) {
+const notRun = "This call did not run.";
+
+const closing =
+  "Stop working now. There are no more searches or reads. Write your final JSON answer from the pages you have read. In the line, just say what you found: no set phrase, no apology, and nothing about stopping or limits.";
+
+// Every tool call in the request's history, and every result that answers one.
+function toolIds(request: ModelRequest) {
+  const blocks = request.messages.flatMap(({ content }) =>
+    typeof content === "string" ? [] : content,
+  );
+  return {
+    calls: blocks.flatMap((block) =>
+      block.type === "tool_use" ? [block.id] : [],
+    ),
+    results: blocks.flatMap((block) =>
+      block.type === "tool_result" ? [block.tool_use_id] : [],
+    ),
+  };
+}
+
+async function startClocked(row: Omit<LimitRow, "name" | "calls" | "open">) {
   const seen = { calls: () => 0, targets: [] as unknown[] };
   const now = () =>
     row.clock({ calls: seen.calls(), connects: seen.targets.length });
@@ -125,17 +169,94 @@ describe("the task limits", () => {
 
 describe("runTask limits", () => {
   it.each(limitRows)(
-    "ends limitHit on $name with what was found",
+    "gets one last answer on $name, which is a normal result",
     async (row) => {
       const run = await startClocked(row);
       run.port.send(runTask());
       const events = await run.ended();
       expect(events.filter((event) => event.type !== "progress")).toEqual([
-        limitHit(row.found),
+        answerWithLine,
       ]);
       expect(run.requests).toHaveLength(row.calls);
+      const last = run.requests[row.calls - 1];
+      expect(last.tool_choice).toEqual({ type: "none" });
+      expect(last.tools).toEqual(run.requests[0].tools);
+      const { calls, results } = toolIds(last);
+      expect([...results].sort()).toEqual([...calls].sort());
+      const closingTurn = last.messages[last.messages.length - 1];
+      const notRunIds = JSON.stringify(closingTurn).split(notRun);
+      expect(notRunIds).toHaveLength(row.open + 1);
+      expect(closingTurn.content).toContainEqual({
+        type: "text",
+        text: closing,
+      });
     },
   );
+});
+
+const pageList = failed("limitHit", listTwo);
+const nothingFoundAnswer = {
+  report: "",
+  line: "",
+  sourceIds: [],
+  nothingFound: "No answer came on Hermes.",
+};
+
+const badLastRows: { name: string; step: () => ModelOutcome }[] = [
+  {
+    name: "cut off",
+    step: () => ({
+      ok: true,
+      message: fakeMessage("{", { stopReason: "max_tokens" }),
+    }),
+  },
+  {
+    name: "malformed",
+    step: () => ({ ok: true, message: fakeMessage("{ not json") }),
+  },
+  { name: "invalid", step: () => workerAnswer({ sourceIds: ["s9"] }) },
+  {
+    name: "a failed call",
+    step: () => ({ ok: false, failure: "keyRejected", detail: "x" }),
+  },
+  {
+    name: "a call with tools it may not use",
+    step: () => toolUseReply([{ read: pageUrl("three") }]),
+  },
+];
+
+describe("runTask a last answer that does not help", () => {
+  it.each(badLastRows)(
+    "$name: one call, no rewrite, the original cause and the pages",
+    async ({ step }) => {
+      const run = await startRun([readOne(), overBudget(readTwo()), step()]);
+      run.port.send(runTask());
+      const events = await run.ended();
+      expect(events.filter((event) => event.type !== "progress")).toEqual([
+        pageList,
+      ]);
+      expect(run.requests).toHaveLength(3);
+    },
+  );
+
+  it("takes nothing found as a normal nothing found with the pages", async () => {
+    const run = await startRun([
+      readOne(),
+      overBudget(readTwo()),
+      workerAnswer(nothingFoundAnswer),
+    ]);
+    run.port.send(runTask());
+    const events = await run.ended();
+    expect(events.filter((event) => event.type !== "progress")).toEqual([
+      {
+        type: "failed",
+        taskId: "task-1",
+        cause: "nothingFound",
+        reason: nothingFoundAnswer.nothingFound,
+        findings: listTwo,
+      },
+    ]);
+  });
 });
 
 describe("runTask full prompt", () => {
@@ -143,7 +264,10 @@ describe("runTask full prompt", () => {
     const reads = Array.from({ length: 150 }, () => ({
       read: pageUrl("long"),
     }));
-    const run = await startRun([toolUseReply(reads), readOne()]);
+    const run = await startRun([
+      toolUseReply(reads),
+      { ok: false, failure: "error", detail: "x" },
+    ]);
     const text = "Long words about the Hermes agent for the prompt. ".repeat(
       200,
     );
@@ -158,7 +282,7 @@ describe("runTask full prompt", () => {
         sources: [{ id: "s1", url: pageUrl("long"), title: "Long page" }],
       }),
     );
-    expect(run.requests).toHaveLength(1);
+    expect(run.requests).toHaveLength(2);
     expect(run.entries).toContainEqual({
       event: "limitHit",
       taskId: "task-1",

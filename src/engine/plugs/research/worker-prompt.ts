@@ -92,6 +92,10 @@ const answerFaults = {
 
 export type AnswerFault = keyof typeof answerFaults;
 
+// The closing message of the last answer, after a run has ended short with pages read.
+export const lastAnswerText =
+  "Stop working now. There are no more searches or reads. Write your final JSON answer from the pages you have read. In the line, just say what you found: no set phrase, no apology, and nothing about stopping or limits.";
+
 const rewriteLine =
   "Your answer did not pass the check above. Write the whole answer again as the JSON object, fixing that part. In sourceIds, name only pages you read.";
 

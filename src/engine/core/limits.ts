@@ -15,6 +15,9 @@ export const roles = {
   },
 } as const;
 
+// The last answer's attempt and whole call, whatever active time remains.
+export const lastAnswerMs = 120_000;
+
 export type Role = keyof typeof roles;
 
 type RoleModel = (typeof roles)[Role]["model"];

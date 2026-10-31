@@ -131,6 +131,21 @@ describe("runTask search limits", () => {
     );
     expect(last).toEqual([searchDown]);
     expect(run.queries).toHaveLength(2);
+    expect(run.requests).toHaveLength(2);
+  });
+
+  it("gets the last answer on two failed searches in a row after a read", async () => {
+    const { run, last } = await runOf(
+      [
+        toolUseReply([{ read: pageUrl("one") }]),
+        toolUseReply([{ search: "hermes" }]),
+        toolUseReply([{ search: "hermes agent" }]),
+        workerAnswer({ sourceIds: ["s1"] }),
+      ],
+      [searchFailed("timeout"), searchFailed("unreachable")],
+    );
+    expect(last).toEqual([expect.objectContaining({ type: "result" })]);
+    expect(run.requests.at(-1)?.tool_choice).toEqual({ type: "none" });
   });
 });
 

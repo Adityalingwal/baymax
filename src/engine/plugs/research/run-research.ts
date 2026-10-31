@@ -12,8 +12,12 @@ import type { DispatchDeps } from "../../core/dispatch";
 import type { FoundSoFar } from "../../core/holds";
 import type { TaskBudget } from "../../core/limits";
 import type { LoopEnding, ToolTurn } from "../../core/tool-batch";
-import { runWorkerLoop } from "../../core/worker-loop";
-import type { WorkerPrompt } from "../../core/worker-loop";
+import { runLastAnswer, runWorkerLoop } from "../../core/worker-loop";
+import type {
+  LoopOutcome,
+  WorkerLoop,
+  WorkerPrompt,
+} from "../../core/worker-loop";
 import { answerSchema, foundFindings } from "./answer";
 import type { Connect, LookupAll } from "./connection";
 import { runRounds } from "./rounds";
@@ -21,7 +25,11 @@ import type { Rounds, WorkTurn } from "./rounds";
 import { createToolRunner, researchTools } from "./tool-runner";
 import { hostOf } from "./url-rules";
 import { createWebTool } from "./web-tool";
-import { firstWorkerMessage, workerInstructions } from "./worker-prompt";
+import {
+  firstWorkerMessage,
+  lastAnswerText,
+  workerInstructions,
+} from "./worker-prompt";
 
 export type RunTaskCommand = Extract<EngineCommand, { type: "runTask" }>;
 
@@ -54,7 +62,6 @@ const workerPrompt: WorkerPrompt = {
 
 type Worker = {
   run: ResearchRun;
-  endShort: Rounds["endShort"];
   history: Anthropic.MessageParam[];
   runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
 };
@@ -62,26 +69,35 @@ type Worker = {
 const causeOf = (ending: LoopEnding): FailureCause =>
   ending.kind === "limitHit" ? "limitHit" : ending.cause;
 
-// The worker loop in the shared conversation, until its next answer turn or an ending.
-async function work(worker: Worker): Promise<WorkTurn> {
-  const { run } = worker;
-  const outcome = await runWorkerLoop(
-    {
-      deps: run.deps,
-      job: { ...run.task, role: "worker" },
-      prompt: workerPrompt,
-      runTools: worker.runTools,
-    },
-    worker.history,
-  );
+const loopOf = ({ run, runTools }: Worker): WorkerLoop => ({
+  deps: run.deps,
+  job: { ...run.task, role: "worker" },
+  prompt: workerPrompt,
+  runTools,
+});
+
+function workTurn({ run }: Worker, outcome: LoopOutcome): WorkTurn {
   if (outcome.kind === "aborted" || run.task.signal.aborted) {
     return { kind: "aborted" };
   }
-  if (outcome.kind === "end") {
-    const event = worker.endShort(causeOf(outcome.ending));
-    return { kind: "event", event };
-  }
-  return { kind: "turn", turn: outcome };
+  return outcome.kind === "end"
+    ? { kind: "short", cause: causeOf(outcome.ending) }
+    : { kind: "turn", turn: outcome };
+}
+
+// The worker loop in the shared conversation, until its next answer turn or an ending.
+async function work(worker: Worker): Promise<WorkTurn> {
+  const outcome = await runWorkerLoop(loopOf(worker), worker.history);
+  return workTurn(worker, outcome);
+}
+
+async function lastAnswer(worker: Worker): Promise<WorkTurn> {
+  const outcome = await runLastAnswer(
+    loopOf(worker),
+    worker.history,
+    lastAnswerText,
+  );
+  return workTurn(worker, outcome);
 }
 
 function startRounds(run: ResearchRun): Rounds {
@@ -112,7 +128,7 @@ function startRounds(run: ResearchRun): Rounds {
     job,
     progress,
   });
-  const worker = { run, endShort, history, runTools };
+  const worker = { run, history, runTools };
   return {
     deps: run.deps,
     taskId,
@@ -120,6 +136,7 @@ function startRounds(run: ResearchRun): Rounds {
     seen,
     history,
     work: () => work(worker),
+    lastAnswer: () => lastAnswer(worker),
     keep: (findings) => (kept = findings),
     endShort,
   };
