@@ -232,6 +232,18 @@ const rows: { name: string; steps: Step[]; expected: Expected }[] = [
     expected: { open: false, closing: true, leaving: false },
   },
   {
+    name: "a click's shorter view holds a still pointer it leaves outside, and the close starts once it moves",
+    steps: [
+      ...opened,
+      onPanel,
+      { kind: "view-clicked" },
+      pointer(false, false, false, false),
+      leave,
+      away,
+    ],
+    expected: { open: true, leaving: true },
+  },
+  {
     name: "after such a close the pointer coming back reopens, and the close can run again",
     steps: [
       ...opened,

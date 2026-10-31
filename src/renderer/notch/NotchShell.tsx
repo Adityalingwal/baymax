@@ -41,7 +41,11 @@ type NotchShellProps = {
   openSource: CardActions["openSource"];
   fullReportOpen: boolean; // the panel takes its full-report size
   onOpenResult: () => void; // a click on the answer island's card
-  children: (closePanel: () => void, open: boolean) => ReactNode;
+  children: (
+    closePanel: () => void,
+    open: boolean,
+    viewClicked: () => void,
+  ) => ReactNode;
 };
 
 const rowGap = 12;
@@ -250,7 +254,11 @@ function PanelLayer(props: PanelLayerProps) {
       aria-hidden={!panel.open}
       inert={!panel.open}
     >
-      {children(() => panel.dispatch({ kind: "close-control" }), panel.open)}
+      {children(
+        () => panel.dispatch({ kind: "close-control" }),
+        panel.open,
+        () => panel.dispatch({ kind: "view-clicked" }),
+      )}
     </main>
   );
 }

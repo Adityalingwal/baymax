@@ -193,7 +193,7 @@ export function App() {
       fullReportOpen={content.kind === "report"}
       onOpenResult={() => changeView({ kind: "open-result" })}
     >
-      {(closePanel, open) => (
+      {(closePanel, open, viewClicked) => (
         <OpenPanel
           setup={setup}
           open={open}
@@ -202,7 +202,10 @@ export function App() {
           holdKeyLabel={holdKeyLabel}
           tab={view.tab}
           content={content}
-          changeView={changeView}
+          changeView={(event) => {
+            viewClicked();
+            changeView(event);
+          }}
           onDraft={setDraft}
         />
       )}

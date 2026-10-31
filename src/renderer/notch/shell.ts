@@ -15,6 +15,7 @@ export type PanelState = {
   hovering: boolean; // in that shape after the pointer really moved: a shape that grew under a still pointer does not count
   draft: string; // the field's text
   mouseDown: boolean; // a button pressed inside the panel is still down
+  viewClicked: boolean; // a click changed the view and the pointer has not moved since: a shorter view does not close the panel under it
   needsAccess: boolean; // the setup checklist or the missing-key line holds the panel open
   waitForExit: boolean; // closed by Esc: no reopen until the pointer leaves the notch
   dwell: number | null;
@@ -42,7 +43,8 @@ export type PanelEvent =
   | { kind: "mouse"; down: boolean }
   | { kind: "access"; needed: boolean }
   | { kind: "closed" }
-  | { kind: "open-result" };
+  | { kind: "open-result" }
+  | { kind: "view-clicked" };
 
 export const initialPanel: PanelState = {
   open: false,
@@ -53,6 +55,7 @@ export const initialPanel: PanelState = {
   hovering: false,
   draft: "",
   mouseDown: false,
+  viewClicked: false,
   needsAccess: false,
   waitForExit: false,
   dwell: null,
@@ -79,7 +82,15 @@ function pointerMoved(
 ): PanelState {
   const { inNotch, inOpenOutline, inVisible } = event;
   const hovering = inVisible && (event.moved || state.hovering);
-  const moved = { ...state, inNotch, inOpenOutline, inVisible, hovering };
+  const viewClicked = state.viewClicked && !event.moved;
+  const moved = {
+    ...state,
+    inNotch,
+    inOpenOutline,
+    inVisible,
+    hovering,
+    viewClicked,
+  };
   // Only a pointer coming onto the shrinking shape turns the motion around, not one the shrink left behind.
   const reentered = inVisible && !state.inVisible;
   if (!state.open && state.closing && reentered && !state.waitForExit) {
@@ -88,18 +99,23 @@ function pointerMoved(
   return moved;
 }
 
+function pointerGone(state: PanelState): PanelState {
+  return {
+    ...state,
+    inNotch: false,
+    inOpenOutline: false,
+    inVisible: false,
+    hovering: false,
+    viewClicked: false,
+  };
+}
+
 function applyEvent(state: PanelState, event: PanelEvent): PanelState {
   switch (event.kind) {
     case "pointer":
       return pointerMoved(state, event);
     case "pointer-gone":
-      return {
-        ...state,
-        inNotch: false,
-        inOpenOutline: false,
-        inVisible: false,
-        hovering: false,
-      };
+      return pointerGone(state);
     case "dwell-elapsed":
       if (event.token !== state.dwell) return state;
       return { ...state, open: true, closing: false };
@@ -136,6 +152,8 @@ function applyEvent(state: PanelState, event: PanelEvent): PanelState {
     // A click on the answer island's card: the one open that is not a hover.
     case "open-result":
       return { ...state, open: true, closing: false, waitForExit: false };
+    case "view-clicked":
+      return { ...state, viewClicked: state.open };
   }
 }
 
@@ -145,10 +163,11 @@ function settle(state: PanelState): PanelState {
   if (next.waitForExit && !next.inNotch && !next.inVisible) {
     next = { ...next, waitForExit: false };
   }
+  if (!next.open && next.viewClicked) next = { ...next, viewClicked: false };
   const inside = next.inNotch || next.inOpenOutline;
   const held = next.needsAccess || next.mouseDown;
   const wantDwell = !next.open && next.inNotch && !next.waitForExit;
-  const away = next.open && !inside && !held;
+  const away = next.open && !inside && !held && !next.viewClicked;
   let tokens = next.tokens;
   const timer = (want: boolean, running: number | null) => {
     if (!want) return null;
