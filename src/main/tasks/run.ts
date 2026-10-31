@@ -92,6 +92,7 @@ function endFailed(
   change.model.pendingFailures.push({
     taskId: record.card.taskId,
     cause: line,
+    kind: event.cause,
   });
 }
 

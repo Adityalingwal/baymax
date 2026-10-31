@@ -21,9 +21,16 @@ afterEach(closeRuns);
 
 // A call whose reported usage leaves no room for the next one, so the run ends limitHit there.
 function costly(step: ModelOutcome): ModelOutcome {
-  if (step.ok) step.message.usage.input_tokens = 248_000;
+  if (step.ok) step.message.usage.input_tokens = 430_000;
   return step;
 }
+
+// The last answer failed too, so the task ends with what it found.
+const lastFails = (): ModelOutcome => ({
+  ok: false,
+  failure: "error",
+  detail: "x",
+});
 
 const one = { id: "s1", url: pageUrl("one"), title: "Page one" };
 const two = { id: "s2", url: pageUrl("two"), title: "Page two" };
@@ -50,6 +57,7 @@ const foundRows: FoundRow[] = [
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
       costly(toolUseReply([{ read: pageUrl("two") }])),
+      lastFails(),
     ],
     found: {
       cardText: "- Page one\n- Page two",
@@ -61,6 +69,7 @@ const foundRows: FoundRow[] = [
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
       costly(workerAnswer({ line: " ", sourceIds: ["s1"] })),
+      lastFails(),
     ],
     found: listOne,
   },
@@ -69,6 +78,7 @@ const foundRows: FoundRow[] = [
     steps: () => [
       toolUseReply([{ read: pageUrl("one") }]),
       costly(workerAnswer({ sourceIds: ["s9"] })),
+      lastFails(),
     ],
     found: listOne,
   },
@@ -161,6 +171,7 @@ describe("runTask page list", () => {
     const run = await startRun([
       toolUseReply(titles.map((_, index) => ({ read: pageUrl(`t${index}`) }))),
       costly(toolUseReply([{ read: pageUrl("one") }])),
+      lastFails(),
     ]);
     const words = "Plain words for a reader to keep. ".repeat(10);
     for (const [index, title] of titles.entries()) {

@@ -4,12 +4,19 @@ export const taskLimits = {
   modelCalls: 30,
   searches: 20,
   activeMs: 240_000,
-  dollars: 0.5,
+  dollars: 1.0,
 } as const;
 
 export const roles = {
-  worker: { model: "claude-sonnet-5-5", maxTokens: 2048, timeoutMs: 60_000 },
+  worker: {
+    model: "claude-sonnet-5-5",
+    maxTokens: 16_000,
+    timeoutMs: 120_000,
+  },
 } as const;
+
+// The last answer's attempt and whole call, whatever active time remains.
+export const lastAnswerMs = 120_000;
 
 export type Role = keyof typeof roles;
 

@@ -78,8 +78,8 @@ describe("searchWeb", () => {
     });
     expect(JSON.parse(String(init.body))).toEqual({
       query: "hermes agent",
-      numResults: 5,
-      type: "lite",
+      numResults: 10,
+      type: "auto",
       contents: { highlights: { maxCharacters: 500 } },
     });
     expect(String(init.body)).not.toContain(key);

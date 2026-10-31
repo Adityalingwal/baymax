@@ -12,7 +12,12 @@ import type { DispatchDeps } from "../../core/dispatch";
 import type { FoundSoFar } from "../../core/holds";
 import type { TaskBudget } from "../../core/limits";
 import type { LoopEnding, ToolTurn } from "../../core/tool-batch";
-import { runWorkerLoop } from "../../core/worker-loop";
+import { runLastAnswer, runWorkerLoop } from "../../core/worker-loop";
+import type {
+  LoopOutcome,
+  WorkerLoop,
+  WorkerPrompt,
+} from "../../core/worker-loop";
 import { answerSchema, foundFindings } from "./answer";
 import type { Connect, LookupAll } from "./connection";
 import { runRounds } from "./rounds";
@@ -22,9 +27,8 @@ import { hostOf } from "./url-rules";
 import { createWebTool } from "./web-tool";
 import {
   firstWorkerMessage,
-  thinkingFields,
+  lastAnswerText,
   workerInstructions,
-  workerThinking,
 } from "./worker-prompt";
 
 export type RunTaskCommand = Extract<EngineCommand, { type: "runTask" }>;
@@ -48,48 +52,63 @@ type ResearchRun = {
 };
 
 // Built once: the prompt start is byte-identical for every step and every task.
-const workerPrompt = {
+const workerPrompt: WorkerPrompt = {
   system: workerInstructions,
   tools: researchTools,
   schema: answerSchema,
-  ...thinkingFields(workerThinking),
+  thinking: { type: "adaptive" },
+  effort: "medium",
 };
 
 type Worker = {
   run: ResearchRun;
-  endShort: Rounds["endShort"];
   history: Anthropic.MessageParam[];
   runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
+  finished: Anthropic.ToolResultBlockParam[]; // from the tool batch a run ended in, for the last answer
 };
 
 const causeOf = (ending: LoopEnding): FailureCause =>
   ending.kind === "limitHit" ? "limitHit" : ending.cause;
 
-// The worker loop in the shared conversation, until its next answer turn or an ending.
-async function work(worker: Worker): Promise<WorkTurn> {
-  const { run } = worker;
-  const outcome = await runWorkerLoop(
-    {
-      deps: run.deps,
-      job: { ...run.task, role: "worker" },
-      prompt: workerPrompt,
-      runTools: worker.runTools,
-    },
-    worker.history,
-  );
+const loopOf = ({ run, runTools }: Worker): WorkerLoop => ({
+  deps: run.deps,
+  job: { ...run.task, role: "worker" },
+  prompt: workerPrompt,
+  runTools,
+});
+
+function workTurn({ run }: Worker, outcome: LoopOutcome): WorkTurn {
   if (outcome.kind === "aborted" || run.task.signal.aborted) {
     return { kind: "aborted" };
   }
-  if (outcome.kind === "end") {
-    const event = worker.endShort(causeOf(outcome.ending));
-    return { kind: "event", event };
-  }
-  return { kind: "turn", turn: outcome };
+  return outcome.kind === "end"
+    ? { kind: "short", cause: causeOf(outcome.ending) }
+    : { kind: "turn", turn: outcome };
+}
+
+// The worker loop in the shared conversation, until its next answer turn or an ending.
+async function work(worker: Worker): Promise<WorkTurn> {
+  const outcome = await runWorkerLoop(loopOf(worker), worker.history);
+  if (outcome.kind === "end") worker.finished = outcome.finished ?? [];
+  return workTurn(worker, outcome);
+}
+
+async function lastAnswer(worker: Worker): Promise<WorkTurn> {
+  const outcome = await runLastAnswer(
+    loopOf(worker),
+    worker.history,
+    lastAnswerText,
+    worker.finished,
+  );
+  return workTurn(worker, outcome);
 }
 
 function startRounds(run: ResearchRun): Rounds {
   const { taskId } = run.task;
-  const web = createWebTool(run.access);
+  const web = createWebTool({
+    ...run.access,
+    noteExa: (note) => run.deps.log({ event: "exaRead", taskId, ...note }),
+  });
   let kept: Findings | null = null;
   run.found.current = () => foundFindings(kept, web.pages());
   // A valid answer ends the run at once, so a run that ends short shows only the pages it read.
@@ -109,14 +128,21 @@ function startRounds(run: ResearchRun): Rounds {
     parent: run.command.parent,
   });
   const history: Anthropic.MessageParam[] = [{ role: "user", content: first }];
-  const runTools = createToolRunner({ web, deps: run.deps, job, progress });
-  const worker = { run, endShort, history, runTools };
+  const { runTools, seen } = createToolRunner({
+    web,
+    deps: run.deps,
+    job,
+    progress,
+  });
+  const worker: Worker = { run, history, runTools, finished: [] };
   return {
     deps: run.deps,
     taskId,
     pages: web.pages,
+    seen,
     history,
     work: () => work(worker),
+    lastAnswer: () => lastAnswer(worker),
     keep: (findings) => (kept = findings),
     endShort,
   };

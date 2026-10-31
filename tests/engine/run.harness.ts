@@ -198,11 +198,13 @@ export async function startRun(
   networks.push(network);
   const searcher = fakeSearch(searches);
   const contentsAsked: string[] = [];
+  const contentsFresh: boolean[] = [];
   const engine = startTestEngine(steps, {
     search: searcher.search,
-    contents: (url, signal) => {
+    contents: (url, signal, fresh) => {
       contentsAsked.push(url);
-      return contents(url, signal);
+      contentsFresh.push(fresh);
+      return contents(url, signal, fresh);
     },
     lookup: network.lookup,
     connect: network.connect,
@@ -225,6 +227,7 @@ export async function startRun(
     queries: searcher.queries,
     searchesMissing: searcher.missing,
     contentsAsked,
+    contentsFresh,
   };
 }
 

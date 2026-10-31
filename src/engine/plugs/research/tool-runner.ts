@@ -16,7 +16,14 @@ type ToolRunner = {
   progress: (step: ProgressStep) => void;
 };
 
-type Counts = { searches: number; failedSearches: number };
+type Counts = {
+  searches: number;
+  failedSearches: number;
+  hitsSeen: number;
+  readsTried: number; // a refused or failed read counts as tried
+};
+
+export type ToolsSeen = Pick<Counts, "hitsSeen" | "readsTried">;
 
 type ResearchCall =
   | { id: string; tool: "search"; query: string }
@@ -94,12 +101,14 @@ function counterLine(runner: ToolRunner, counts: Counts): string {
   return `Pages read: ${pages}. Searches left: ${searches}. Steps left: ${Math.max(0, steps)}.`;
 }
 
+type LogFields = Record<string, string | number | boolean | null>;
+
 function logTool(
   runner: ToolRunner,
   tool: ResearchCall["tool"],
   outcome: string,
   started: number,
-  extra: Record<string, string | null> = {},
+  extra: LogFields = {},
 ): void {
   runner.deps.log({
     event: "toolCall",
@@ -112,14 +121,17 @@ function logTool(
 }
 
 // Hostnames only: where the worker asked to read, and where a kept page really came from.
-function readLogFields(
-  asked: string,
-  outcome: ReadOutcome,
-): Record<string, string | null> {
+function readLogFields(asked: string, outcome: ReadOutcome): LogFields {
   const host = hostOf(asked);
   if (outcome.ok) {
-    const { id, url } = outcome.page;
-    return { host, sourceId: id, keptHost: hostOf(url) };
+    const { id, url, text, cut } = outcome.page;
+    return {
+      host,
+      sourceId: id,
+      keptHost: hostOf(url),
+      chars: text.length,
+      cut,
+    };
   }
   return outcome.cause === "refused" ? { host, rule: outcome.rule } : { host };
 }
@@ -132,7 +144,7 @@ function report(
   if (!signal.aborted) runner.progress(step);
 }
 
-// Key and quota failures end the task at once; other failures are told to the worker, and the second one ends it.
+// Key and quota failures end the task at once; other failures are told to the worker, and the second in a row ends it.
 function searchFailed(
   runner: ToolRunner,
   counts: Counts,
@@ -158,8 +170,13 @@ async function search(
   if (signal.aborted) return { kind: "aborted" };
   const started = runner.deps.now();
   const outcome = await runner.web.search(call.query, signal);
-  logTool(runner, "search", outcome.ok ? "ok" : outcome.cause, started);
+  logTool(runner, "search", outcome.ok ? "ok" : outcome.cause, started, {
+    query: call.query,
+    results: outcome.ok ? outcome.hits.length : null,
+  });
   if (!outcome.ok) return searchFailed(runner, counts, outcome.cause);
+  counts.failedSearches = 0;
+  counts.hitsSeen += outcome.hits.length;
   const content = `${searchHitsForModel(outcome.hits)}\n\n${counterLine(runner, counts)}`;
   return { kind: "result", content, isError: false };
 }
@@ -196,7 +213,10 @@ function startTool(
   signal: AbortSignal,
 ): ToolStep | Promise<ToolStep> {
   if (signal.aborted) return { kind: "aborted" };
-  if (call.tool === "read") return read(runner, counts, call, signal);
+  if (call.tool === "read") {
+    counts.readsTried += 1;
+    return read(runner, counts, call, signal);
+  }
   if (counts.searches >= taskLimits.searches) {
     logTool(runner, "search", "limitHit", runner.deps.now());
     return { kind: "end", ending: { kind: "limitHit" } };
@@ -206,11 +226,19 @@ function startTool(
 }
 
 // One runner per task: its counts last for the whole run.
-export function createToolRunner(
-  runner: ToolRunner,
-): (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn> {
-  const counts: Counts = { searches: 0, failedSearches: 0 };
-  return async (blocks) => {
+export function createToolRunner(runner: ToolRunner): {
+  runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
+  seen: () => ToolsSeen;
+} {
+  const counts: Counts = {
+    searches: 0,
+    failedSearches: 0,
+    hitsSeen: 0,
+    readsTried: 0,
+  };
+  const runTools = async (
+    blocks: Anthropic.ToolUseBlock[],
+  ): Promise<ToolTurn> => {
     const calls = parseCalls(blocks);
     if (calls === null) {
       runner.deps.log({
@@ -227,4 +255,5 @@ export function createToolRunner(
       startTool(runner, counts, call, signal),
     );
   };
+  return { runTools, seen: () => ({ ...counts }) };
 }

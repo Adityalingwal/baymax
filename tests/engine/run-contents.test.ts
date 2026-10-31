@@ -32,7 +32,7 @@ describe("runTask page reads in tests", () => {
     run.port.send(runTask());
     const events = await run.ended();
     expect(events[events.length - 1]).toMatchObject({ type: "result" });
-    expect([...run.contentsAsked].sort()).toEqual(
+    expect([...new Set(run.contentsAsked)].sort()).toEqual(
       [pageUrl("missing"), pageUrl("one")].sort(),
     );
     expect(realFetch).not.toHaveBeenCalled();
@@ -60,6 +60,36 @@ describe("runTask with Exa Contents", () => {
     const results = JSON.stringify(run.requests[1].messages[2].content);
     expect(results).toContain("Exa read this page with its own crawler.");
     expect(run.network.targets).toHaveLength(0);
+  });
+});
+
+describe("runTask a long page", () => {
+  it("is marked cut for the worker and never in the findings", async () => {
+    const contents: ContentsFn = async (url) => ({
+      ok: true,
+      title: "From Exa",
+      text: url === pageUrl("one") ? exaText.repeat(100) : exaText,
+    });
+    const run = await startRun(
+      [
+        toolUseReply([{ read: pageUrl("one") }]),
+        toolUseReply([{ read: pageUrl("two") }]),
+        workerAnswer({ ...oneCited, sourceIds: ["s1", "s2"] }),
+      ],
+      [],
+      undefined,
+      contents,
+    );
+    run.port.send(runTask());
+    const events = await run.ended();
+    const worker = JSON.stringify(run.requests[2].messages);
+    expect(worker).toContain(
+      `<page source_id=\\"s1\\" url=\\"${pageUrl("one")}\\" cut=\\"true\\">`,
+    );
+    expect(worker).toContain(
+      `<page source_id=\\"s2\\" url=\\"${pageUrl("two")}\\">`,
+    );
+    expect(JSON.stringify(events)).not.toContain("cut");
   });
 });
 
@@ -109,18 +139,21 @@ describe("runTask refused reads", () => {
   );
 });
 
-const fallbackRows: [string, ContentsOutcome][] = [
-  ["no usable text", { ok: false, cause: "noUsableText" }],
-  ["text too short", { ok: true, title: "Short", text: "tiny" }],
-  ["unreachable", { ok: false, cause: "unreachable" }],
-  ["timeout", { ok: false, cause: "timeout" }],
-  ["a rejected key", { ok: false, cause: "keyRejected" }],
-  ["quota", { ok: false, cause: "quota" }],
-  ["a bad response", { ok: false, cause: "badResponse" }],
+const withFresh = [false, true];
+const noFresh = [false];
+
+const fallbackRows: [string, ContentsOutcome, boolean[]][] = [
+  ["no usable text", { ok: false, cause: "noUsableText" }, withFresh],
+  ["text too short", { ok: true, title: "Short", text: "tiny" }, withFresh],
+  ["unreachable", { ok: false, cause: "unreachable" }, noFresh],
+  ["timeout", { ok: false, cause: "timeout" }, noFresh],
+  ["a rejected key", { ok: false, cause: "keyRejected" }, noFresh],
+  ["quota", { ok: false, cause: "quota" }, noFresh],
+  ["a bad response", { ok: false, cause: "badResponse" }, noFresh],
 ];
 
 describe("runTask falls back to its own reader", () => {
-  it.each(fallbackRows)("after Exa gives %s", async (_name, outcome) => {
+  it.each(fallbackRows)("after Exa gives %s", async (_name, outcome, asked) => {
     const run = await startRun(
       [toolUseReply([{ read: pageUrl("one") }]), workerAnswer(oneCited)],
       [],
@@ -135,7 +168,7 @@ describe("runTask falls back to its own reader", () => {
         sources: [{ id: "s1", url: pageUrl("one"), title: "Page one" }],
       },
     });
-    expect(run.contentsAsked).toHaveLength(1);
+    expect(run.contentsFresh).toEqual(asked);
     expect(run.network.targets).toHaveLength(1);
   });
 });

@@ -99,7 +99,11 @@ describe("runTask injected page text", () => {
       hits: [{ url: pageUrl("one"), title: "Example", snippet: injected }],
     };
     const run = await startRun(
-      [toolUseReply([{ search: "hermes" }]), workerAnswer(nothing)],
+      [
+        toolUseReply([{ search: "hermes" }]),
+        workerAnswer(nothing),
+        workerAnswer(nothing),
+      ],
       [snippet],
     );
     run.port.send(runTask());

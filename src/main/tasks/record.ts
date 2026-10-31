@@ -1,5 +1,10 @@
 import type { ChatEntry, TaskCard, TaskId } from "../../shared/cards";
-import type { EngineCommand, ParentResult, TaskAsk } from "../../shared/engine";
+import type {
+  EngineCommand,
+  FailureCause,
+  ParentResult,
+  TaskAsk,
+} from "../../shared/engine";
 import type { SpokenKind } from "../../shared/ipc";
 import type { Exchange } from "./history";
 import { fixedLines } from "./lines";
@@ -27,8 +32,12 @@ export type Attempt = {
   parts: FrontParts;
 };
 
-// A failed task whose talker call has not started; cause is what the call is told.
-export type PendingFailure = { taskId: TaskId; cause: string };
+// A failed task whose talker call has not started; cause is what the call is told, kind decides what it offers.
+export type PendingFailure = {
+  taskId: TaskId;
+  cause: string;
+  kind: FailureCause;
+};
 
 // The one failure turn in flight.
 export type FailureCall = PendingFailure & { attemptId: string };

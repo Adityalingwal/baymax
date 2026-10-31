@@ -1,5 +1,6 @@
 import type {
   ContentsFn,
+  ContentsOutcome,
   SearchFn,
   SearchOutcome,
 } from "../../../providers/exa";
@@ -77,11 +78,13 @@ function createPageStore() {
 }
 
 // Exa's text kept under the checked URL that was asked for; Exa's own URL only matched its result.
+// Text that reached the length asked for was cut by Exa, which collapsing its whitespace can hide.
 function hostedPage(
   checked: CheckedUrl,
-  hosted: { title: string; text: string },
+  hosted: ContentsOutcome,
   limits: ReadLimits,
 ): PageOutcome | null {
+  if (!hosted.ok) return null;
   const outcome = pageTextFrom({
     body: hosted.text,
     kind: "plain",
@@ -89,16 +92,50 @@ function hostedPage(
     hostname: checked.hostname,
     limits,
     title: hosted.title,
+    cutBefore: hosted.text.length >= limits.maxChars,
   });
   return outcome.ok ? outcome : null;
 }
 
+// What the log needs from one read through Exa, beyond what the kept page shows.
+type ExaNote = {
+  host: string;
+  freshTried: boolean;
+  exaTag: string | null;
+};
+
+const tagOf = (outcome: ContentsOutcome): string | null =>
+  outcome.ok ? null : (outcome.tag ?? null);
+
 type Readers = {
+  noteExa: (note: ExaNote) => void;
   contents: ContentsFn;
   lookup: LookupAll;
   connect: Connect;
   limits: ReadLimits;
 };
+
+// A fresh copy can only help a page Exa had no text for: it is slower, and the same key or outage fails the same way.
+async function readHosted(
+  readers: Readers,
+  checked: CheckedUrl,
+  signal: AbortSignal,
+): Promise<PageOutcome | null> {
+  const href = checked.url.href;
+  const host = checked.hostname;
+  const hosted = await readers.contents(href, signal, false);
+  if (signal.aborted) return aborted;
+  const page = hostedPage(checked, hosted, readers.limits);
+  if (page !== null || (!hosted.ok && hosted.cause !== "noUsableText")) {
+    readers.noteExa({ host, freshTried: false, exaTag: tagOf(hosted) });
+    return page;
+  }
+  const fresh = await readers.contents(href, signal, true);
+  const exaTag = tagOf(fresh) ?? tagOf(hosted);
+  readers.noteExa({ host, freshTried: true, exaTag });
+  if (signal.aborted) return aborted;
+  return hostedPage(checked, fresh, readers.limits);
+}
 
 // Exa Contents first; Baymax's own reader when Exa has no usable text or fails, but never after an abort.
 async function readEither(
@@ -107,10 +144,8 @@ async function readEither(
   url: string,
   signal: AbortSignal,
 ): Promise<PageOutcome> {
-  const hosted = await readers.contents(checked.url.href, signal);
-  if (signal.aborted) return aborted;
-  const page = hosted.ok ? hostedPage(checked, hosted, readers.limits) : null;
-  return page ?? readPage(url, readers, signal);
+  const hosted = await readHosted(readers, checked, signal);
+  return hosted ?? readPage(url, readers, signal);
 }
 
 type WebToolOptions = {
@@ -119,10 +154,12 @@ type WebToolOptions = {
   lookup?: LookupAll;
   connect?: Connect;
   limits?: Partial<ReadLimits>;
+  noteExa?: (note: ExaNote) => void;
 };
 
 function readersFrom(options: WebToolOptions): Readers {
   return {
+    noteExa: options.noteExa ?? (() => undefined),
     contents: options.contents,
     lookup: options.lookup ?? lookupHost,
     connect: options.connect ?? connectSocket,

@@ -29,9 +29,9 @@ export type FluxParams = {
   log: (message: string) => void;
 };
 
-// eot_threshold=1.0 keeps Flux from ending a turn on a pause; eot_timeout_ms is the 60 s backstop.
+// eot_threshold=1.0 keeps Flux from ending a turn on a pause; eot_timeout_ms is the 60 s backstop; keyterm stops the name being heard as "B Max".
 const fluxUrl =
-  "wss://api.deepgram.com/v2/listen?model=flux-general-en&encoding=linear16&sample_rate=16000&eot_threshold=1.0&eot_timeout_ms=60000";
+  "wss://api.deepgram.com/v2/listen?model=flux-general-en&encoding=linear16&sample_rate=16000&eot_threshold=1.0&eot_timeout_ms=60000&keyterm=Baymax";
 const keepAliveMs = 5000;
 // Flux closes the socket on a KeepAlive message, so silence keeps it open: 100 ms of 16 kHz 16-bit PCM.
 const keepAliveBytes = 3200;

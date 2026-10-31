@@ -43,7 +43,7 @@ describe("a retry that fails again", () => {
     await w.playAll();
     failTask(w);
     expect(lastTurn(w)).toContain(
-      "on screen: the pages it read\nalready tried again\n</task_failed>",
+      "on screen: some of what it found\nnext step: Say you couldn't get it done and make one short ask that fits the request. Don't offer to try again.\nalready tried again\n</task_failed>",
     );
     await streamFront(w, replyRoute(), "It failed again, sorry.");
     expect(w.card("t1")).toMatchObject({ state: "failed", canRetry: true });
