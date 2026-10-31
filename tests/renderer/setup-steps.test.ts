@@ -22,8 +22,8 @@ type Row = {
   shown: Shown;
 };
 
-const onSwitch = "Switch on Electron";
-const inSettings = "Switch on Electron in Microphone settings";
+const onSwitch = "Switch on your terminal app";
+const inSettings = "Switch on your terminal app in Microphone settings";
 const done: Shown = { icon: "done", hint: null, button: null, dimmed: false };
 
 const rows: Row[] = [

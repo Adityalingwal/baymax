@@ -43,6 +43,9 @@ export function nextChecklistStage(
   return open ? "ended" : "closed";
 }
 
+// Under npm start, macOS lists the app that ran the command (Terminal, iTerm), not Electron.
+const terminalHint = "Switch on your terminal app";
+
 function accessibilityRow(state: SetupState, clicks: SetupClicks): SetupRow {
   const row = { name: "Accessibility", dimmed: false };
   switch (state.accessibility) {
@@ -57,11 +60,11 @@ function accessibilityRow(state: SetupState, clicks: SetupClicks): SetupRow {
       };
     case "missing":
       return clicks.accessibility
-        ? { ...row, icon: "waiting", hint: "Switch on Electron", button: null }
+        ? { ...row, icon: "waiting", hint: terminalHint, button: null }
         : {
             ...row,
             icon: "pending",
-            hint: "Switch on Electron",
+            hint: terminalHint,
             button: { label: "Open settings", action: "open-accessibility" },
           };
   }
@@ -76,7 +79,7 @@ function microphoneRow(state: SetupState, clicks: SetupClicks): SetupRow {
   const hint =
     microphone === "ask"
       ? "Choose Allow"
-      : "Switch on Electron in Microphone settings";
+      : `${terminalHint} in Microphone settings`;
   if (state.accessibility !== "granted") {
     const shown = microphone === "ask" ? null : hint;
     return { ...row, icon: "pending", hint: shown, button: null, dimmed: true };
