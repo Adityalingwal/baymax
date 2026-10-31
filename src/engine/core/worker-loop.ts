@@ -20,7 +20,11 @@ export type LoopOutcome =
   | { kind: "answer"; text: string }
   | { kind: "cutOff" }
   | { kind: "malformed" }
-  | { kind: "end"; ending: LoopEnding }
+  | {
+      kind: "end";
+      ending: LoopEnding;
+      finished?: Anthropic.ToolResultBlockParam[];
+    }
   | { kind: "aborted" };
 
 export type WorkerLoop = {
@@ -119,10 +123,11 @@ async function toolTurn(
   return turn;
 }
 
-// A run ended inside a tool batch leaves its tool calls open, and the API refuses a request with one unanswered.
+// A run ended inside a tool batch leaves its tool calls open, and the API refuses a request with one unanswered. A call that finished hands over its real result.
 function closingMessage(
   history: Anthropic.MessageParam[],
   text: string,
+  finished: Anthropic.ToolResultBlockParam[],
 ): Anthropic.MessageParam {
   const last = history.at(-1);
   const blocks =
@@ -132,7 +137,7 @@ function closingMessage(
   const results = blocks.flatMap((block): Anthropic.ToolResultBlockParam[] =>
     block.type === "tool_use"
       ? [
-          {
+          finished.find(({ tool_use_id: id }) => id === block.id) ?? {
             type: "tool_result",
             tool_use_id: block.id,
             content: "This call did not run.",
@@ -149,9 +154,10 @@ export async function runLastAnswer(
   loop: WorkerLoop,
   history: Anthropic.MessageParam[],
   closing: string,
+  finished: Anthropic.ToolResultBlockParam[],
 ): Promise<LoopOutcome> {
   const { deps, job } = loop;
-  history.push(closingMessage(history, closing));
+  history.push(closingMessage(history, closing, finished));
   const outcome = await dispatch(
     deps,
     { ...job, lastAnswer: true },

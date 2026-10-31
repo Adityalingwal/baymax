@@ -64,6 +64,7 @@ type Worker = {
   run: ResearchRun;
   history: Anthropic.MessageParam[];
   runTools: (blocks: Anthropic.ToolUseBlock[]) => Promise<ToolTurn>;
+  finished: Anthropic.ToolResultBlockParam[]; // from the tool batch a run ended in, for the last answer
 };
 
 const causeOf = (ending: LoopEnding): FailureCause =>
@@ -88,6 +89,7 @@ function workTurn({ run }: Worker, outcome: LoopOutcome): WorkTurn {
 // The worker loop in the shared conversation, until its next answer turn or an ending.
 async function work(worker: Worker): Promise<WorkTurn> {
   const outcome = await runWorkerLoop(loopOf(worker), worker.history);
+  if (outcome.kind === "end") worker.finished = outcome.finished ?? [];
   return workTurn(worker, outcome);
 }
 
@@ -96,6 +98,7 @@ async function lastAnswer(worker: Worker): Promise<WorkTurn> {
     loopOf(worker),
     worker.history,
     lastAnswerText,
+    worker.finished,
   );
   return workTurn(worker, outcome);
 }
@@ -131,7 +134,7 @@ function startRounds(run: ResearchRun): Rounds {
     job,
     progress,
   });
-  const worker = { run, history, runTools };
+  const worker: Worker = { run, history, runTools, finished: [] };
   return {
     deps: run.deps,
     taskId,
