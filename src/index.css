@@ -304,7 +304,7 @@ body {
 
 .chat-you {
   align-self: flex-start;
-  max-width: 84%;
+  max-width: 64%;
   padding: 10px 15px 11px;
   border-radius: 18px 18px 18px 6px;
   line-height: 1.5;
@@ -318,7 +318,7 @@ body {
 
 .chat-baymax {
   align-self: flex-end;
-  width: 92%;
+  max-width: 64%;
   padding: 12px 16px 14px;
   border-radius: 18px 18px 6px 18px;
   line-height: 1.65;
