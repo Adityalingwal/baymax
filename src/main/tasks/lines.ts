@@ -10,7 +10,7 @@ const keyLine =
 export const fixedLines = {
   wordsNotCaught: "I didn't catch that, say it again.",
   micBlocked:
-    "I can't use the microphone. Allow Baymax in System Settings, Privacy and Security, Microphone, or type your question.",
+    "I can't use the microphone. Allow your terminal app in System Settings, Privacy and Security, Microphone, or type your question.",
   noMicrophone:
     "I can't find a microphone. Connect one, or type your question.",
   voiceUnavailable:
