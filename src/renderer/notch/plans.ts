@@ -31,7 +31,7 @@ export function restingFrame(
   };
 }
 
-// Timings from the locked design: notch-design-locked.md, "Panel close and motion", with design-lock-timing.md's close.
+// How long the panel takes to open and close.
 export const panelTiming = {
   openMs: 360,
   openEase: cubicBezier(0.22, 1, 0.36, 1),

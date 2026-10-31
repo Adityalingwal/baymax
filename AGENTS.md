@@ -7,7 +7,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 | Area | What it covers | Paths today | Works here |
 | --- | --- | --- | --- |
 | Main and engine | Electron main process (hold-key, windows, voice providers, speech) and the agent engine, which runs inside main behind a port in V1 | `src/index.ts`, `src/main/`, `src/engine/` | Aditya |
-| UI | Renderer: window contents, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Somesh, Kashish |
+| UI | Renderer: window contents, visuals, mic | `src/renderer/`, `src/renderer.ts`, `src/index.html`, `src/index.css` | Aditya |
 | Shared contract | Contracts between the renderer, main and the engine: renderer <-> main (`src/shared/ipc.ts`), main <-> engine (`src/shared/engine.ts`), the types both carry, and provider code shared by main and the engine only | `src/preload.ts`, `src/shared/`, `src/providers/` | both sides |
 | Build and config | Tooling and packaging | `package.json`, `forge.config.ts`, `webpack.*.ts`, `tsconfig.json`, `.eslintrc.json` | anyone, in its own small PR |
 
@@ -45,7 +45,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 - Comment only a non-obvious why (an OS quirk, a security reason), in one line. Keep `TODO` trails and brief or ticket references out of the code.
 - Repository content is English: code, comments, docs, commits, PRs.
-- `README.md` holds setup, scripts and current behavior. Update `docs/architecture.md` in the same PR that changes the stack or the folder map. Write each fact once and link to it.
+- `README.md` holds setup and current behavior. Update `docs/architecture.md` in the same PR that changes the stack or the folder map. Write each fact once and link to it.
 
 ## Tests
 
@@ -58,7 +58,7 @@ Baymax is a voice-first desktop assistant (Electron + TypeScript + React + Tailw
 
 ## Git and PRs
 
-- Branch from `main` as `name/task` (e.g. `somesh/listening-panel`). All changes reach `main` through a PR.
+- Branch from `main` as `name/task` (e.g. `aditya/listening-panel`). All changes reach `main` through a PR.
 - One PR is one working step: its types, code and tests together, around 400 changed lines or fewer as a soft limit (generated files excluded). `main` runs after every PR. A ticket may take several PRs; each links its ticket.
 - PR title: `type(scope): summary`, scope `ui`, `main`, `engine` or `shared` when one applies (e.g. `feat(ui): listening panel`). PR body: what changed, evidence (screenshot for UI, output for main or engine), shared files touched, what was not verified.
 - One commit has one purpose and a one-line message. Merge with a merge commit, not squash, and only when CI is green.

@@ -24,7 +24,7 @@ export type Silhouette = {
   hidden?: boolean; // resting on it draws nothing
 };
 
-// Sizes from the locked design: design-lock-shape.md, "Ears".
+// The panel shape.s ear and corner sizes.
 export const panelShape = { ear: 24, rx: 26, ry: 28, strip: 32 } as const;
 export const pillShape: Silhouette = {
   width: 360,
@@ -33,7 +33,7 @@ export const pillShape: Silhouette = {
   rx: 16.6,
   ry: 18,
 };
-// The ring's 11 pt sits 6 pt from the notch and 8 pt from the shape's edge: design-lock-timing.md, "Running ring position".
+// The ring's 11 pt sits 6 pt from the notch and 8 pt from the shape's edge.
 export const ringLayout = { size: 11, edge: 8, notchGap: 6 } as const;
 // The curves' control points, as in the selected ears preview.
 const earPull = 0.3;
