@@ -28,6 +28,7 @@ import type { IslandState } from "./answer-island";
 import { useIsland, useIslandFollows } from "./useIsland";
 import { islandLayout } from "./views";
 import { VoicePill } from "./VoicePill";
+import { VoiceRail } from "./VoiceRail";
 
 type NotchShellProps = {
   needsAccess: boolean;
@@ -295,6 +296,7 @@ function Shell(props: NotchShellProps & { frame: WindowGeometry }) {
       <PanelLayer panel={panel} frame={frame} fullReport={fullReport}>
         {props.children}
       </PanelLayer>
+      {open && <VoiceRail phase={phase.phase} muted={props.muted} />}
     </div>
   );
 }
