@@ -50,18 +50,13 @@ export type ChatRow = {
   id: string;
   side: "left" | "right"; // your words on the left, Baymax's on the right
   text: string;
-  time: string;
 };
 
 function chatRows(chat: readonly ChatEntry[]): ChatRow[] {
-  return chat.map(({ id, from, text, at }) => ({
+  return chat.map(({ id, from, text }) => ({
     id,
     side: from === "user" ? "left" : "right",
     text,
-    time: new Date(at).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    }),
   }));
 }
 

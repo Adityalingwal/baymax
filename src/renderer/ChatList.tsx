@@ -24,9 +24,7 @@ export function ChatList({ rows }: { rows: ChatRow[] }) {
           key={row.id}
           className={`flex shrink-0 items-end gap-2 ${row.side === "right" ? "justify-end" : ""}`}
         >
-          {row.side === "left" && <Bubble row={row} />}
-          <span className="chat-time">{row.time}</span>
-          {row.side === "right" && <Bubble row={row} />}
+          <Bubble row={row} />
         </div>
       ))}
     </section>

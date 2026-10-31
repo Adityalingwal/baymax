@@ -75,17 +75,14 @@ describe("the field's placeholder", () => {
 });
 
 describe("the Chat tab", () => {
-  it("lists only the conversation, oldest first, each side with its time", () => {
-    const content = panelContent(run([toChat]), display);
-    expect(content).toEqual({
+  it("lists only the conversation, oldest first, each on its side", () => {
+    expect(panelContent(run([toChat]), display)).toEqual({
       kind: "chat",
       rows: [
         expect.objectContaining({ id: "c1", side: "left", text: "hi" }),
         expect.objectContaining({ id: "c2", side: "right", text: "hello" }),
       ],
     });
-    if (content.kind !== "chat") return;
-    expect(content.rows[0].time).toMatch(/\b(2|14):05\b/);
   });
 });
 

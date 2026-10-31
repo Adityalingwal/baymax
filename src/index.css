@@ -268,7 +268,7 @@ body {
   cursor: pointer;
 }
 
-/* The Chat tab's bubbles and times. */
+/* The Chat tab's bubbles. */
 .chat-bubble {
   max-width: 80%;
   min-width: 0;
@@ -294,13 +294,6 @@ body {
 
 .chat-baymax {
   color: rgb(255 255 255 / 72%);
-}
-
-.chat-time {
-  flex: none;
-  padding-bottom: 4px;
-  font-size: 11.5px;
-  color: rgb(255 255 255 / 50%);
 }
 
 .action {
