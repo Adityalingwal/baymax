@@ -81,7 +81,6 @@ function listenForDrag(
   };
   const down = (event: PointerEvent) => {
     if (event.button !== 0) return;
-    event.preventDefault();
     pill.setPointerCapture(event.pointerId);
     start = { y: event.clientY, scrollTop: scroller.scrollTop };
     onDragging(true);
@@ -98,6 +97,10 @@ function listenForDrag(
     const moved = (event.clientY - start.y) / track;
     scroller.scrollTop = start.scrollTop + moved * scrollRange(scroller);
   };
+  // Not on pointerdown: cancelling that hides the press from the panel's own mouse tracking, which keeps the panel open during a drag.
+  pill.addEventListener("mousedown", (event) => event.preventDefault(), {
+    signal,
+  });
   pill.addEventListener("pointerdown", down, { signal });
   pill.addEventListener("pointermove", move, { signal });
   pill.addEventListener("pointerup", end, { signal });
