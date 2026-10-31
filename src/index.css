@@ -335,6 +335,74 @@ body {
   color: rgb(255 255 255 / 58%);
 }
 
+/* The glass pill in place of a scroller's native scrollbar. Its top is its centre, so a size change keeps the centre, and it grows to the left. */
+.pill-scroller {
+  padding-right: 8px;
+  scrollbar-width: none;
+}
+
+.pill-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-pill {
+  position: absolute;
+  width: 4px;
+  height: 34px;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 16%);
+  box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 12%);
+  transform: translateY(-50%);
+  cursor: grab;
+  transition:
+    width 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 560ms ease,
+    box-shadow 560ms ease;
+}
+
+.scroll-pill::after {
+  content: "";
+  position: absolute;
+  inset: -8px -5px;
+}
+
+.scroll-pill[data-look="scrolling"],
+.scroll-pill[data-look="hover"],
+.scroll-pill[data-look="drag"] {
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 58%),
+    rgb(255 255 255 / 26%) 45%,
+    rgb(255 255 255 / 36%)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 75%),
+    inset 0 0 0 0.5px rgb(255 255 255 / 30%),
+    0 0 10px rgb(255 255 255 / 10%);
+}
+
+.scroll-pill[data-look="scrolling"] {
+  width: 7px;
+  height: 48px;
+}
+
+.scroll-pill[data-look="hover"],
+.scroll-pill[data-look="drag"] {
+  width: 9px;
+  height: 54px;
+}
+
+.scroll-pill[data-look="drag"] {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-pill {
+    transition: none;
+  }
+}
+
 .action {
   height: 32px;
   padding: 0 16px;

@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import type { RefObject } from "react";
 import type { TaskCard as Card, TaskId } from "../../shared/cards";
 import type { CardActions } from "../actions";
+import { PillScroll } from "../PillScroll";
 import { TaskCard } from "./TaskCard";
 
 type TasksListProps = {
@@ -13,15 +14,15 @@ type TasksListProps = {
 
 export function TasksList(props: TasksListProps) {
   const { cards, actions, onOpenReport, keptScroll } = props;
-  const list = useRef<HTMLElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (list.current !== null) list.current.scrollTop = keptScroll.current;
   }, [keptScroll]);
   if (cards.length === 0) return null;
   return (
-    <section
+    <PillScroll
       ref={list}
-      className="flex min-h-0 shrink flex-col gap-3 overflow-y-auto"
+      contentClassName="flex flex-col gap-3"
       onScroll={(event) => {
         keptScroll.current = event.currentTarget.scrollTop;
       }}
@@ -34,6 +35,6 @@ export function TasksList(props: TasksListProps) {
           onOpenReport={onOpenReport}
         />
       ))}
-    </section>
+    </PillScroll>
   );
 }
